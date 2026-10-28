@@ -151,6 +151,30 @@ module.exports = class LinesTileComponent {
       this.lineComponents.every((line) => line.element.parentNode === this.element) &&
       !oldProps.screenLines.some((line) => newProps.screenLines.includes(line))
     ) {
+      if (this.canRetargetRows(oldProps, newProps)) {
+        for (let index = 0; index < this.lineComponents.length; index++) {
+          const line = this.lineComponents[index];
+          const props = {
+            ...line.props,
+            screenLine: newProps.screenLines[index],
+            screenRow: newProps.tileStartRow + index,
+            lineDecoration: newProps.lineDecorations[index],
+            textDecorations: newProps.textDecorations[index],
+            displayLayer: newProps.displayLayer,
+            nodePool: newProps.nodePool,
+            lineComponentsByScreenLineId: newProps.lineComponentsByScreenLineId,
+            horizontalPixelPositionsByScreenLineId: newProps.horizontalPixelPositionsByScreenLineId,
+            renderOriginLeft: newProps.renderOriginLeft,
+            baseCharacterWidth: newProps.baseCharacterWidth,
+          };
+          if (line.retarget(props)) continue;
+          const replacement = new LineComponent(props);
+          line.element.replaceWith(replacement.element);
+          line.destroy();
+          this.lineComponents[index] = replacement;
+        }
+        return;
+      }
       this.element.replaceChildren();
       for (const line of this.lineComponents) line.destroy();
       const fragment = this.element.ownerDocument.createDocumentFragment();
@@ -293,6 +317,18 @@ module.exports = class LinesTileComponent {
         }
       }
     }
+  }
+
+  canRetargetRows(oldProps, newProps) {
+    return (
+      oldProps.screenLines.length === newProps.screenLines.length &&
+      this.lineComponents.some(
+        (line, index) =>
+          line.unpooledContents &&
+          newProps.screenLines[index].tags.length >= 8 &&
+          line.canRenderHTMLDecorations(newProps.textDecorations[index]),
+      )
+    );
   }
 
   getFirstElementForScreenLine(oldProps, screenLine, lineComponent) {

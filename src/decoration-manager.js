@@ -14,6 +14,8 @@ module.exports = class DecorationManager {
     this.layerDecorationsByMarkerLayer = new Map();
     this.overlayDecorations = new Set();
     this.layerUpdateDisposablesByLayer = new WeakMap();
+    this.batchDepth = 0;
+    this.pendingUpdate = false;
   }
 
   observeDecorations(callback) {
@@ -235,8 +237,25 @@ module.exports = class DecorationManager {
   }
 
   emitDidUpdateDecorations() {
+    if (this.batchDepth) {
+      this.pendingUpdate = true;
+      return;
+    }
     this.editor.scheduleComponentUpdate();
     this.emitter.emit("did-update-decorations");
+  }
+
+  batch(callback) {
+    this.batchDepth++;
+    try {
+      return this.editor.getBuffer().batchMarkerLayerUpdates(callback);
+    } finally {
+      this.batchDepth--;
+      if (!this.batchDepth && this.pendingUpdate) {
+        this.pendingUpdate = false;
+        if (!this.editor.isDestroyed()) this.emitDidUpdateDecorations();
+      }
+    }
   }
 
   // Block decoration heights are measured by the view after layout rather than

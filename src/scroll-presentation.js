@@ -3,7 +3,8 @@
 // work instead of chasing a moving range indefinitely. Text and colors commit
 // together; neither the buffer nor the native thumb waits for the worker.
 class ScrollPresentation {
-  constructor(component) {
+  constructor(component, { horizontal = false } = {}) {
+    this.horizontal = horizontal;
     this.component = component;
     this.pendingOwner = {};
     this.readyOwner = {};
@@ -23,8 +24,8 @@ class ScrollPresentation {
       !c.props.model.getBuffer().getLanguageMode().asynchronousSyntax
     )
       return false;
-    top = Math.max(0, Math.min(c.getMaxScrollTop(), top));
-    if (top === c.getScrollTop()) {
+    top = Math.max(0, Math.min(this.maximum(), top));
+    if (top === this.position()) {
       this.cancel();
       return true;
     }
@@ -41,16 +42,29 @@ class ScrollPresentation {
     return true;
   }
 
+  position() {
+    return this.horizontal ? this.component.getScrollLeft() : this.component.getScrollTop();
+  }
+
+  maximum() {
+    return this.horizontal ? this.component.getMaxScrollLeft() : this.component.getMaxScrollTop();
+  }
+
   release(owner) {
     this.mode?.requestHighlighting?.(owner, [], false, { prefetch: false });
   }
 
   prepare(top, owner, priority) {
     const c = this.component;
-    const first = c.tileStartRowForRow(c.rowForPixelPosition(top));
-    const last = first + c.getVisibleTileCount() * c.getRowsPerTile();
+    const first = this.horizontal
+      ? c.getRenderedStartRow()
+      : c.tileStartRowForRow(c.rowForPixelPosition(top));
+    const last = this.horizontal
+      ? c.getRenderedEndRow()
+      : first + c.getVisibleTileCount() * c.getRowsPerTile();
     return (
       c.props.model.displayLayer.prepareHighlightingForScreenRows(first, last, owner, {
+        ...c.highlightingOptions?.(this.horizontal ? top : undefined),
         priority,
         prefetch: false,
         background: false,
@@ -78,8 +92,8 @@ class ScrollPresentation {
         this.revision = revision;
         this.pendingTop = this.readyTop = null;
       }
-      this.requestedTop = Math.min(c.getMaxScrollTop(), this.requestedTop);
-      if (this.requestedTop === c.getScrollTop()) {
+      this.requestedTop = Math.min(this.maximum(), this.requestedTop);
+      if (this.requestedTop === this.position()) {
         this.cancel();
         return;
       }
@@ -93,7 +107,7 @@ class ScrollPresentation {
       if (
         this.pendingTop == null &&
         this.requestedTop !== this.readyTop &&
-        this.requestedTop !== c.getScrollTop()
+        this.requestedTop !== this.position()
       ) {
         this.pendingTop = this.requestedTop;
         if (this.prepare(this.pendingTop, this.pendingOwner, 0)) {
@@ -124,7 +138,7 @@ class ScrollPresentation {
     this.frame = null;
     this.update(false);
     if (this.readyTop == null) return false;
-    const top = Math.min(this.component.getMaxScrollTop(), this.readyTop);
+    const top = Math.min(this.maximum(), this.readyTop);
     if (!this.prepare(top, this.readyOwner, 1)) {
       this.pendingTop = top;
       this.readyTop = null;
@@ -135,7 +149,9 @@ class ScrollPresentation {
     this.committing = true;
     let committed;
     try {
-      committed = this.component.commitScrollPresentation(top);
+      committed = this.horizontal
+        ? this.component.commitHorizontalScrollPresentation(top)
+        : this.component.commitScrollPresentation(top);
     } finally {
       this.committing = false;
     }

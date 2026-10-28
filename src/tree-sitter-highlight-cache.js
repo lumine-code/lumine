@@ -395,7 +395,13 @@ class HighlightCache {
         });
         iterator.moveToSuccessor();
       }
-      return { start: translate(first), end: translate(last), scopes, events };
+      return {
+        start: translate(first),
+        end: translate(last),
+        scopes,
+        events,
+        bounded: this.covers(first, last, null, (snapshot) => snapshot.bounded !== false),
+      };
     });
     // This is retained paint, never evidence of current syntax. A worker
     // result must replace it even when the copied text has not changed.
@@ -469,11 +475,11 @@ class HighlightCache {
       compare(a.start, b.start),
     ));
   }
-  covers(start, end, stamp = null) {
+  covers(start, end, stamp = null, accept = null) {
     if (compare(start, end) >= 0) return true;
     let position = start;
     for (const snapshot of this.getOrderedSnapshots()) {
-      if (!matchesStamp(snapshot, stamp)) continue;
+      if (!matchesStamp(snapshot, stamp) || (accept && !accept(snapshot))) continue;
       if (compare(snapshot.start, position) > 0) break;
       if (compare(snapshot.end, position) > 0) position = snapshot.end;
       if (compare(position, end) >= 0) return true;
@@ -518,6 +524,7 @@ class HighlightCache {
           events: [],
           quality: iterator.quality ?? (iterator.limitedReason ? "limited" : "exact"),
           reason: iterator.limitedReason ?? iterator.reason ?? null,
+          bounded: (iterator.limitedReason ?? iterator.reason) !== "source-window",
         };
         cache.snapshots.push(snapshot);
         cache.trackSnapshot(snapshot);

@@ -7,6 +7,7 @@ const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "\
 const escapeHTML = (text) => text.replace(/[&<>"\r]/g, (character) => HTML_ESCAPES[character]);
 const scopeMarkup = new Map();
 const elementOwners = new WeakMap();
+const { buildPlan, visit } = require("./line-content-plan");
 function scopeOpeningTag(className) {
   let html = scopeMarkup.get(className);
   if (html === undefined) {
@@ -118,6 +119,7 @@ module.exports = class LineComponent {
   }
 
   appendContents() {
+    this.contentPlan = null;
     const { screenLine, textDecorations } = this.props;
     this.unpooledContents =
       this.canRenderHTMLDecorations(textDecorations) &&
@@ -166,66 +168,90 @@ module.exports = class LineComponent {
   }
 
   appendHTMLContents() {
-    const { displayLayer, screenLine, textDecorations } = this.props;
+    const { textDecorations } = this.props;
     if (!this.canRenderHTMLDecorations(textDecorations)) {
       this.unpooledContents = false;
       return this.appendPooledContents();
     }
-    const { lineText, tags } = screenLine;
-    let html = "<span>",
-      column = 0,
-      depth = 0,
-      decorationIndex = 0,
-      activeClassName = null;
-    let nextDecoration = textDecorations?.[decorationIndex];
-    if (nextDecoration?.column === 0) {
-      activeClassName = nextDecoration.className;
-      nextDecoration = textDecorations[++decorationIndex];
+    const plan = buildPlan(this.props);
+    if (!plan) {
+      this.unpooledContents = false;
+      return this.appendPooledContents();
     }
-    const appendText = (text) => {
-      html += activeClassName
-        ? scopeOpeningTag(String(activeClassName)) + escapeHTML(text) + "</span>"
-        : escapeHTML(text);
-    };
-    for (const tag of tags) {
-      if (tag === 0) continue;
-      if (displayLayer.isCloseTag(tag)) {
-        html += "</span>";
-        depth--;
-      } else if (displayLayer.isOpenTag(tag)) {
-        // HTML parsers flatten extremely deep markup. Preserve the exact
-        // scope ancestry with DOM construction for such lines.
-        if (++depth > 256) {
-          this.unpooledContents = false;
-          return this.appendPooledContents();
-        }
-        html += scopeOpeningTag(displayLayer.classNameForTag(tag) || "");
-      } else {
-        // Decorated text remains a leaf span inside the current syntax scope;
-        // a decoration crossing scopes is reopened in each scope as before.
-        if (depth >= 256 && (activeClassName || nextDecoration)) {
-          this.unpooledContents = false;
-          return this.appendPooledContents();
-        }
-        const nextTokenColumn = column + tag;
-        while (nextDecoration && nextDecoration.column <= nextTokenColumn) {
-          appendText(lineText.substring(column, nextDecoration.column));
-          column = nextDecoration.column;
-          activeClassName = nextDecoration.className;
-          nextDecoration = textDecorations[++decorationIndex];
-        }
-        if (column < nextTokenColumn) {
-          appendText(lineText.substring(column, nextTokenColumn));
-          column = nextTokenColumn;
-        }
-      }
-    }
-    html += "</span>";
-    if (column === 0) html += " ";
-    if (lineText.endsWith(displayLayer.foldCharacter)) html += ZERO_WIDTH_NBSP_CHARACTER;
+    const html = plan
+      .map((part) =>
+        part.kind === "open"
+          ? part.className === null
+            ? "<span>"
+            : scopeOpeningTag(part.className)
+          : part.kind === "close"
+            ? "</span>"
+            : escapeHTML(part.value),
+      )
+      .join("");
+    this.contentPlan = plan;
     this.element.innerHTML = html;
     // Once exposed, keep the same array current through decoration rebuilds.
     if (this.cachedTextNodes != null) this.collectTextNodes();
+  }
+
+  retarget(newProps) {
+    if (
+      !this.unpooledContents ||
+      !this.contentPlan ||
+      !this.ownsElement() ||
+      this.element.contains(this.element.ownerDocument.activeElement) ||
+      this.element.matches(":hover, :active") ||
+      newProps.screenLine.tags.length < 8 ||
+      newProps.screenLine.lineText.includes("\0") ||
+      !this.canRenderHTMLDecorations(newProps.textDecorations) ||
+      this.element.className !== this.buildClassName() ||
+      [...this.element.attributes].some(
+        ({ name }) => !["class", "style", "data-screen-row"].includes(name),
+      ) ||
+      this.element.style.length > 1 ||
+      (this.element.style.length === 1 && this.element.style.item(0) !== "text-indent")
+    )
+      return false;
+    const props = { ...this.props, ...newProps };
+    const plan = buildPlan(props);
+    if (!plan) return false;
+    const sameShape =
+      plan.length === this.contentPlan.length &&
+      plan.every(
+        (part, index) =>
+          part.kind === this.contentPlan[index].kind &&
+          part.className === this.contentPlan[index].className,
+      );
+    const nodes = sameShape || this.cachedTextNodes != null ? [] : null;
+    if (!visit(this.element, this.contentPlan, false, sameShape ? nodes : null)) return false;
+    const previous = this.props.screenLine;
+    if (sameShape) {
+      let index = 0;
+      for (const part of plan)
+        if (part.kind === "text") {
+          const node = nodes[index++];
+          if (node.data !== part.value) node.data = part.value;
+        }
+    } else visit(this.element, plan, true, nodes);
+    this.contentPlan = plan;
+    if (this.props.lineComponentsByScreenLineId.get(previous.id) === this)
+      this.props.lineComponentsByScreenLineId.delete(previous.id);
+    this.props.horizontalPixelPositionsByScreenLineId?.delete(previous.id);
+    this.props = props;
+    const className = this.buildClassName();
+    if (this.element.className !== className) this.element.className = className;
+    this.element.dataset.screenRow = props.screenRow;
+    this.updateHorizontalPosition(props);
+    if (nodes) {
+      if (this.cachedTextNodes == null) this.cachedTextNodes = nodes;
+      else {
+        this.cachedTextNodes.length = 0;
+        for (const node of nodes) this.cachedTextNodes.push(node);
+      }
+    }
+    props.lineComponentsByScreenLineId.set(props.screenLine.id, this);
+    return true;
   }
 
   appendPooledContents() {

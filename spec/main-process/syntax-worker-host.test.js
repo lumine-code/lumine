@@ -239,7 +239,7 @@ test("paint packets split dense tiles and follow the acknowledged viewport", asy
   const starts = [],
     packets = [];
   const session = {
-    buffer: new TextBuffer({ text: "x\nx\nx\nx" }),
+    buffer: new TextBuffer({ text: Array(4).fill("x".repeat(10001)).join("\n") }),
     mode: {
       scopeNameForScopeId: () => "source.test",
       getFoldRangeForRow: () => null,

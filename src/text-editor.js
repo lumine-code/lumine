@@ -2241,14 +2241,28 @@ module.exports = class TextEditor {
     }
   }
 
-  tokensForScreenRow(screenRow, { highlightingOwner, maxTokens = Infinity } = {}) {
+  tokensForScreenRow(
+    screenRow,
+    { highlightingOwner, maxTokens = Infinity, maxColumns = Infinity } = {},
+  ) {
     const tokens = [];
-    if (maxTokens <= 0) return tokens;
+    if (maxColumns !== Infinity && (!Number.isFinite(maxColumns) || maxColumns < 0))
+      throw new RangeError("maxColumns must be a non-negative number");
+    maxColumns = Math.floor(maxColumns);
+    if (maxTokens <= 0 || maxColumns === 0) return tokens;
     let lineTextIndex = 0;
     const currentTokenScopes = [];
-    const { lineText, tags } = highlightingOwner
-      ? this.displayLayer.getScreenLine(screenRow, highlightingOwner)
-      : this.screenLineForScreenRow(screenRow);
+    const { lineText, tags } =
+      Number.isFinite(maxColumns) && this.displayLayer.requiresScreenLineWindow(screenRow)
+        ? this.displayLayer.getScreenLineWindow(screenRow, 0, maxColumns, highlightingOwner)
+        : highlightingOwner
+          ? this.displayLayer.getScreenLine(screenRow, highlightingOwner)
+          : this.screenLineForScreenRow(screenRow);
+    if (maxColumns < lineText.length)
+      maxColumns = this.displayLayer.clipScreenPosition([screenRow, maxColumns], {
+        clipDirection: "backward",
+      }).column;
+    if (maxColumns === 0) return tokens;
     for (const tag of tags) {
       if (this.displayLayer.isOpenTag(tag)) {
         currentTokenScopes.push(this.displayLayer.classNameForTag(tag));
@@ -2263,11 +2277,11 @@ module.exports = class TextEditor {
         continue;
       } else {
         tokens.push({
-          text: lineText.substr(lineTextIndex, tag),
+          text: lineText.substr(lineTextIndex, Math.min(tag, maxColumns - lineTextIndex)),
           scopes: currentTokenScopes.slice(),
         });
         lineTextIndex += tag;
-        if (tokens.length >= maxTokens) break;
+        if (tokens.length >= maxTokens || lineTextIndex >= maxColumns) break;
       }
     }
     return tokens;
@@ -4085,6 +4099,26 @@ module.exports = class TextEditor {
    */
   decorateMarkerLayer(markerLayer, decorationParams) {
     return this.decorationManager.decorateMarkerLayer(markerLayer, decorationParams);
+  }
+
+  /**
+   * @category Decorations
+   */
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Coalesce decoration and marker-layer update notifications for synchronous work.
+   * Does not open an undo transaction. Individual marker change and decoration
+   * add/remove events remain synchronous. Nested batches publish one final update,
+   * including applied changes when the callback throws. Promises are not awaited.
+   *
+   * @param {Function} callback - Work that creates, moves, updates or removes decorations and markers.
+   * @returns {*} The callback result.
+   */
+  batchDecorations(callback) {
+    return this.decorationManager.batch(callback);
   }
 
   // Deprecated: Get all the decorations within a screen row range on the default
@@ -8568,6 +8602,29 @@ module.exports = class TextEditor {
 
   getVisibleRowRange() {
     return [this.getFirstVisibleScreenRow(), this.getLastVisibleScreenRow()];
+  }
+
+  /** @category Editor Rendering */
+  /**
+   * @public
+   * @status extended
+   *
+   * Return the buffer ranges needed to render the current viewport, including
+   * its overscan. Fold interiors and horizontally virtualized text are omitted.
+   * An unmeasured, detached or hidden editor returns an empty array.
+   *
+   * @returns {Range[]} Ordered, non-overlapping buffer ranges with exclusive ends.
+   */
+  getRenderedBufferRanges() {
+    const component = this.component;
+    if (!component?.attached || !component.visible || !component.hasInitialMeasurements) return [];
+    return this.displayLayer
+      .highlightingWindows(
+        component.getRenderedStartRow(),
+        component.getRenderedEndRow(),
+        component.highlightingOptions(),
+      )
+      .map(({ start, end }) => new Range(start, end));
   }
 
   // Use setScrollLeftColumn instead of this method

@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { Language, Query } = require("web-tree-sitter");
+const { Language } = require("web-tree-sitter");
 const runtime = require("./tree-sitter-runtime");
 const TreeSitterParser = require("./tree-sitter-parser");
 const { createHash } = require("node:crypto");
@@ -249,7 +249,7 @@ module.exports = class TreeSitterGrammar {
   }
 
   _createQuery(language, queryContents) {
-    return new Query(language, queryContents);
+    return require("./tree-sitter-query")(language, queryContents);
   }
 
   _matchesInjectionContent(node) {

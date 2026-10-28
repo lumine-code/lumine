@@ -188,6 +188,7 @@ module.exports = class TextEditorComponent {
     this.scrollLeftPending = false;
     this.scrollTop = 0;
     this.scrollPresentation = new ScrollPresentation(this);
+    this.horizontalScrollPresentation = new ScrollPresentation(this, { horizontal: true });
     this.preservedScrollTop = 0;
     this.scrollLeft = 0;
     this.renderedScrollTop = 0;
@@ -419,7 +420,11 @@ module.exports = class TextEditorComponent {
       return;
     }
 
-    if (this.isVisible()) this.measureBlockDecorations();
+    if (
+      (this.remeasureAllBlockDecorations || this.blockDecorationsToMeasure.size > 0) &&
+      this.isVisible()
+    )
+      this.measureBlockDecorations();
 
     if (this.updateSyncBeforeMeasuringContent(updateMode) === false) {
       this.updateScheduled = false;
@@ -563,6 +568,7 @@ module.exports = class TextEditorComponent {
         this.getRenderedStartRow(),
         this.getRenderedEndRow(),
         model.displayLayer,
+        this.highlightingOptions(),
       ) === false
     ) {
       if (!this.scrollHighlightingFrame) {
@@ -581,7 +587,10 @@ module.exports = class TextEditorComponent {
   }
 
   cancelScrollHighlighting(resolvePending = false) {
-    if (resolvePending) this.scrollPresentation?.cancel();
+    if (resolvePending) {
+      this.scrollPresentation?.cancel();
+      this.horizontalScrollPresentation?.cancel();
+    }
     const frame = this.scrollHighlightingFrame;
     if (frame) frame.window.cancelAnimationFrame(frame.handle);
     this.scrollHighlightingFrame = null;
@@ -806,11 +815,12 @@ module.exports = class TextEditorComponent {
       this.populateVisibleTiles();
     }
     if (
-      this.scrollPresentation?.committing &&
+      (this.scrollPresentation?.committing || this.horizontalScrollPresentation?.committing) &&
       this.props.model.displayLayer.prepareHighlightingForScreenRows(
         this.getRenderedStartRow(),
         this.getRenderedEndRow(),
         this.props.model.displayLayer,
+        this.highlightingOptions(),
       ) === false
     ) {
       this.preparedScrollDeferred = true;
@@ -1484,7 +1494,7 @@ module.exports = class TextEditorComponent {
         scrollHeight = this.getScrollHeight();
         scrollWidth = this.getScrollWidth();
         scrollTop = this.getRequestedScrollTop();
-        scrollLeft = this.getScrollLeft();
+        scrollLeft = this.getRequestedScrollLeft();
         canScrollHorizontally = this.canScrollHorizontally();
         canScrollVertically = this.canScrollVertically();
         horizontalScrollbarHeight = canScrollHorizontally ? this.getHorizontalScrollbarHeight() : 0;
@@ -1647,7 +1657,12 @@ module.exports = class TextEditorComponent {
     const { model } = this.props;
     const startRow = this.getRenderedStartRow();
     const endRow = this.getRenderedEndRow();
-    model.displayLayer.prepareHighlightingForScreenRows(startRow, endRow, model.displayLayer);
+    model.displayLayer.prepareHighlightingForScreenRows(
+      startRow,
+      endRow,
+      model.displayLayer,
+      this.highlightingOptions(),
+    );
     this.renderedScreenLines = this.screenLinesForRendering(startRow, endRow);
     this.renderedScreenLinesStartRow = startRow;
   }
@@ -1713,50 +1728,10 @@ module.exports = class TextEditorComponent {
     const length = layer.lineLengthForScreenRow(row);
     if (length == null) return null;
     if (!layer.requiresScreenLineWindow(row)) return layer.getScreenLine(row, layer);
-    const characterWidth = this.getBaseCharacterWidth() || 1;
-    const cache = (this.screenLineWindows ??= new Map());
-    const previous = cache.get(row);
-    const generation = `${layer.mappingGeneration}:${layer.windowGeneration}`;
-    const correction =
-      previous?.generation === generation
-        ? previous.line.startPixelColumn -
-          layer.pixelColumnForScreenColumn(row, previous.line.startScreenColumn)
-        : 0;
-    let column = preferredColumn;
-    if (
-      column == null &&
-      previous?.generation === generation &&
-      this.renderedScreenLineForRow(row) === previous.line
-    ) {
-      const oldComponent = this.lineComponentsByScreenLineId.get(previous.line.id);
-      if (oldComponent) {
-        const bounds = boundingClientRectForTextNodes(oldComponent.textNodes);
-        const target =
-          this.refs.lineTiles.getBoundingClientRect().left +
-          this.getScrollLeft() -
-          (this.renderOriginLeft || 0);
-        // A small scroll stays within already-shaped text. Use that measured
-        // geometry to choose the next window, including joined emoji and
-        // proportional advances that a prefix estimate cannot predict.
-        if (target >= bounds.left && target <= bounds.right) {
-          column = this.screenPositionForPixelPosition({
-            top: this.pixelPositionAfterBlocksForRow(row),
-            left: this.getScrollLeft(),
-          }).column;
-        }
-      }
-    }
-    column ??= layer.screenColumnForPixelColumn(
+    const { cache, previous, generation, correction, start, end, key } = this.screenLineWindowRange(
       row,
-      this.getScrollLeft() / characterWidth - correction,
+      preferredColumn,
     );
-    const count = Math.max(
-      4096,
-      Math.ceil(this.getScrollContainerClientWidth() / characterWidth) + 2048,
-    );
-    const start = Math.max(0, Math.min(length - count, Math.floor(column / 1024) * 1024 - 1024));
-    const end = Math.min(length, start + count);
-    const key = `${generation}:${start}:${end}`;
     if (previous?.key === key) return previous.line;
     const line = layer.getScreenLineWindow(row, start, end);
     line.startPixelColumn += correction;
@@ -1791,6 +1766,55 @@ module.exports = class TextEditorComponent {
     return line;
   }
 
+  highlightingOptions(left) {
+    return { columnsForRow: (row) => this.screenLineWindowRange(row, undefined, left) };
+  }
+
+  screenLineWindowRange(row, preferredColumn, left = this.getScrollLeft()) {
+    const layer = this.props.model.displayLayer;
+    const length = layer.lineLengthForScreenRow(row);
+    const characterWidth = this.getBaseCharacterWidth() || 1;
+    const cache = (this.screenLineWindows ??= new Map());
+    const previous = cache.get(row);
+    const generation = `${layer.mappingGeneration}:${layer.windowGeneration}`;
+    const correction =
+      previous?.generation === generation
+        ? previous.line.startPixelColumn -
+          layer.pixelColumnForScreenColumn(row, previous.line.startScreenColumn)
+        : 0;
+    let column = preferredColumn;
+    if (
+      column == null &&
+      previous?.generation === generation &&
+      this.renderedScreenLineForRow(row) === previous.line
+    ) {
+      const oldComponent = this.lineComponentsByScreenLineId.get(previous.line.id);
+      if (oldComponent) {
+        const bounds = boundingClientRectForTextNodes(oldComponent.textNodes);
+        const target =
+          this.refs.lineTiles.getBoundingClientRect().left + left - (this.renderOriginLeft || 0);
+        // A small scroll stays within already-shaped text. Use that measured
+        // geometry to choose the next window, including joined emoji and
+        // proportional advances that a prefix estimate cannot predict.
+        if (target >= bounds.left && target <= bounds.right) {
+          column = this.screenPositionForPixelPosition({
+            top: this.pixelPositionAfterBlocksForRow(row),
+            left: left,
+          }).column;
+        }
+      }
+    }
+    column ??= layer.screenColumnForPixelColumn(row, left / characterWidth - correction);
+    const count = Math.max(
+      4096,
+      Math.ceil(this.getScrollContainerClientWidth() / characterWidth) + 2048,
+    );
+    const start = Math.max(0, Math.min(length - count, Math.floor(column / 1024) * 1024 - 1024));
+    const end = Math.min(length, start + count);
+    const key = `${generation}:${start}:${end}`;
+    return { cache, previous, generation, correction, start, end, key };
+  }
+
   stabilizeHorizontalWindows() {
     const lines = [...this.renderedScreenLines, ...this.extraRenderedScreenLines.values()];
     for (const line of lines) {
@@ -1818,7 +1842,11 @@ module.exports = class TextEditorComponent {
   }
 
   horizontalWindowMissesViewport() {
-    if (!this.canScrollHorizontally()) return false;
+    if (
+      !this.canScrollHorizontally() ||
+      !this.renderedScreenLines.some((line) => line.startScreenColumn != null)
+    )
+      return false;
     if (this.horizontalRefinementTarget !== this.getScrollLeft()) {
       this.horizontalRefinementTarget = this.getScrollLeft();
       this.horizontalRefinementCount = 0;
@@ -3212,6 +3240,7 @@ module.exports = class TextEditorComponent {
     if (orientation === "vertical" && this.scrollPresentation?.request(position)) {
       return;
     }
+    if (orientation === "horizontal" && this.requestHorizontalScrollPresentation(position)) return;
     let scrollPositionChanged = false;
     if (orientation === "vertical") {
       scrollPositionChanged = this.setScrollTop(position);
@@ -3232,6 +3261,7 @@ module.exports = class TextEditorComponent {
           this.getRenderedStartRow(),
           this.getRenderedEndRow(),
           this.props.model.displayLayer,
+          this.highlightingOptions(),
         );
         if (ready) this.updateSync();
         else this.scheduleUpdate();
@@ -4573,24 +4603,31 @@ module.exports = class TextEditorComponent {
         );
       }
 
-      // If we get this far, we effectively will have guaranteed that one of
-      // the remaining individual text nodes will have at least one `DOMRect`
-      // that contains the point horizontally…
-      let containingTextNode = textNodes.find((node) => {
-        let rects = clientRectsForTextNode(node);
-        return Array.from(rects).some(
-          (r) => targetClientLeft >= r.left && targetClientLeft <= r.right,
-        );
-      });
-
-      // …but we'll handle the failure case just to be safe.
-      if (!containingTextNode) {
-        console.error(
-          `Error: could not find a valid cursor position for coordinates: (${left}, ${top}) within the editor.`,
-        );
-        // Declare defeat and fall back to the 0th column.
-        return Point(row, 0);
+      // Inline decorations can occupy space without owning text (inlay hints,
+      // padding, pseudo-elements). The union's bounding box includes those
+      // gaps, whereas the individual text rects do not. Use the nearest real
+      // text edge there; adjacent source fragments share the same column.
+      // This also handles fractional gaps without inventing a glyph width.
+      let containingTextNode;
+      let nearestLeft = targetClientLeft;
+      let distance = Infinity;
+      for (const node of textNodes) {
+        if (!node.length) continue;
+        for (const rect of clientRectsForTextNode(node)) {
+          const edge = Math.max(rect.left, Math.min(rect.right, targetClientLeft));
+          const delta = Math.abs(edge - targetClientLeft);
+          if (delta < distance) {
+            containingTextNode = node;
+            nearestLeft = edge;
+            distance = delta;
+          }
+        }
+        if (distance === 0) break;
       }
+      // A package may hide all of a line's text. There is no rendered caret
+      // to measure in that case, so use its first available source boundary.
+      if (!containingTextNode) return Point(row, startColumn);
+      targetClientLeft = nearestLeft;
 
       let containingTextNodeIndex = textNodes.indexOf(containingTextNode);
       let characterIndex;
@@ -4847,6 +4884,7 @@ module.exports = class TextEditorComponent {
 
   didChangeDisplayLayer(changes) {
     this.scrollPresentation?.update();
+    this.horizontalScrollPresentation?.update();
     if (changes.length && changes.every((change) => change.origin === "highlight")) {
       if (this.scrollHighlightingFrame && !this.waitForScrollHighlighting()) {
         this.updateSync();
@@ -5307,6 +5345,7 @@ module.exports = class TextEditorComponent {
 
   destroyBlockDecorations() {
     this.scrollPresentation?.cancel();
+    this.horizontalScrollPresentation?.cancel();
     const owner = this.blockDecorationOwner;
     if (!owner || owner.retired) return;
     owner.retired = true;
@@ -5637,6 +5676,29 @@ module.exports = class TextEditorComponent {
     return this.scrollPresentation?.requestedTop ?? this.getScrollTop();
   }
 
+  getRequestedScrollLeft() {
+    return this.horizontalScrollPresentation?.requestedTop ?? this.getScrollLeft();
+  }
+
+  requestHorizontalScrollPresentation(left, options) {
+    // Ordinary lines already own colors for their whole width. Only virtual
+    // long-line windows expose previously unqueried text on horizontal input.
+    if (!this.renderedScreenLines?.some((line) => line.startScreenColumn != null)) return false;
+    return this.horizontalScrollPresentation?.request(left, options) ?? false;
+  }
+
+  commitHorizontalScrollPresentation(left) {
+    const previous = this.getScrollLeft();
+    this.preparedScrollDeferred = false;
+    this.setScrollLeft(left);
+    this.updateSync();
+    if (this.preparedScrollDeferred) {
+      this.setScrollLeft(previous);
+      return false;
+    }
+    return true;
+  }
+
   requestScrollPresentation(top, options) {
     return this.scrollPresentation?.request(top, options) ?? false;
   }
@@ -5713,6 +5775,7 @@ module.exports = class TextEditorComponent {
 
   setScrollLeft(scrollLeft) {
     if (Number.isNaN(scrollLeft) || scrollLeft == null) return false;
+    if (!this.horizontalScrollPresentation?.committing) this.horizontalScrollPresentation?.cancel();
 
     // Exact for the same reason as setScrollTop; outputs quantize.
     scrollLeft = Math.max(0, Math.min(this.getMaxScrollLeft(), scrollLeft));
@@ -5843,7 +5906,14 @@ module.exports = class TextEditorComponent {
   }
 
   getNextUpdatePromise() {
-    if (this.scrollPresentation?.requestedTop != null) return this.scrollPresentation.whenSettled();
+    if (
+      this.scrollPresentation?.requestedTop != null ||
+      this.horizontalScrollPresentation?.requestedTop != null
+    )
+      return Promise.all([
+        this.scrollPresentation?.whenSettled(),
+        this.horizontalScrollPresentation?.whenSettled(),
+      ]);
     if (!this.nextUpdatePromise) {
       this.nextUpdatePromise = new Promise((resolve) => {
         this.resolveNextUpdatePromise = () => {

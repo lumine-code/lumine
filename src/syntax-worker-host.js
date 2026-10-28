@@ -8,6 +8,7 @@ const TreeSitterLanguageMode = require("./tree-sitter-language-mode");
 const TextBuffer = require("./text-buffer");
 const runtime = require("./tree-sitter-runtime");
 const { paintTile } = require("./syntax-paint-policy");
+const { windowTile, rangeKey } = require("./syntax-paint-window");
 const SyntaxPreview = require("./syntax-preview");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { contextFor, serialize } = require("./syntax-analysis-context");
@@ -607,6 +608,7 @@ class SyntaxWorkerHost {
         if (
           operation === "view" &&
           data.allowPreview &&
+          Array.isArray(data.ranges?.[0]) &&
           mode.publicationPending &&
           data.ranges?.length
         ) {
@@ -966,11 +968,14 @@ class SyntaxWorkerHost {
     while (pending.length) {
       current?.();
       const { range, origin } = pending.shift();
-      const [first, last] = range;
-      const tile = paintTile(buffer, first, last);
+      const isWindow = !Array.isArray(range);
+      const tile = isWindow ? windowTile(buffer, range) : paintTile(buffer, ...range);
       if (!tile) continue;
       const { start, end, endRow } = tile;
-      let iterator = mode.buildHighlightIterator({ presentation: true });
+      const first = start.row,
+        last = isWindow ? endRow : range[1];
+      const options = isWindow ? { presentation: true, endPosition: end } : { presentation: true };
+      let iterator = mode.buildHighlightIterator(options);
       let scopes = [
         ...runtime.run(this.contextFor(session, "paint-query"), () => iterator.seek(start, endRow)),
       ];
@@ -980,7 +985,7 @@ class SyntaxWorkerHost {
         // unchanged deadline. Structural/result limits are deliberately stable.
         await new Promise(setImmediate);
         current?.();
-        iterator = mode.buildHighlightIterator({ presentation: true });
+        iterator = mode.buildHighlightIterator(options);
         scopes = [
           ...runtime.run(this.contextFor(session, "paint-query"), () =>
             iterator.seek(start, endRow),
@@ -991,9 +996,10 @@ class SyntaxWorkerHost {
         folds = [];
       for (const id of scopes) names.set(id, mode.scopeNameForScopeId(id));
       const quality = iterator.limitedReason ? "limited" : "exact";
-      let header = { start, end, scopes, quality, reason: iterator.limitedReason };
+      const window = isWindow;
+      let header = { start, end, scopes, quality, reason: iterator.limitedReason, window };
       current?.();
-      while (iterator.getPosition().row <= endRow) {
+      while (iterator.getPosition().compare(end) < 0) {
         const open = [...iterator.getOpenScopeIds()],
           close = [...iterator.getCloseScopeIds()];
         events.push({ position: iterator.getPosition(), open, close });
@@ -1043,13 +1049,22 @@ class SyntaxWorkerHost {
         current?.();
         if (follow) {
           if (next?.range) {
-            const same = next.range[0] === origin[0] && next.range[1] === origin[1];
+            const same = rangeKey(next.range) === rangeKey(origin);
             if (same && endRow < last) pending.unshift({ range: [endRow + 1, last], origin });
             else if (!same) pending.unshift({ range: next.range, origin: next.range });
           }
         } else if (endRow < last) pending.unshift({ range: [endRow + 1, last], origin });
       } else {
-        tiles.push({ start, end, scopes, events, folds, quality, reason: iterator.limitedReason });
+        tiles.push({
+          start,
+          end,
+          scopes,
+          events,
+          folds,
+          quality,
+          reason: iterator.limitedReason,
+          window,
+        });
         if (endRow < last) pending.unshift({ range: [endRow + 1, last], origin });
       }
     }

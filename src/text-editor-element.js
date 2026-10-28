@@ -245,6 +245,7 @@ class TextEditorElement extends HTMLElement {
 
   setScrollLeft(scrollLeft) {
     const component = this.getComponent();
+    if (component.requestHorizontalScrollPresentation(scrollLeft)) return;
     component.setScrollLeft(scrollLeft);
     component.scheduleUpdate();
   }
@@ -254,7 +255,14 @@ class TextEditorElement extends HTMLElement {
   }
 
   setScrollRight(scrollRight) {
-    return this.getComponent().setScrollRight(scrollRight);
+    const component = this.getComponent();
+    if (
+      component.requestHorizontalScrollPresentation(
+        scrollRight - component.getScrollContainerClientWidth(),
+      )
+    )
+      return true;
+    return component.setScrollRight(scrollRight);
   }
 
   /**

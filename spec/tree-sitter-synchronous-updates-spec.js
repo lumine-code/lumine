@@ -107,6 +107,11 @@ describe("Synchronous warm Tree-sitter updates", () => {
 
   it("finishes bulk comment, uncomment and undo with current visible scopes despite a zero load budget", async () => {
     const mode = await start('value = "text"\r\n'.repeat(2000));
+    // This asserts warm publication, not the host's ability to scan 2000
+    // injection candidates within 25 ms. A preempted macOS CI runner may
+    // correctly yield on that separate budget; timeout/retry specs exercise
+    // that path with an advancing clock.
+    mode.queryBudget = { now: () => 0 };
     editor.displayLayer.getScreenLines(800, 820);
     await editor.whenGrammarSettled();
     editor.selectAll();

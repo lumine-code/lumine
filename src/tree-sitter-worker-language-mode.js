@@ -5,6 +5,7 @@ const Point = require("./point");
 const Range = require("./range");
 const RangeList = require("./tree-sitter-range-list");
 const SyntaxPaintRetries = require("./syntax-paint-retries");
+const { paintWindows, rangeKey } = require("./syntax-paint-window");
 const { PAINT_TILE_ROWS: TILE_ROWS, PREVIEW_DOCUMENT_UNITS } = require("./syntax-worker-protocol");
 const {
   setTimeout: scheduleInitialPaint,
@@ -24,6 +25,21 @@ const primaryRequest = (request) => (request.priority ?? 1) <= 1;
 const intersectsRows = (snapshot, first, last) =>
   snapshot.start.row <= last &&
   (snapshot.end.row > first || (snapshot.end.row === first && snapshot.end.column > 0));
+const boundedPaint = (snapshot) => snapshot.bounded !== false;
+const requestIntersects = (request, tile) =>
+  request.windows
+    ? request.windows.some(
+        (range) => range.start.compare(tile.end) < 0 && tile.start.compare(range.end) < 0,
+      )
+    : request.ranges.some(([first, last]) => intersectsRows(tile, first, last));
+const paintCovered = (mode, range, stamp = null) =>
+  Array.isArray(range)
+    ? mode.cache.covers(
+        mode.buffer.clipPosition([range[0], 0]),
+        mode.buffer.clipPosition([range[1] + 1, 0]),
+        stamp,
+      )
+    : mode.cache.covers(range.start, range.end, stamp, boundedPaint);
 
 class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   constructor({ buffer, grammar, service }) {
@@ -53,7 +69,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
             primaryRequest(request) &&
             request.owner.deref() &&
             !request.owner.deref().destroyed &&
-            request.ranges.some(([first, last]) => intersectsRows(tile, first, last)),
+            requestIntersects(request, tile),
         ),
     });
     this.requestHighlighting(this.defaultOwner, [[0, 63]], false);
@@ -228,7 +244,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
 
   getHighlightingStatus() {
     this.cache.rebase();
-    const visible = [...this.requests].filter(primaryRequest).flatMap((request) => request.ranges);
+    const visible = [...this.requests].filter(primaryRequest);
     const stamp = {
       revision: this.buffer.getTextRevision(),
       generation: this.session.generation,
@@ -238,7 +254,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     let provisional = false;
     let retained = false;
     for (const snapshot of this.cache.snapshots) {
-      if (!visible.some(([first, last]) => intersectsRows(snapshot, first, last))) continue;
+      if (!visible.some((request) => requestIntersects(request, snapshot))) continue;
       if (
         snapshot.stamp?.revision !== stamp.revision ||
         snapshot.stamp?.generation !== stamp.generation ||
@@ -251,12 +267,8 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       else if (this.publicationPending) retained = true;
       if (snapshot.reason) reasons.add(snapshot.reason);
     }
-    const covered = visible.every(([first, last]) =>
-      this.cache.covers(
-        this.buffer.clipPosition([first, 0]),
-        this.buffer.clipPosition([last + 1, 0]),
-        stamp,
-      ),
+    const covered = visible.every((request) =>
+      (request.windows ?? request.ranges).every((range) => paintCovered(this, range, stamp)),
     );
     return {
       state: provisional
@@ -536,7 +548,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     owner,
     ranges,
     schedule = true,
-    { priority = 1, prefetch = true, background = false } = {},
+    { priority = 1, prefetch = true, background = false, windows = null } = {},
   ) {
     if (this.destroyed) return;
     this.updateCacheAllowance();
@@ -551,7 +563,11 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       this.requestsByOwner.set(owner, request);
       this.requests.add(request);
     }
+    const nextWindows =
+      windows?.flatMap((range) => paintWindows(this.buffer, range.start, range.end)) ?? null;
     const changed =
+      (request.windows?.map(rangeKey).join(";") ?? "") !==
+        (nextWindows?.map(rangeKey).join(";") ?? "") ||
       request.ranges.length !== ranges.length ||
       request.ranges.some(
         ([first, last], index) => first !== ranges[index]?.[0] || last !== ranges[index]?.[1],
@@ -579,16 +595,13 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       request.movedAt = now;
     }
     request.ranges = ranges.map(([first, last]) => [first, last]);
+    request.windows = nextWindows;
     request.priority = priority;
     request.prefetch = prefetch;
     request.background = background;
     this.paintRetries?.update();
     if (schedule) this.schedule();
-    return ranges.every(([first, last]) => {
-      const start = this.buffer.clipPosition([first, 0]);
-      const end = this.buffer.clipPosition([last + 1, 0]);
-      return start.isEqual(end) || this.cache.covers(start, end);
-    });
+    return (request.windows ?? ranges).every((range) => paintCovered(this, range));
   }
 
   wantedRanges() {
@@ -605,9 +618,11 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       let size = 0;
       for (const [start, end] of request.ranges) {
         size += end - start + 1;
-        for (let row = Math.max(0, start); row <= Math.min(last, end); row += TILE_ROWS)
-          ranges.push([row, Math.min(last, end, row + TILE_ROWS - 1)]);
+        if (!request.windows)
+          for (let row = Math.max(0, start); row <= Math.min(last, end); row += TILE_ROWS)
+            ranges.push([row, Math.min(last, end, row + TILE_ROWS - 1)]);
       }
+      if (request.windows) ranges.push(...request.windows);
       const visibleCount = ranges.length;
       if (!this.warmupPaused && request.prefetch && visibleCount) {
         const first = Math.floor(request.ranges[0][0] / TILE_ROWS) * TILE_ROWS;
@@ -640,7 +655,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       for (const view of group) ranges.push(...view.ranges.slice(0, view.visibleCount));
       for (const view of group) ranges.push(...view.ranges.slice(view.visibleCount));
     }
-    return [...new Map(ranges.map((range) => [range.join(":"), range])).values()];
+    return [...new Map(ranges.map((range) => [rangeKey(range), range])).values()];
   }
 
   updateCacheAllowance(active = this.service.focusedBuffer?.deref() === this.buffer) {
@@ -755,17 +770,15 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
           generation === this.session.generation &&
           presentation === this.presentationVersion;
         const nextRange = () =>
-          this.wantedRanges().find(
-            ([first, last]) =>
-              !this.cache.covers(
-                new Point(first, 0),
-                this.buffer.clipPosition([last + 1, 0]),
-                stamp,
-              ),
-          ) ??
+          this.wantedRanges().find((range) => !paintCovered(this, range, stamp)) ??
           (() => {
             const retry = this.paintRetries.next();
-            return retry && [retry.start.row, retry.end.row - (retry.end.column === 0 ? 1 : 0)];
+            return (
+              retry &&
+              (retry.window
+                ? { start: retry.start, end: retry.end }
+                : [retry.start.row, retry.end.row - (retry.end.column === 0 ? 1 : 0)])
+            );
           })() ??
           this.backgroundRange(stamp);
         const first = nextRange();
@@ -786,11 +799,9 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
               // Retained, edit-adjusted colors are preferable to parsing an
               // isolated fragment without its surrounding syntax context.
               allowPreview:
+                Array.isArray(first) &&
                 this.buffer.getLength() <= PREVIEW_DOCUMENT_UNITS &&
-                !this.cache.covers(
-                  new Point(first[0], 0),
-                  this.buffer.clipPosition([first[1] + 1, 0]),
-                ),
+                !paintCovered(this, first),
               presentation,
             },
             {
@@ -809,6 +820,8 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                     events: [],
                     quality: packet.quality ?? "exact",
                     reason: packet.reason ?? null,
+                    window: packet.window ?? false,
+                    bounded: Boolean(packet.window) || packet.reason !== "source-window",
                   };
                 }
                 for (const event of packet.events)
@@ -882,11 +895,9 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                       stamp,
                     ))
                       updates.add(new Range(start, end));
-                  const visible = [...this.requests]
-                    .filter(primaryRequest)
-                    .flatMap((request) => request.ranges);
+                  const visible = [...this.requests].filter(primaryRequest);
                   const evicted = this.cache.replace(tiles, stamp, (snapshot) =>
-                    visible.some(([first, last]) => intersectsRows(snapshot, first, last)),
+                    visible.some((request) => requestIntersects(request, snapshot)),
                   );
                   this.paintRetries.observe(
                     this.cache.covers(tile.start, tile.end, { ...stamp, quality: "exact" })

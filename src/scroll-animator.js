@@ -291,7 +291,7 @@ class ScrollAnimator {
     if (
       this.pendingX() === 0 &&
       this.pendingY() === 0 &&
-      this.virtualScrollLeft === this.component.getScrollLeft() &&
+      this.virtualScrollLeft === this.getInputScrollLeft() &&
       this.virtualScrollTop === this.getInputScrollTop()
     ) {
       return false;
@@ -359,8 +359,8 @@ class ScrollAnimator {
 
   canScrollBy(x, y) {
     return (
-      (x < 0 && this.component.getScrollLeft() > 0) ||
-      (x > 0 && this.component.getScrollLeft() < this.component.getMaxScrollLeft()) ||
+      (x < 0 && this.getInputScrollLeft() > 0) ||
+      (x > 0 && this.getInputScrollLeft() < this.component.getMaxScrollLeft()) ||
       (y < 0 && this.getInputScrollTop() > 0) ||
       (y > 0 && this.getInputScrollTop() < this.component.getMaxScrollTop())
     );
@@ -368,13 +368,17 @@ class ScrollAnimator {
 
   syncToComponent() {
     this.targetScrollTop = this.virtualScrollTop = this.getInputScrollTop();
-    this.targetScrollLeft = this.virtualScrollLeft = this.component.getScrollLeft();
+    this.targetScrollLeft = this.virtualScrollLeft = this.getInputScrollLeft();
     this.velocityX = this.velocityY = 0;
     this.curveX = this.curveY = null;
   }
 
   getInputScrollTop() {
     return this.component.getRequestedScrollTop?.() ?? this.component.getScrollTop();
+  }
+
+  getInputScrollLeft() {
+    return this.component.getRequestedScrollLeft?.() ?? this.component.getScrollLeft();
   }
 
   start(timestamp) {
@@ -398,7 +402,7 @@ class ScrollAnimator {
     this.advanceMotion(elapsed);
 
     this.applyingFrame = true;
-    let changedX, changedY, preparedY;
+    let changedX, changedY, preparedY, preparedX;
     try {
       // Inputs may already have advanced virtual motion. A zero-time frame
       // still needs to publish that motion to the visible editor.
@@ -406,11 +410,16 @@ class ScrollAnimator {
         defer: true,
       });
       changedY = preparedY ? false : this.component.setScrollTop(this.virtualScrollTop);
-      changedX = this.component.setScrollLeft(this.virtualScrollLeft);
+      preparedX = this.component.requestHorizontalScrollPresentation?.(this.virtualScrollLeft, {
+        defer: true,
+      });
+      changedX = preparedX ? false : this.component.setScrollLeft(this.virtualScrollLeft);
     } finally {
       this.applyingFrame = false;
     }
-    const committed = preparedY && this.component.scrollPresentation.flush();
+    const committedY = preparedY && this.component.scrollPresentation.flush();
+    const committedX = preparedX && this.component.horizontalScrollPresentation.flush();
+    const committed = committedY || committedX;
     if ((changedX || changedY) && !committed) {
       this.component.updateScrollAnimationFrame({ horizontal: changedX, vertical: changedY });
     }

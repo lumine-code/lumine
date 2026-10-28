@@ -10,6 +10,7 @@ const ScreenLineBuilder = require("./screen-line-builder");
 const RowSequence = require("./row-sequence");
 const ScreenLineCache = require("./screen-line-cache");
 const { MAX_BUILT_IN_SCOPE_ID } = require("./constants");
+const { MAX_UNITS: PAINT_WINDOW_UNITS } = require("./syntax-paint-window");
 const { isWrapBoundary: defaultIsWrapBoundary } = require("./text-utils");
 
 const SIMPLE_LINE_FAST_PATH_MIN_LENGTH = 4096;
@@ -923,7 +924,13 @@ class DisplayLayer {
     this.populateSpatialIndexIfNeeded(Infinity, screenRow + 1);
     if (!this.layoutState.unwrapped)
       throw new Error("Horizontal windows require an unwrapped layout");
-    this.prepareHighlightingForScreenRows(screenRow, screenRow + 1, highlightingOwner ?? this);
+    if (!highlightingOwner)
+      this.prepareHighlightingForScreenRows(
+        screenRow,
+        screenRow + 1,
+        this.singleLineHighlightingOwner,
+        { columnsForRow: () => ({ start: startScreenColumn, end: endScreenColumn }) },
+      );
     const line = this.screenLineBuilder.buildScreenLineWindow(
       screenRow,
       startScreenColumn,
@@ -1078,6 +1085,19 @@ class DisplayLayer {
       row = Math.max(row, hunk.oldEnd.row);
     }
     if (row <= endBufferRow) ranges.push([row, endBufferRow]);
+    let windows = null;
+    if (languageMode.asynchronousSyntax) {
+      let longRow = false;
+      for (const [first, last] of ranges) {
+        for (let row = first; row <= last; row++)
+          if (this.buffer.lineLengthForRow(row) > PAINT_WINDOW_UNITS) {
+            longRow = true;
+            break;
+          }
+        if (longRow) break;
+      }
+      if (longRow) windows = this.highlightingWindows(startRow, lastRow + 1, options);
+    }
     // Ready scopes can invalidate cached screen lines and notify observers.
     // Finish that work before ScreenLineBuilder captures its mutable state or
     // uncached ranges, including when a subscriber reads another screen line.
@@ -1086,7 +1106,42 @@ class DisplayLayer {
       prefetch: owner !== this.singleLineHighlightingOwner,
       background: owner === this,
       ...options,
+      ...(windows ? { windows } : {}),
     });
+  }
+
+  highlightingWindows(startRow, endRow, options) {
+    const windows = [];
+    const add = (start, end) => {
+      if (start.compare(end) >= 0) return;
+      const previous = windows.at(-1);
+      if (previous && previous.end.isEqual(start)) previous.end = end;
+      else windows.push({ start, end });
+    };
+    for (let row = startRow; row < endRow; row++) {
+      const length = this.lineLengthForScreenRow(row);
+      const columns = this.requiresScreenLineWindow(row)
+        ? (options.columnsForRow?.(row) ?? { start: 0, end: Math.min(length, 4096) })
+        : { start: 0, end: length };
+      let start = this.translateScreenPosition(Point(row, columns.start), {
+        clipDirection: "backward",
+      });
+      let end = this.translateScreenPosition(Point(row, columns.end), { clipDirection: "forward" });
+      if (end.column === this.buffer.lineLengthForRow(end.row))
+        end = this.buffer.clipPosition([end.row + 1, 0]);
+      // The fold glyph has its own scope. Only visible source needs paint;
+      // the full syntax tree supplies context on both sides of the fold.
+      const folds = this.foldsIntersectingBufferRange(new Range(start, end))
+        .map((id) => this.bufferRangeForFold(id))
+        .sort((a, b) => a.start.compare(b.start) || b.end.compare(a.end));
+      for (const fold of folds) {
+        if (fold.end.compare(start) <= 0 || fold.start.compare(end) >= 0) continue;
+        if (start.compare(fold.start) < 0) add(start, fold.start);
+        start = Point.max(start, fold.end);
+      }
+      add(start, end);
+    }
+    return windows;
   }
 
   bufferRowsForScreenRows(startRow, endRow) {

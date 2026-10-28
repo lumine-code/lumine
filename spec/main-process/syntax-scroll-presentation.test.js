@@ -2,11 +2,13 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const Queue = require("../../src/scroll-presentation");
 
-function fixture() {
+function fixture({ horizontal = false } = {}) {
   let revision = 0,
     position = 0,
     maximum = 1000,
-    nextFrame = 0;
+    nextFrame = 0,
+    visibleRow = 0;
+  const key = (position) => revision + ":" + (horizontal ? visibleRow + ":" : "") + position;
   const ready = new Set(),
     frames = new Map(),
     commits = [],
@@ -28,9 +30,10 @@ function fixture() {
         getBuffer: () => ({ getLanguageMode: () => mode, getTextRevision: () => revision }),
         displayLayer: {
           prepareHighlightingForScreenRows(first, last, owner, options) {
-            requests.push(first);
+            const target = horizontal ? options.left : first;
+            requests.push(target);
             leases.set(owner, { first, last, ...options });
-            return ready.has(revision + ":" + first);
+            return ready.has(key(target));
           },
         },
       },
@@ -45,19 +48,27 @@ function fixture() {
       },
     },
     getScrollTop: () => position,
+    getScrollLeft: () => position,
     getMaxScrollTop: () => maximum,
+    getMaxScrollLeft: () => maximum,
+    getRenderedStartRow: () => visibleRow,
+    getRenderedEndRow: () => visibleRow + 1,
+    highlightingOptions: (left) => ({ left }),
     rowForPixelPosition: (value) => value,
     tileStartRowForRow: (value) => value,
     getVisibleTileCount: () => 1,
     getRowsPerTile: () => 1,
     commitScrollPresentation(top) {
-      assert.ok(ready.has(revision + ":" + top), "never publish an uncolored viewport");
+      assert.ok(ready.has(key(top)), "never publish an uncolored viewport");
       position = top;
       commits.push(top);
       return true;
     },
+    commitHorizontalScrollPresentation(left) {
+      return this.commitScrollPresentation(left);
+    },
   };
-  const queue = new Queue(component);
+  const queue = new Queue(component, { horizontal });
   return {
     queue,
     component,
@@ -66,11 +77,11 @@ function fixture() {
     frames,
     leases,
     ready(top) {
-      ready.add(revision + ":" + top);
+      ready.add(key(top));
       queue.update();
     },
     evict(top) {
-      ready.delete(revision + ":" + top);
+      ready.delete(key(top));
     },
     frame() {
       const callbacks = [...frames.values()];
@@ -82,6 +93,9 @@ function fixture() {
     },
     resize(value) {
       maximum = value;
+    },
+    moveRows(row) {
+      visibleRow = row;
     },
   };
 }
@@ -230,4 +244,27 @@ test("a preparation callback cannot resurrect a cancelled viewport", () => {
   assert.equal(f.queue.requestedTop, null);
   assert.equal(f.queue.readyTop, null);
   assert.deepEqual(f.commits, []);
+});
+
+test("horizontal preparation revalidates columns after vertical movement and source edits", async () => {
+  const f = fixture({ horizontal: true });
+  f.queue.request(400);
+  f.queue.request(800);
+  f.ready(400);
+  f.moveRows(50);
+  f.frame();
+  assert.deepEqual(f.commits, []);
+  f.ready(400);
+  f.frame();
+  assert.deepEqual(f.commits, [400]);
+  f.ready(800);
+  f.revise();
+  f.frame();
+  assert.deepEqual(f.commits, [400]);
+  const done = f.queue.whenSettled();
+  f.ready(800);
+  f.frame();
+  await done;
+  assert.deepEqual(f.commits, [400, 800]);
+  assert.equal(f.leases.size, 0);
 });

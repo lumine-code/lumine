@@ -2,7 +2,7 @@ const { Parser } = require("web-tree-sitter");
 const runtime = require("./tree-sitter-runtime");
 const scheduler = require("./tree-sitter-scheduler");
 require("./tree-sitter-cursor");
-require("./tree-sitter-node-text");
+const { textRangeReader } = require("./tree-sitter-node-text");
 const ownTree = require("./tree-sitter-tree");
 
 const metadata = new WeakMap();
@@ -14,7 +14,11 @@ const textInput = (text, units) =>
   typeof text.reader === "function"
     ? text.reader(units)
     : (index) => text.slice(index, index + units);
-const nodeTextInput = (text) => textInput(text, NODE_TEXT_UNITS);
+const nodeTextInput = (text) => {
+  const reader = textInput(text, NODE_TEXT_UNITS);
+  reader[textRangeReader] = (start, end) => text.slice(start, end);
+  return reader;
+};
 const sourceOf = (tree) => metadata.get(tree)?.text ?? tree.input;
 
 // web-tree-sitter 0.27 retains its module-global callbacks when parsing throws.
@@ -170,6 +174,9 @@ function publish(
 // Owns a private editable tree and a resumable WASM parse. Published trees
 // remain valid for consumers holding nodes or cursors from older revisions.
 class TreeSitterParser {
+  static sourceForTree(tree) {
+    return metadata.get(tree)?.text ?? null;
+  }
   // Speculative documents own a new tree handle and revision while sharing the
   // immutable text backing. Parsing still copies this handle before editing it.
   static copySnapshot(tree, revision) {

@@ -40,10 +40,11 @@ describe("LinesTileComponent row replacement", () => {
     tile = null;
   });
 
-  it("replaces disjoint rows in one removal and one insertion without changing scope markup", () => {
+  it("retargets disjoint owned rows without replacing their shells or changing scope markup", () => {
     const old = [line("old one"), line("old two"), line("old three")];
     tile = new LinesTileComponent(props(old));
     jasmine.attachToDOM(tile.element);
+    const shells = [...tile.element.children];
     const cache = tile.props.horizontalPixelPositionsByScreenLineId;
     for (const item of old) cache.set(item.id, [10]);
     const observer = new MutationObserver(() => {});
@@ -52,9 +53,8 @@ describe("LinesTileComponent row replacement", () => {
     try {
       tile.update(props(next));
       const records = observer.takeRecords();
-      expect(records.length).toBe(2);
-      expect(records[0].removedNodes.length).toBe(3);
-      expect(records[1].addedNodes.length).toBe(3);
+      expect(records.length).toBe(0);
+      expect([...tile.element.children]).toEqual(shells);
       expect([...tile.element.children].map((node) => node.textContent)).toEqual(
         next.map((item) => item.lineText),
       );
@@ -78,6 +78,27 @@ describe("LinesTileComponent row replacement", () => {
     }
   });
 
+  it("keeps a batched replacement fallback for rows requiring arbitrary inline styles", () => {
+    tile = new LinesTileComponent(props([line("old one"), line("old two")]));
+    const observer = new MutationObserver(() => {});
+    observer.observe(tile.element, { childList: true });
+    try {
+      tile.update(
+        props([line("new one"), line("new two")], {
+          textDecorations: [0, 1].map(() => [{ column: 0, style: { color: "red" } }]),
+        }),
+      );
+      const records = observer.takeRecords();
+      expect(records.length).toBe(2);
+      expect(records[0].removedNodes.length).toBe(2);
+      expect(records[1].addedNodes.length).toBe(2);
+      expect(tile.element.textContent).toBe("new onenew two");
+      expect(tile.element.querySelectorAll('[style*="color: red"]').length).toBeGreaterThan(0);
+    } finally {
+      observer.disconnect();
+    }
+  });
+
   it("keeps existing row elements when rows overlap", () => {
     const first = line("old one"),
       retained = line("old two");
@@ -85,6 +106,16 @@ describe("LinesTileComponent row replacement", () => {
     const element = tile.lineComponents[1].element;
     tile.update(props([retained, line("new one")]));
     expect(tile.lineComponents[0].element).toBe(element);
+  });
+
+  it("resolves recycled rows through the replacement model's scope table", () => {
+    tile = new LinesTileComponent(props([line("old one")]));
+    const next = props([line("new one")]);
+    next.displayLayer.classNameForTag = () => "syntax--replacement";
+    tile.update(next);
+    expect(tile.lineComponents[0].props.displayLayer).toBe(next.displayLayer);
+    expect(tile.element.querySelector(".syntax--replacement")).not.toBeNull();
+    expect(tile.element.querySelector(".syntax--source")).toBeNull();
   });
 
   it("repairs detached rows before a resize uses them as insertion anchors", () => {

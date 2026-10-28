@@ -35,6 +35,7 @@ class SyntaxPaintRetries {
         start: tile.start,
         end: tile.end,
         attempt,
+        window: tile.window,
         due: attempt < this.delays.length ? this.now() + this.delays[attempt] : Infinity,
       });
       while (this.entries.size > this.maxEntries)

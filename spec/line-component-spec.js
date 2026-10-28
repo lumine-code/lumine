@@ -34,6 +34,65 @@ describe("LineComponent token markup", () => {
     components.push(component);
     return component;
   }
+
+  it("retargets owned token spans without losing scope ancestry or decoration boundaries", () => {
+    const line = build("abcd efgh", undefined, [
+      { column: 2, className: "warning" },
+      { column: 4, className: null },
+    ]);
+    const shell = line.element,
+      root = shell.firstChild;
+    const oldId = line.props.screenLine.id;
+    const nodes = line.textNodes;
+    const fresh = build("abxy zzzz", undefined, [
+      { column: 1, className: "warning" },
+      { column: 7, className: null },
+    ]);
+    expect(
+      line.retarget({
+        ...fresh.props,
+        screenRow: 90,
+        lineComponentsByScreenLineId: line.props.lineComponentsByScreenLineId,
+        horizontalPixelPositionsByScreenLineId: line.props.horizontalPixelPositionsByScreenLineId,
+      }),
+    ).toBeTrue();
+    expect(line.element).toBe(shell);
+    expect(shell.firstChild).toBe(root);
+    expect(shell.innerHTML).toBe(fresh.element.innerHTML);
+    expect(line.textNodes).toBe(nodes);
+    expect(nodes.map((node) => node.data).join("")).toBe("abxy zzzz");
+    expect(line.props.lineComponentsByScreenLineId.has(oldId)).toBeFalse();
+    expect(line.props.lineComponentsByScreenLineId.get(fresh.props.screenLine.id)).toBe(line);
+  });
+
+  it("rejects foreign token DOM and unsupported styles before changing retained content", () => {
+    for (const modify of [
+      (element) => element.firstChild.setAttribute("data-package", "owned"),
+      (element) => element.firstChild.appendChild(document.createElement("button")),
+      (element) => {
+        element.firstChild.firstChild.className = "changed";
+      },
+    ]) {
+      const line = build("abcd efgh");
+      const fresh = build("wxyz 1234");
+      modify(line.element);
+      const before = line.element.innerHTML;
+      expect(line.retarget(fresh.props)).toBeFalse();
+      expect(line.element.innerHTML).toBe(before);
+    }
+    const line = build("abcd efgh"),
+      fresh = build("abcd efgh", undefined, [{ column: 0, style: { color: "red" } }]);
+    expect(line.retarget(fresh.props)).toBeFalse();
+  });
+
+  it("retires hovered token nodes instead of moving DOM-bound interactions to unrelated text", () => {
+    const line = build("abcd efgh"),
+      fresh = build("wxyz 1234");
+    const before = line.element.innerHTML;
+    spyOn(line.element, "matches").and.returnValue(true);
+    expect(line.retarget(fresh.props)).toBeFalse();
+    expect(line.element.innerHTML).toBe(before);
+  });
   for (const text of [
     'const value = "<img src=x onerror=alert(1)> & \\"";',
     "const value = '\r\t😀אבג e\u0301';",

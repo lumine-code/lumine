@@ -17,6 +17,25 @@ before(async () => {
   );
 });
 
+test("published node text reads only its requested span rather than a parser-sized chunk", (t) => {
+  const parser = new DocumentParser(language);
+  const source = new PieceTree("const short = 1;\n//" + "x".repeat(60000));
+  try {
+    const tree = parser.parseSync(source);
+    const node = tree.rootNode.descendantsOfType("identifier")[0];
+    const slice = source.slice,
+      reads = [];
+    t.mock.method(PieceTree.prototype, "slice", function (start, end) {
+      if (this === source) reads.push([start, end]);
+      return slice.call(this, start, end);
+    });
+    assert.equal(node.text, "short");
+    assert.deepEqual(reads, [[node.startIndex, node.endIndex]]);
+  } finally {
+    parser.close();
+  }
+});
+
 test("journal coordinates avoid traversing inserted text again", (t) => {
   const parser = new DocumentParser(language);
   try {
