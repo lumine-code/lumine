@@ -42,13 +42,14 @@ async function fixture() {
     display,
     requests,
     service,
-    async publish(first, last, quality, rows, scope = 2) {
+    async publish(first, last, quality, rows, scope = 2, reason = null) {
       packet = {
         kind: "end",
         start: [first, 0],
         end: [last + 1, 0],
         scopes: [1],
         quality,
+        reason,
         names: names.map((name, index) => [index + 1, name]),
         events: rows.flatMap((row) => [
           { position: [row, 6], open: [scope], close: [] },
@@ -63,6 +64,27 @@ async function fixture() {
     dispose: () => buffer.destroy(),
   };
 }
+
+test("a due timeout retry replaces limited screen lines without a source edit", async () => {
+  const state = await fixture();
+  let now = 0;
+  state.mode.paintRetries.now = () => now;
+  state.mode.paintRetries.schedule = () => 1;
+  state.mode.paintRetries.cancel = () => {};
+  try {
+    await state.publish(0, 9, "limited", [], 2, "timeout");
+    const before = state.lines();
+    const revision = state.buffer.getTextRevision();
+    now = 100;
+    await state.publish(0, 9, "exact", [0, 1, 2]);
+    assert.equal(state.requests.length, 2);
+    assert.equal(state.buffer.getTextRevision(), revision);
+    assert.notEqual(state.lines()[1].id, before[1].id);
+    assert.equal(state.mode.paintRetries.entries.size, 0);
+  } finally {
+    state.dispose();
+  }
+});
 
 for (const quality of ["provisional", "limited", "exact"]) {
   test(`a corrected overlapping ${quality} tile refreshes cached screen lines without a dirty range`, async () => {

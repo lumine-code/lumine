@@ -2,15 +2,9 @@ const TextBuffer = require("./text-buffer");
 const TreeSitterLanguageMode = require("./tree-sitter-language-mode");
 const runtime = require("./tree-sitter-runtime");
 
-const MAX_UNITS = 16 * 1024;
-const CONTEXT_UNITS = 4 * 1024;
-const CONTEXT_ROWS = 20;
+const { PREVIEW_DOCUMENT_UNITS: MAX_UNITS } = require("./syntax-worker-protocol");
 
-function selectPreviewWindow(
-  source,
-  { startRow, endRow },
-  { maxUnits = MAX_UNITS, contextUnits = CONTEXT_UNITS, contextRows = CONTEXT_ROWS } = {},
-) {
+function selectPreviewWindow(source, { startRow, endRow }, { maxUnits = MAX_UNITS } = {}) {
   if (
     !Number.isSafeInteger(startRow) ||
     !Number.isSafeInteger(endRow) ||
@@ -20,50 +14,25 @@ function selectPreviewWindow(
     throw new RangeError("Invalid syntax preview rows");
   if (!Number.isSafeInteger(maxUnits) || maxUnits < 2 || maxUnits > MAX_UNITS)
     throw new RangeError("Invalid syntax preview size");
-  if (
-    !Number.isSafeInteger(contextUnits) ||
-    contextUnits < 0 ||
-    contextUnits > CONTEXT_UNITS ||
-    !Number.isSafeInteger(contextRows) ||
-    contextRows < 0 ||
-    contextRows > CONTEXT_ROWS
-  )
-    throw new RangeError("Invalid syntax preview context");
+  // No fixed amount of preceding text proves lexical context. A comment,
+  // string or injected language can begin arbitrarily far before a viewport.
+  // Only a complete bounded document is safe to parse independently.
+  if (source.length > maxUnits) return null;
   startRow = Math.min(startRow, source.lineCount - 1);
   endRow = Math.min(endRow, source.lineCount - 1);
-  const requestedStartIndex = source.lineStart(startRow);
   const requestedEndIndex =
     endRow + 1 < source.lineCount ? source.lineStart(endRow + 1) : source.length;
-  let firstRow = startRow;
-  let sourceStartIndex = requestedStartIndex;
-  const allowance = Math.min(contextUnits, Math.floor(maxUnits / 4));
-  while (firstRow > 0 && startRow - firstRow < contextRows) {
-    const previous = source.lineStart(firstRow - 1);
-    if (requestedStartIndex - previous > allowance) break;
-    sourceStartIndex = previous;
-    firstRow--;
-  }
-  let sourceEndIndex = Math.min(requestedEndIndex, sourceStartIndex + maxUnits);
-  if (sourceEndIndex < source.length) {
-    const before = source.charCodeAt(sourceEndIndex - 1);
-    const after = source.charCodeAt(sourceEndIndex);
-    if (
-      (before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff) ||
-      (before === 13 && after === 10)
-    )
-      sourceEndIndex--;
-  }
   return {
-    text: source.slice(sourceStartIndex, sourceEndIndex),
-    startRow: firstRow,
+    text: source.slice(0, source.length),
+    startRow: 0,
     startColumn: 0,
-    sourceStartIndex,
-    sourceEndIndex,
+    sourceStartIndex: 0,
+    sourceEndIndex: source.length,
     requestedStart: { row: startRow, column: 0 },
-    requestedEnd: source.positionAt(sourceEndIndex),
+    requestedEnd: source.positionAt(requestedEndIndex),
     requestedEndIndex,
     quality: "provisional",
-    limited: sourceEndIndex < requestedEndIndex,
+    limited: false,
   };
 }
 
@@ -141,7 +110,8 @@ class SyntaxPreview {
       this.closed ||
       signal?.aborted ||
       session.closed ||
-      session.mode?.publicationPending === false
+      session.mode?.publicationPending === false ||
+      session.buffer.getLength() > MAX_UNITS
     )
       return null;
     // Root-range policies describe real document ownership. A policy cannot be
@@ -209,6 +179,10 @@ class SyntaxPreview {
     try {
       const session = entry.session;
       const window = selectPreviewWindow(session.buffer.getTextSnapshot(), range);
+      if (!window) {
+        this.disposeEntry(entry);
+        return null;
+      }
       const quiet = quietGrammars(this.grammars, () => {
         entry.queryFailed = true;
       });
@@ -218,6 +192,7 @@ class SyntaxPreview {
         return null;
       }
       const buffer = (entry.buffer = this.createBuffer(window.text));
+      buffer.getPath = () => session.buffer.getPath();
       this.runtime.registerBuffer(buffer, () => ({
         ...(typeof context === "function" ? context() : context),
         session: session.id,
@@ -232,7 +207,7 @@ class SyntaxPreview {
         grammars: quiet.registry,
         config: this.config,
         parsePriority: -10,
-        queryBudget: { presentationWindowLength: 2048 },
+        queryBudget: { presentationWindowLength: MAX_UNITS },
         reportFailure: () => {
           entry.queryFailed = true;
         },

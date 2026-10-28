@@ -66,6 +66,12 @@ function fixture({ maxBytes = 1600, events = () => 4, provisional = false } = {}
     // Focus-dependent production allowances are tested separately below.
     updateCacheAllowance() {},
   });
+  // These fixtures isolate admission/eviction from the delayed retry policy,
+  // whose visible-owner lifecycle is exercised by syntax-paint-retries tests.
+  mode.paintRetries = new (require("../../src/syntax-paint-retries"))({
+    ready() {},
+    wanted: () => false,
+  });
   const request = (ranges, options = {}, owner = {}) => {
     owners.push(owner);
     mode.requestHighlighting(owner, ranges, false, { priority: 0, prefetch: false, ...options });
@@ -84,6 +90,7 @@ function fixture({ maxBytes = 1600, events = () => 4, provisional = false } = {}
     request,
     stamp,
     dispose() {
+      mode.paintRetries.clear();
       mode.emitter.dispose();
       buffer.destroy();
     },

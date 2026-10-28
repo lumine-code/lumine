@@ -4,7 +4,8 @@ const ScopeDescriptor = require("./scope-descriptor");
 const Point = require("./point");
 const Range = require("./range");
 const RangeList = require("./tree-sitter-range-list");
-const { PAINT_TILE_ROWS: TILE_ROWS } = require("./syntax-worker-protocol");
+const SyntaxPaintRetries = require("./syntax-paint-retries");
+const { PAINT_TILE_ROWS: TILE_ROWS, PREVIEW_DOCUMENT_UNITS } = require("./syntax-worker-protocol");
 const {
   setTimeout: scheduleInitialPaint,
   clearTimeout: cancelInitialPaint,
@@ -44,6 +45,17 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     this.requests = new Set();
     this.requestsByOwner = new WeakMap();
     this.defaultOwner = {};
+    this.paintRetries = new SyntaxPaintRetries({
+      ready: () => this.schedule(),
+      wanted: (tile) =>
+        [...this.requests].some(
+          (request) =>
+            primaryRequest(request) &&
+            request.owner.deref() &&
+            !request.owner.deref().destroyed &&
+            request.ranges.some(([first, last]) => intersectsRows(tile, first, last)),
+        ),
+    });
     this.requestHighlighting(this.defaultOwner, [[0, 63]], false);
     this.session = service.acquire(buffer, grammar, (event) => this.receive(event));
     this.focusSubscription = globalThis.lumine?.workspace?.onDidChangeActiveTextEditor?.(
@@ -129,6 +141,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     if (event.event === "recovering") {
       this.warmupPaused = false;
       this.presentationVersion++;
+      this.paintRetries?.clear();
       this.invalidateAll = true;
       this.error = null;
       this.publicationPending = true;
@@ -141,6 +154,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     else if (event.event === "pending" || event.event === "invalidate") {
       this.warmupPaused = false;
       this.presentationVersion++;
+      this.paintRetries?.clear();
       this.invalidateAll = true;
       this.refreshController?.abort();
       this.publicationPending = true;
@@ -152,6 +166,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       this.schedule();
     } else if (event.event === "highlight" && event.revision === this.buffer.getTextRevision()) {
       this.presentationVersion++;
+      this.paintRetries?.clear();
       this.refreshController?.abort();
       const range = this.buffer.clipRange(Range.fromObject(event.range));
       this.dirtyRanges.add(
@@ -261,6 +276,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   bufferDidChange(change) {
     this.warmupPaused = false;
     this.presentationVersion++;
+    this.paintRetries.clear();
     this.refreshController?.abort();
     if (!this.publicationPending) this.transactionIndentRequests = 0;
     this.publicationPending = true;
@@ -566,6 +582,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     request.priority = priority;
     request.prefetch = prefetch;
     request.background = background;
+    this.paintRetries?.update();
     if (schedule) this.schedule();
     return ranges.every(([first, last]) => {
       const start = this.buffer.clipPosition([first, 0]);
@@ -745,7 +762,12 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                 this.buffer.clipPosition([last + 1, 0]),
                 stamp,
               ),
-          ) ?? this.backgroundRange(stamp);
+          ) ??
+          (() => {
+            const retry = this.paintRetries.next();
+            return retry && [retry.start.row, retry.end.row - (retry.end.column === 0 ? 1 : 0)];
+          })() ??
+          this.backgroundRange(stamp);
         const first = nextRange();
         if (!first) {
           return;
@@ -763,10 +785,12 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
               follow: true,
               // Retained, edit-adjusted colors are preferable to parsing an
               // isolated fragment without its surrounding syntax context.
-              allowPreview: !this.cache.covers(
-                new Point(first[0], 0),
-                this.buffer.clipPosition([first[1] + 1, 0]),
-              ),
+              allowPreview:
+                this.buffer.getLength() <= PREVIEW_DOCUMENT_UNITS &&
+                !this.cache.covers(
+                  new Point(first[0], 0),
+                  this.buffer.clipPosition([first[1] + 1, 0]),
+                ),
               presentation,
             },
             {
@@ -863,6 +887,12 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                     .flatMap((request) => request.ranges);
                   const evicted = this.cache.replace(tiles, stamp, (snapshot) =>
                     visible.some(([first, last]) => intersectsRows(snapshot, first, last)),
+                  );
+                  this.paintRetries.observe(
+                    this.cache.covers(tile.start, tile.end, { ...stamp, quality: "exact" })
+                      ? { ...tile, quality: "exact", reason: null }
+                      : tile,
+                    stamp,
                   );
                   // Optional coverage must not repeatedly evict and request its
                   // neighbours. Required primary viewports still finish even
@@ -1103,6 +1133,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     clearTimeout(this.timer);
     this.refreshController?.abort();
     this.service.release(this.session);
+    this.paintRetries.clear();
     this.requests.clear();
     this.cache.clear();
     this.folds.clear();

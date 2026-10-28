@@ -58,9 +58,9 @@ test("preview windows bound source reads and preserve global/local coordinate or
   const text = "// preceding context\r\n".repeat(40) + "const value = 3;\r\nnext();\r\n";
   const source = new PieceTree(text);
   const window = selectPreviewWindow(source, { startRow: 40, endRow: 41 });
-  assert.equal(window.startRow, 20);
+  assert.equal(window.startRow, 0);
   assert.equal(window.startColumn, 0);
-  assert.equal(window.sourceStartIndex, source.lineStart(20));
+  assert.equal(window.sourceStartIndex, 0);
   assert.equal(window.sourceEndIndex, source.lineStart(42));
   assert.equal(window.text, text.slice(window.sourceStartIndex, window.sourceEndIndex));
   assert.deepEqual(window.requestedStart, { row: 40, column: 0 });
@@ -69,39 +69,30 @@ test("preview windows bound source reads and preserve global/local coordinate or
   assert.equal(window.quality, "provisional");
 });
 
-test("preceding context is at most 4 Ki units and 20 rows, and a huge first row is clipped", () => {
-  const source = new PieceTree(("x".repeat(300) + "\n").repeat(100));
-  const window = selectPreviewWindow(source, { startRow: 80, endRow: 99 });
-  assert.ok(80 - window.startRow <= 20);
-  assert.ok(source.lineStart(80) - window.sourceStartIndex <= 4096);
-  const huge = new PieceTree("x".repeat(1024 * 1024));
-  const clipped = selectPreviewWindow(huge, { startRow: 0, endRow: 0 });
-  assert.equal(clipped.text.length, 16384);
-  assert.equal(clipped.sourceEndIndex, 16384);
-  assert.deepEqual(clipped.requestedEnd, { row: 0, column: 16384 });
-  assert.equal(clipped.limited, true);
-});
-
-test("clipping never splits a surrogate pair or CRLF", () => {
-  for (const text of ["abcd🦉xy", "abcd\r\nxy"]) {
-    const window = selectPreviewWindow(
-      new PieceTree(text),
-      { startRow: 0, endRow: 1 },
-      { maxUnits: 5 },
-    );
-    assert.equal(window.text, "abcd");
-    assert.equal(window.sourceEndIndex, 4);
-    assert.equal(window.limited, true);
+test("incomplete documents are rejected without reading a guessed context window", () => {
+  for (const text of ["abcd🦉xy", "abcd\r\nxy", "x".repeat(1024 * 1024)]) {
+    const source = new PieceTree(text);
+    source.slice = () => assert.fail("oversized source must not be read");
+    assert.equal(selectPreviewWindow(source, { startRow: 0, endRow: 1 }, { maxUnits: 5 }), null);
   }
   assert.throws(
-    () =>
-      selectPreviewWindow(new PieceTree("x"), { startRow: 0, endRow: 0 }, { contextUnits: NaN }),
+    () => selectPreviewWindow(new PieceTree("x"), { startRow: 0, endRow: 0 }, { maxUnits: NaN }),
     RangeError,
   );
 });
 
+test("large source documents never allocate a fragment parser", async () => {
+  const state = fixture("x\n".repeat(10000));
+  try {
+    state.source.getTextSnapshot = () => assert.fail("large preview must not copy its source");
+    assert.equal(await state.preview.get(state.session, { startRow: 200, endRow: 400 }), null);
+    assert.equal(state.modes.length, 0);
+  } finally {
+    state.dispose();
+  }
+});
 test("preview creation never materializes the real buffer and never replaces its mode", async () => {
-  const state = fixture("const x = 1;\n".repeat(10000), {
+  const state = fixture("const x = 1;\n".repeat(1000), {
     modeFactory: (options) => {
       assert.equal(options.parsePriority, -10);
       assert.equal(options.maxIdleParsersPerLanguage, 0);
@@ -335,77 +326,84 @@ test("ordinary preview settlement failures still fall back without disabling exa
   }
 });
 
-test("a real bounded JavaScript preview preserves local scope coordinates and leaves the exact source untouched", async () => {
-  const Host = require("../../src/syntax-worker-host");
-  const { configuration } = require("../../src/syntax-worker-environment");
-  const LanguageMode = require("../../src/tree-sitter-language-mode");
-  const host = new Host();
-  for (const [key, schema] of Object.entries(require("../../src/config-schema")))
-    host.config.setSchema(key, schema);
-  const file = require.resolve("language-javascript/grammars/javascript.json");
-  const definition = require("@lumine-code/season").readFileSync(file);
-  await host.dispatch("environment", {
-    version: 1,
-    configuration: configuration(host.config),
-    grammars: [{ file, definition }],
-    modules: [],
-    specMode: true,
-  });
-  const grammar = host.grammars.grammarForScopeName("source.js");
-  const text =
-    "const preceding = 0;\n".repeat(40) +
-    'function hello() {\n  const value = "🦉";\n  return value + 3;\n}\n';
-  const source = new TextBuffer({ text });
-  const exact = new LanguageMode({
-    buffer: source,
-    grammar,
-    grammars: host.grammars,
-    config: host.config,
-    queryBudget: { now: () => 0 },
-  });
-  source.setLanguageMode(exact);
-  const previews = new SyntaxPreview({
-    grammars: host.grammars,
-    config: host.config,
-    timeoutMs: 1000,
-    createMode: (options) =>
-      new LanguageMode({
-        ...options,
-        queryBudget: { ...options.queryBudget, now: () => 0 },
-      }),
-  });
-  try {
-    await exact.ready;
-    await exact.atGrammarSettlement();
-    const session = {
-      id: 90,
-      revision: 0,
-      generation: 0,
+for (const context of ["code", "comment", "template"])
+  test(`a bounded full-document preview preserves distant ${context} context`, async () => {
+    const Host = require("../../src/syntax-worker-host");
+    const { configuration } = require("../../src/syntax-worker-environment");
+    const LanguageMode = require("../../src/tree-sitter-language-mode");
+    const host = new Host();
+    for (const [key, schema] of Object.entries(require("../../src/config-schema")))
+      host.config.setSchema(key, schema);
+    const file = require.resolve("language-javascript/grammars/javascript.json");
+    const definition = require("@lumine-code/season").readFileSync(file);
+    await host.dispatch("environment", {
+      version: 1,
+      configuration: configuration(host.config),
+      grammars: [{ file, definition }],
+      modules: [],
+      specMode: true,
+    });
+    const grammar = host.grammars.grammarForScopeName("source.js");
+    const body =
+      "const preceding = 0;\n".repeat(40) +
+      'function hello() {\n  const value = "🦉";\n  return value + 3;\n}\n';
+    const text =
+      context === "comment"
+        ? "/*\n" + body + "*/"
+        : context === "template"
+          ? "const wrapped = `\n" + body + "`;"
+          : body;
+    const source = new TextBuffer({ text });
+    const exact = new LanguageMode({
       buffer: source,
-      mode: { grammar, publicationPending: true },
-    };
-    const preview = await previews.get(session, { startRow: 40, endRow: 43 });
-    assert.ok(preview);
-    assert.equal(preview.startRow, 20);
-    for (const [row, column] of [
-      [40, 1],
-      [41, 18],
-      [42, 17],
-    ]) {
-      const expected = exact.scopeDescriptorForPosition(new TextBuffer.Point(row, column)).scopes;
-      const actual = preview.mode.scopeDescriptorForPosition(
-        new TextBuffer.Point(row - preview.startRow, column),
-      ).scopes;
-      assert.deepEqual(actual, expected);
+      grammar,
+      grammars: host.grammars,
+      config: host.config,
+      queryBudget: { now: () => 0 },
+    });
+    source.setLanguageMode(exact);
+    const previews = new SyntaxPreview({
+      grammars: host.grammars,
+      config: host.config,
+      timeoutMs: 1000,
+      createMode: (options) =>
+        new LanguageMode({
+          ...options,
+          queryBudget: { ...options.queryBudget, now: () => 0 },
+        }),
+    });
+    try {
+      await exact.ready;
+      await exact.atGrammarSettlement();
+      const session = {
+        id: 90,
+        revision: 0,
+        generation: 0,
+        buffer: source,
+        mode: { grammar, publicationPending: true },
+      };
+      const preview = await previews.get(session, { startRow: 40, endRow: 43 });
+      assert.ok(preview);
+      assert.equal(preview.startRow, 0);
+      for (const [row, column] of [
+        [40, 1],
+        [41, 18],
+        [42, 17],
+      ]) {
+        const expected = exact.scopeDescriptorForPosition(new TextBuffer.Point(row, column)).scopes;
+        const actual = preview.mode.scopeDescriptorForPosition(
+          new TextBuffer.Point(row - preview.startRow, column),
+        ).scopes;
+        assert.deepEqual(actual, expected);
+      }
+      assert.equal(source.getLanguageMode(), exact);
+      assert.equal(source.getText(), text);
+    } finally {
+      previews.dispose();
+      source.destroy();
+      host.close();
     }
-    assert.equal(source.getLanguageMode(), exact);
-    assert.equal(source.getText(), text);
-  } finally {
-    previews.dispose();
-    source.destroy();
-    host.close();
-  }
-});
+  });
 
 test("real HTML previews keep JavaScript injections inside their private local document", async () => {
   const Host = require("../../src/syntax-worker-host");
