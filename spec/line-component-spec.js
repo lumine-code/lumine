@@ -68,6 +68,13 @@ describe("LineComponent token markup", () => {
     expect(pool.elementsByType.DIV[0][0].childNodes.length).toBe(0);
   });
 
+  it("returns a retired shell to the pool only once", () => {
+    const component = build("const value = 123;");
+    component.destroy();
+    component.destroy();
+    expect(component.props.nodePool.elementsByType.DIV[0].length).toBe(1);
+  });
+
   it("escapes scope classes and follows changed class mappings when rebuilding markup", () => {
     const component = build("const value = 123;");
     const unsafe = 'syntax--keyword" data-injected="yes';

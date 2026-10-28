@@ -6,6 +6,7 @@ const {
 const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "\r": "&#13;" };
 const escapeHTML = (text) => text.replace(/[&<>"\r]/g, (character) => HTML_ESCAPES[character]);
 const scopeMarkup = new Map();
+const elementOwners = new WeakMap();
 function scopeOpeningTag(className) {
   let html = scopeMarkup.get(className);
   if (html === undefined) {
@@ -23,6 +24,7 @@ module.exports = class LineComponent {
     const { nodePool, screenRow, screenLine, lineComponentsByScreenLineId, offScreen } = props;
     this.props = props;
     this.element = nodePool.getElement("DIV", this.buildClassName(), null);
+    elementOwners.set(this.element, this);
     this.element.dataset.screenRow = screenRow;
     this.cachedTextNodes = null;
     this.updateHorizontalPosition(props);
@@ -79,6 +81,8 @@ module.exports = class LineComponent {
   }
 
   destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
     const {
       nodePool,
       lineComponentsByScreenLineId,
@@ -98,11 +102,19 @@ module.exports = class LineComponent {
       }
     }
 
+    // A stale component must never detach or release a shell that has already
+    // been acquired by another line during reconciliation.
+    if (!this.ownsElement()) return;
+    elementOwners.delete(this.element);
     this.element.remove();
     // HTML-built descendants were never borrowed from the pool. Retain only
     // the line shell, rather than accumulating unused token nodes there.
     if (this.unpooledContents) this.element.replaceChildren();
     nodePool.release(this.element);
+  }
+
+  ownsElement() {
+    return elementOwners.get(this.element) === this;
   }
 
   appendContents() {

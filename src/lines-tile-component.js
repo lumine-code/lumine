@@ -32,6 +32,23 @@ module.exports = class LinesTileComponent {
   }
 
   update(newProps) {
+    if (this.updating) {
+      this.pendingProps = newProps;
+      return;
+    }
+    this.updating = true;
+    try {
+      do {
+        this.pendingProps = null;
+        this.performUpdate(newProps);
+        newProps = this.pendingProps;
+      } while (newProps);
+    } finally {
+      this.updating = false;
+    }
+  }
+
+  performUpdate(newProps) {
     if (this.shouldUpdate(newProps)) {
       const oldProps = this.props;
       this.props = newProps;
@@ -100,6 +117,28 @@ module.exports = class LinesTileComponent {
   }
 
   updateLines(oldProps, newProps) {
+    // A resize may follow a retired/detached line or an interrupted update.
+    // Rebuild the owned rows before using any old element as an insertion
+    // anchor. Keep block and package-owned siblings for their normal reconcile.
+    if (
+      this.lineComponents.length !== oldProps.screenLines.length ||
+      this.lineComponents.some(
+        (line, index) =>
+          line.destroyed ||
+          !line.ownsElement() ||
+          line.element.parentNode !== this.element ||
+          line.props.screenLine !== oldProps.screenLines[index],
+      )
+    ) {
+      const owned = new Set(this.lineComponents.map((line) => line.element));
+      const last = [...this.element.childNodes].findLast((node) => owned.has(node));
+      const anchor = last?.nextSibling ?? null;
+      for (const line of this.lineComponents) line.destroy();
+      const fragment = this.element.ownerDocument.createDocumentFragment();
+      this.createLines(fragment);
+      this.element.insertBefore(fragment, anchor?.parentNode === this.element ? anchor : null);
+      return;
+    }
     // A distant scroll replaces the entire tile. Detach its old rows together,
     // then build the replacement off-document so the live tree sees two child
     // mutations instead of a remove/insert pair per row. Retain the incremental

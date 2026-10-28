@@ -87,6 +87,39 @@ describe("LinesTileComponent row replacement", () => {
     expect(tile.lineComponents[0].element).toBe(element);
   });
 
+  it("repairs detached rows before a resize uses them as insertion anchors", () => {
+    const old = props([line("old one"), line("old two")]);
+    tile = new LinesTileComponent(old);
+    const extra = document.createElement("aside");
+    tile.element.appendChild(extra);
+    tile.lineComponents[0].element.remove();
+    const next = [line("new one"), old.screenLines[1]];
+    expect(() => tile.update(props(next, { height: 80 }))).not.toThrow();
+    expect(tile.lineComponents.map((c) => c.element.textContent)).toEqual(
+      next.map((l) => l.lineText),
+    );
+    expect(tile.lineComponents.every((c) => c.element.parentNode === tile.element)).toBeTrue();
+    expect(extra.parentNode).toBe(tile.element);
+    expect(extra.previousSibling).toBe(tile.lineComponents[1].element);
+  });
+
+  it("does not remove a reused shell owned by another tile when repairing a retired row", () => {
+    const shared = props([line("old one")]);
+    tile = new LinesTileComponent(shared);
+    const retired = tile.lineComponents[0];
+    retired.destroy();
+    const neighbor = new LinesTileComponent({ ...shared, screenLines: [line("neighbor")] });
+    try {
+      expect(neighbor.lineComponents[0].element).toBe(retired.element);
+      expect(() => tile.update(props([line("new one")]))).not.toThrow();
+      expect(neighbor.lineComponents[0].element.parentNode).toBe(neighbor.element);
+      expect(neighbor.element.textContent).toBe("neighbor");
+      expect(tile.element.textContent).toBe("new one");
+    } finally {
+      neighbor.destroy();
+    }
+  });
+
   it("inserts before the local row while another tile has registered its replacement", () => {
     const retained = line("retained row");
     const shared = props([retained]);
