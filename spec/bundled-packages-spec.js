@@ -11,7 +11,7 @@ const {
 // engines.lumine range. The count is a tripwire, like EXPECTED_GRAMMAR_COUNT
 // in the grammar sweep: adding or dropping a bundled package means updating
 // it deliberately, and a partial node_modules cannot silently shrink the set.
-const EXPECTED_BUNDLED_COUNT = 51;
+const EXPECTED_BUNDLED_COUNT = 53;
 
 describe("bundled-packages", function () {
   const repoRoot = path.resolve(__dirname, "..");
@@ -22,6 +22,8 @@ describe("bundled-packages", function () {
     expect(names).toContain("about");
     expect(names).toContain("settings-view");
     expect(names).toContain("launcher");
+    expect(names).toContain("breadcrumbs");
+    expect(names).toContain("metadata");
     expect(names).toContain("language-c");
     // snippets and language-source are bundled because core assumes them: core
     // seeds ~/.lumine/snippets.json and ships File > Open Your Snippets, and
