@@ -5,11 +5,11 @@ a {
   color: var(--text-color-highlight);
   text-decoration: none;
   &:hover,
-  &:focus {
+  &:focus-visible {
     color: var(--text-color-highlight);
     text-decoration: underline;
   }
-  &:focus {
+  &:focus-visible {
     /* .tab-focus() */
     outline: 2px auto var(--accent-indicator-color);
     outline-offset: -2px;

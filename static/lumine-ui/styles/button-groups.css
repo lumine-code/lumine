@@ -14,7 +14,7 @@
     float: left;
     /* Bring the "active" button to the front */
     &:hover,
-    &:focus,
+    &:focus-visible,
     &:active,
     &.active {
       z-index: 2;

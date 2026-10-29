@@ -25,14 +25,17 @@ describe("core button focus styles", () => {
     button.className = className;
     button.textContent = "Action";
     root.appendChild(button);
-    if (!button.classList.contains("focus")) {
-      button.focus();
-      expect(root.activeElement).withContext(className).toBe(button);
-    }
+    const input = document.createElement("input");
+    root.appendChild(input);
+    input.focus();
+    button.focus();
+    input.remove();
+    expect(root.activeElement).withContext(className).toBe(button);
+    expect(button.matches(":focus-visible")).withContext(className).toBe(true);
     return getComputedStyle(button);
   }
 
-  it("provides a visible default ring for focused and active buttons", () => {
+  it("provides a visible default keyboard ring for focused and active buttons", () => {
     for (const className of ["btn", "btn active", "btn focus", "btn active focus"]) {
       const style = focusStyle(className);
       expect(style.outlineStyle).withContext(className).toBe("auto");
@@ -46,8 +49,7 @@ describe("core button focus styles", () => {
     const theme = document.createElement("style");
     theme.textContent = `
       .btn {
-        &:focus,
-        &.focus {
+        &:focus-visible {
           outline: none;
           box-shadow: 0 0 0 2px rgb(40, 50, 60);
         }

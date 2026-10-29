@@ -87,9 +87,9 @@ select[size] {
 }
 
 /* Focus for file, radio, and checkbox */
-input[type="file"]:focus,
-input[type="radio"]:focus,
-input[type="checkbox"]:focus {
+input[type="file"]:focus-visible,
+input[type="radio"]:focus-visible,
+input[type="checkbox"]:focus-visible {
   /* .tab-focus() */
   outline: 2px auto var(--accent-indicator-color);
   outline-offset: -2px;
@@ -145,9 +145,9 @@ output {
     border-color ease-in-out 0.15s,
     box-shadow ease-in-out 0.15s;
 
-  /* Customize the `:focus` state to imitate native WebKit styles.
+  /* Text inputs show focus on click too; selects follow keyboard focus visibility.
      (.form-control-focus() inlined, @input-border-focus: var(--accent-indicator-color)) */
-  &:focus {
+  &:focus-visible {
     border-color: var(--accent-indicator-color);
     outline: 0;
     box-shadow: 0 0 0 1px var(--accent-indicator-color);
@@ -452,7 +452,7 @@ input[type="checkbox"] {
   .form-control {
     border-color: var(--text-color-success);
     box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075); /* Redeclare so transitions work */
-    &:focus {
+    &:focus-visible {
       border-color: var(--text-color-success);
       box-shadow: 0 0 0 1px var(--text-color-success);
     }
@@ -484,7 +484,7 @@ input[type="checkbox"] {
   .form-control {
     border-color: var(--text-color-warning);
     box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
-    &:focus {
+    &:focus-visible {
       border-color: var(--text-color-warning);
       box-shadow: 0 0 0 1px var(--text-color-warning);
     }
@@ -514,7 +514,7 @@ input[type="checkbox"] {
   .form-control {
     border-color: var(--text-color-error);
     box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
-    &:focus {
+    &:focus-visible {
       border-color: var(--text-color-error);
       box-shadow: 0 0 0 1px var(--text-color-error);
     }

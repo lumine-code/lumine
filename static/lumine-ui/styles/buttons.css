@@ -25,8 +25,7 @@
   -webkit-user-select: none;
 
   &:hover,
-  &:focus,
-  &.focus {
+  &:focus-visible {
     color: var(--text-color); /* @btn-default-color */
     text-decoration: none;
     background-color: var(--button-background-color-hover);
@@ -39,9 +38,8 @@
     box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
   }
 
-  &:focus,
-  &.focus {
-    /* Keep focus after active, with specificity that themes can override. */
+  &:focus-visible {
+    /* Preserve keyboard focus without leaving a ring after pointer clicks. */
     outline: 2px auto var(--accent-indicator-color);
     outline-offset: -2px;
   }
@@ -82,8 +80,7 @@
   color: var(--accent-foreground-color);
   background-color: var(--accent-background-color);
 
-  &:focus,
-  &.focus {
+  &:focus-visible {
     color: var(--accent-foreground-color);
     background-color: hsl(from var(--accent-background-color) h s calc(l - 10));
   }
@@ -97,8 +94,7 @@
     background-color: hsl(from var(--accent-background-color) h s calc(l - 10));
 
     &:hover,
-    &:focus,
-    &.focus {
+    &:focus-visible {
       color: var(--accent-foreground-color);
       background-color: hsl(from var(--accent-background-color) h s calc(l - 17));
     }
@@ -115,8 +111,7 @@
   &[disabled],
   fieldset[disabled] & {
     &:hover,
-    &:focus,
-    &.focus {
+    &:focus-visible {
       background-color: var(--accent-background-color);
     }
   }
@@ -132,8 +127,7 @@
   color: var(--text-color-on-success); /* @btn-success-color */
   background-color: var(--background-color-success); /* @btn-success-bg */
 
-  &:focus,
-  &.focus {
+  &:focus-visible {
     color: var(--text-color-on-success);
     background-color: hsl(from var(--background-color-success) h s calc(l - 10));
   }
@@ -147,8 +141,7 @@
     background-color: hsl(from var(--background-color-success) h s calc(l - 10));
 
     &:hover,
-    &:focus,
-    &.focus {
+    &:focus-visible {
       color: var(--text-color-on-success);
       background-color: hsl(from var(--background-color-success) h s calc(l - 17));
     }
@@ -164,8 +157,7 @@
   &[disabled],
   fieldset[disabled] & {
     &:hover,
-    &:focus,
-    &.focus {
+    &:focus-visible {
       background-color: var(--background-color-success);
     }
   }
@@ -181,8 +173,7 @@
   color: var(--text-color-on-info); /* @btn-info-color */
   background-color: var(--background-color-info); /* @btn-info-bg */
 
-  &:focus,
-  &.focus {
+  &:focus-visible {
     color: var(--text-color-on-info);
     background-color: hsl(from var(--background-color-info) h s calc(l - 10));
   }
@@ -196,8 +187,7 @@
     background-color: hsl(from var(--background-color-info) h s calc(l - 10));
 
     &:hover,
-    &:focus,
-    &.focus {
+    &:focus-visible {
       color: var(--text-color-on-info);
       background-color: hsl(from var(--background-color-info) h s calc(l - 17));
     }
@@ -213,8 +203,7 @@
   &[disabled],
   fieldset[disabled] & {
     &:hover,
-    &:focus,
-    &.focus {
+    &:focus-visible {
       background-color: var(--background-color-info);
     }
   }
@@ -230,8 +219,7 @@
   color: var(--text-color-on-warning); /* @btn-warning-color */
   background-color: var(--background-color-warning); /* @btn-warning-bg */
 
-  &:focus,
-  &.focus {
+  &:focus-visible {
     color: var(--text-color-on-warning);
     background-color: hsl(from var(--background-color-warning) h s calc(l - 10));
   }
@@ -245,8 +233,7 @@
     background-color: hsl(from var(--background-color-warning) h s calc(l - 10));
 
     &:hover,
-    &:focus,
-    &.focus {
+    &:focus-visible {
       color: var(--text-color-on-warning);
       background-color: hsl(from var(--background-color-warning) h s calc(l - 17));
     }
@@ -262,8 +249,7 @@
   &[disabled],
   fieldset[disabled] & {
     &:hover,
-    &:focus,
-    &.focus {
+    &:focus-visible {
       background-color: var(--background-color-warning);
     }
   }
@@ -279,8 +265,7 @@
   color: var(--text-color-on-error); /* @btn-error-color */
   background-color: var(--background-color-error); /* @btn-error-bg */
 
-  &:focus,
-  &.focus {
+  &:focus-visible {
     color: var(--text-color-on-error);
     background-color: hsl(from var(--background-color-error) h s calc(l - 10));
   }
@@ -294,8 +279,7 @@
     background-color: hsl(from var(--background-color-error) h s calc(l - 10));
 
     &:hover,
-    &:focus,
-    &.focus {
+    &:focus-visible {
       color: var(--text-color-on-error);
       background-color: hsl(from var(--background-color-error) h s calc(l - 17));
     }
@@ -311,8 +295,7 @@
   &[disabled],
   fieldset[disabled] & {
     &:hover,
-    &:focus,
-    &.focus {
+    &:focus-visible {
       background-color: var(--background-color-error);
     }
   }
@@ -373,7 +356,7 @@
     box-shadow: none;
   }
   &:hover,
-  &:focus {
+  &:focus-visible {
     color: hsl(from var(--accent-link-color) h s calc(l - 15)); /* @link-hover-color */
     text-decoration: underline; /* @link-hover-decoration */
     background-color: transparent;
@@ -381,7 +364,7 @@
   &[disabled],
   fieldset[disabled] & {
     &:hover,
-    &:focus {
+    &:focus-visible {
       color: var(--text-color-subtle); /* @btn-link-disabled-color */
       text-decoration: none;
     }

@@ -32,6 +32,14 @@ input.input-toggle {
   margin-bottom: 0;
 }
 
+/* Keep non-text controls reachable by keyboard without a persistent click ring. */
+:is(.input-radio, .input-toggle, .input-range, .input-select, .input-color):focus-visible {
+  @container style(--use-custom-controls: true) {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent-indicator-color);
+  }
+}
+
 /*
  * Checkbox
  * -------------------------

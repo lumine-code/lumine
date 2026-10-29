@@ -36,7 +36,7 @@
       padding: 10px 15px; /* @nav-link-padding */
       border-radius: var(--ui-border-radius);
       &:hover,
-      &:focus {
+      &:focus-visible {
         text-decoration: none;
         background-color: var(--background-color-highlight);
       }
@@ -47,7 +47,7 @@
       color: var(--text-color-subtle);
 
       &:hover,
-      &:focus {
+      &:focus-visible {
         color: var(--text-color-subtle);
         text-decoration: none;
         background-color: transparent;
@@ -60,7 +60,7 @@
   .open > a {
     &,
     &:hover,
-    &:focus {
+    &:focus-visible {
       background-color: var(--background-color-highlight);
       border-color: var(--accent-indicator-color); /* @link-color */
     }
@@ -114,7 +114,7 @@
     &.active > a {
       &,
       &:hover,
-      &:focus {
+      &:focus-visible {
         color: var(--text-color-highlight);
         background-color: var(
           --app-background-color
@@ -163,7 +163,7 @@
 
     > .active > a,
     > .active > a:hover,
-    > .active > a:focus {
+    > .active > a:focus-visible {
       border: 1px solid var(--base-border-color);
     }
 
@@ -174,7 +174,7 @@
       }
       > .active > a,
       > .active > a:hover,
-      > .active > a:focus {
+      > .active > a:focus-visible {
         border-bottom-color: var(
           --app-background-color
         ); /* @nav-tabs-justified-active-link-border-color: @body-bg */
@@ -201,7 +201,7 @@
     &.active > a {
       &,
       &:hover,
-      &:focus {
+      &:focus-visible {
         color: var(--text-color-selected);
         background-color: var(--background-color-selected);
       }
@@ -267,7 +267,7 @@
 
   > .active > a,
   > .active > a:hover,
-  > .active > a:focus {
+  > .active > a:focus-visible {
     border: 1px solid var(--base-border-color);
   }
 
@@ -278,7 +278,7 @@
     }
     > .active > a,
     > .active > a:hover,
-    > .active > a:focus {
+    > .active > a:focus-visible {
       border-bottom-color: var(
         --app-background-color
       ); /* @nav-tabs-justified-active-link-border-color: @body-bg */

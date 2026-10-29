@@ -166,7 +166,7 @@ mark,
 .text-primary {
   color: var(--accent-link-color);
   a&:hover,
-  a&:focus {
+  a&:focus-visible {
     color: hsl(from var(--accent-link-color) h s calc(l - 10));
   }
 
@@ -191,7 +191,7 @@ mark,
 .text-info {
   color: var(--text-color-info);
   a&:hover,
-  a&:focus {
+  a&:focus-visible {
     color: hsl(from var(--text-color-info) h s calc(l - 10));
   }
 
@@ -215,7 +215,7 @@ mark,
 .text-success {
   color: var(--text-color-success);
   a&:hover,
-  a&:focus {
+  a&:focus-visible {
     color: hsl(from var(--text-color-success) h s calc(l - 10));
   }
 
@@ -237,7 +237,7 @@ mark,
 .text-warning {
   color: var(--text-color-warning);
   a&:hover,
-  a&:focus {
+  a&:focus-visible {
     color: hsl(from var(--text-color-warning) h s calc(l - 10));
   }
 
@@ -260,7 +260,7 @@ mark,
 .text-danger {
   color: var(--text-color-error);
   a&:hover,
-  a&:focus {
+  a&:focus-visible {
     color: hsl(from var(--text-color-error) h s calc(l - 10));
   }
 
@@ -290,35 +290,35 @@ mark,
   color: var(--accent-foreground-color);
   background-color: var(--accent-background-color); /* @brand-primary */
   a&:hover,
-  a&:focus {
+  a&:focus-visible {
     background-color: hsl(from var(--accent-background-color) h s calc(l - 10));
   }
 }
 .bg-success {
   background-color: #dff0d8; /* @state-success-bg */
   a&:hover,
-  a&:focus {
+  a&:focus-visible {
     background-color: #c1e2b3; /* darken(#dff0d8, 10%) */
   }
 }
 .bg-info {
   background-color: #d9edf7; /* @state-info-bg */
   a&:hover,
-  a&:focus {
+  a&:focus-visible {
     background-color: #afd9ee; /* darken(#d9edf7, 10%) */
   }
 }
 .bg-warning {
   background-color: #fcf8e3; /* @state-warning-bg */
   a&:hover,
-  a&:focus {
+  a&:focus-visible {
     background-color: #f7ecb5; /* darken(#fcf8e3, 10%) */
   }
 }
 .bg-danger {
   background-color: #f2dede; /* @state-danger-bg */
   a&:hover,
-  a&:focus {
+  a&:focus-visible {
     background-color: #e4b9b9; /* darken(#f2dede, 10%) */
   }
 }
