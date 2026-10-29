@@ -140,6 +140,7 @@
     "log-filter",
     "marker",
     "minimap",
+    "symbol",
     "symbol-tree-sitter"
   ],
   "scripts": {
