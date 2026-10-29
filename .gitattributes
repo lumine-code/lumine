@@ -42,3 +42,7 @@ spec/fixtures/sample.txt text eol=lf
 # directory to the LF the master already uses.
 resources/app-icons/*.svg text eol=lf
 resources/brand/*.svg text eol=lf
+
+# Gallery provenance hashes the exact capture recipe and fixture bytes.
+.github/gallery/capture/recipe.txt -text
+.github/gallery/capture/fixtures/** -text
