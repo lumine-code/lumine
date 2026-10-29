@@ -6,8 +6,19 @@ const { conditionPromise } = require("./helpers/async-spec-helpers");
 
 describe("file document moves", () => {
   let root;
+  let repositorySetupWork;
   beforeEach(async () => {
     jasmine.useRealClock();
+    repositorySetupWork = [];
+    const registry = lumine.project.repositoryRegistry;
+    for (const method of ["scanProjectRoots", "discoverForPath"]) {
+      const run = registry[method].bind(registry);
+      spyOn(registry, method).and.callFake((...args) => {
+        const work = run(...args);
+        repositorySetupWork.push(work);
+        return work;
+      });
+    }
     root = fs.realpathSync.native(temp.mkdirSync("document-moves-"));
     // Prepare this stable fixture before watcher discovery starts. Concurrent
     // native realpath reads on Windows can temporarily block a directory rename.
@@ -19,11 +30,22 @@ describe("file document moves", () => {
     lumine.project.setPaths([root]);
     lumine.config.set("core.closeDeletedFileTabs", false);
     await lumine.project.getWatcherPromise(root);
+    await finishRepositorySetup();
   });
+
+  async function finishRepositorySetup() {
+    // Watch readiness only arms filesystem observation. Let the real project
+    // scan and buffer repository lookups release their metadata reads too,
+    // including follow-up work their completions start before a directory move.
+    while (repositorySetupWork.length > 0) {
+      await Promise.all(repositorySetupWork.splice(0));
+    }
+  }
 
   async function openExisting(name) {
     const editor = await lumine.workspace.open(path.join(root, name));
     await editor.getBuffer().getFileWatchStartPromise();
+    await finishRepositorySetup();
     return editor;
   }
 
