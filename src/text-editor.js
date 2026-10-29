@@ -1987,6 +1987,78 @@ module.exports = class TextEditor {
    * @public
    * @status extended
    *
+   * Get structured metadata for the current text, including unsaved edits.
+   * This implements the optional pane-item metadata protocol. File-system
+   * properties belong to the inspector's shared file section.
+   *
+   * @param {Object} [options]
+   * @param {AbortSignal} [options.signal] - Cancels the metadata request.
+   * @returns {Array<Object>} Sections with stable IDs, titles and scalar rows.
+   * @category Metadata
+   */
+  getMetadata({ signal } = {}) {
+    signal?.throwIfAborted();
+    if (this.isDestroyed()) return [];
+    const grammar = this.getGrammar();
+    const endings = this.buffer.getLineEndings();
+    const lineEndings =
+      endings.size > 1
+        ? "Mixed (LF, CRLF)"
+        : endings.has("\r\n")
+          ? "CRLF"
+          : endings.has("\n")
+            ? "LF"
+            : "None";
+    return [
+      {
+        id: "text",
+        title: "Text",
+        rows: [
+          { id: "encoding", label: "Encoding", value: this.getEncoding() },
+          { id: "line-endings", label: "Line endings", value: lineEndings },
+          { id: "grammar", label: "Grammar", value: grammar?.name ?? "Plain Text" },
+          { id: "scope", label: "Grammar scope", value: grammar?.scopeName ?? null },
+          { id: "lines", label: "Lines", value: this.getLineCount() },
+          { id: "length", label: "UTF-16 code units", value: this.buffer.getLength() },
+          { id: "state", label: "File state", value: this.getFileState() },
+          { id: "read-only", label: "Read only", value: this.isReadOnly() },
+        ],
+      },
+    ];
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Notify when a previous metadata snapshot is no longer current. The
+   * callback is an invalidation signal, not a new snapshot. Text changes are
+   * coalesced through {@link #onDidStopChanging}.
+   *
+   * @param {Function} callback - Called without arguments after metadata changes.
+   * @returns {Disposable} Dispose to stop observing metadata changes.
+   * @category Metadata
+   */
+  onDidChangeMetadata(callback) {
+    if (this.isDestroyed()) return new Disposable();
+    const invalidate = () => callback();
+    const subscriptions = new CompositeDisposable(
+      this.onDidStopChanging(invalidate),
+      this.onDidChangeEncoding(invalidate),
+      this.onDidChangeGrammar(invalidate),
+      this.onDidChangeFileState(invalidate),
+      this.onDidChangeReadOnly(invalidate),
+      this.onDidChangePath(invalidate),
+      this.onDidSave(invalidate),
+    );
+    subscriptions.add(this.onDidDestroy(() => subscriptions.dispose()));
+    return subscriptions;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
    * Set the character set encoding to use in this editor's text
    * buffer.
    *

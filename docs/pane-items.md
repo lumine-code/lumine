@@ -12,6 +12,29 @@ Items implement `getTitle()` and expose a DOM element through `getElement()`, th
 
 `getSingletonKey()` returns a namespaced non-empty string for a resource that has one item in this workspace, or null when uniqueness is not required. Workspace tools use a constant key; independent search results and command executions use different resource keys. Reopening an existing key activates its existing item without making a split. Changing the key emits `onDidChangeSingletonKey(callback)`, or `onDidChangeURI(callback)` when it follows the URI; subscriptions return a Disposable. Publish the change before awaiting rendering so the former resource slot is immediately available. Closing the item releases its key.
 
+## Metadata
+
+A pane item can implement `getMetadata({ signal } = {})` and `onDidChangeMetadata(callback)` to expose its current document properties to an inspector. `getMetadata` returns an array of sections or a Promise for one; `onDidChangeMetadata` returns a Disposable and calls its callback without arguments when a previous snapshot becomes stale. Implement both methods for mutable metadata. Items without this capability can still expose ordinary file properties through `getPath()` and `getFileState()`.
+
+```ts
+interface MetadataSection {
+  id: string;
+  title: string;
+  rows: Array<{
+    id: string;
+    label: string;
+    value: string | number | boolean | null;
+    format?: "bytes" | "date";
+  }>;
+}
+```
+
+Section IDs are stable and unique within an item snapshot; row IDs are stable and unique within their section. Return plain data, never HTML, DOM nodes or rendering callbacks. Omit unavailable rows or use `null` for an unknown value. A `bytes` value is a nonnegative finite number. A `date` value is an ISO 8601 string or an epoch-millisecond number. Consumers format these values for presentation and must not mutate snapshots. File-system size and timestamps describe the saved file and belong to the inspector's shared file section, rather than being repeated by every item.
+
+Read the current document, including unsaved edits. A composite item decides which semantic sections describe it and can explicitly include its backing text editor's metadata; an inspector must not substitute an embedded editor or infer a type from a package name. Document properties can be cached on the shared document model, while item-specific properties remain with the item. Several items can have the same URI, so URI alone is not a metadata cache key.
+
+Requests start only while an inspector is visible. Consumers subscribe before reading, cancel superseded requests on invalidation, document replacement, source destruction or inspector teardown, and guard result generations after every await. Implementations honor `signal`, avoid side effects and expensive synchronous work, and never construct a view just to obtain metadata. A late result from a replaced document must not be applied even when its path is unchanged. An invalidation carries no data and must not itself perform extraction. Dispose subscriptions when observation ends; the item continues to own its document resources.
+
 ## Moving and copying
 
 Use the Workspace methods for item operations:
