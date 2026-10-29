@@ -1,4 +1,7 @@
-const { TextEditor } = require("lumine");
+const { TextBuffer, TextEditor } = require("lumine");
+const fs = require("node:fs/promises");
+const os = require("node:os");
+const path = require("node:path");
 
 describe("TextEditor metadata", () => {
   let editor;
@@ -62,6 +65,43 @@ describe("TextEditor metadata", () => {
     expect(changed).toHaveBeenCalled();
     expect(rows().length).toBe(7);
     subscription.dispose();
+  });
+
+  it("invalidates saved file details when an explicit reload leaves the text unchanged", async () => {
+    jasmine.useRealClock();
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "lumine-metadata-reload-"));
+    const filePath = path.join(directory, "unchanged.txt");
+    try {
+      await fs.writeFile(filePath, "same text\n");
+      const initialDate = new Date("2000-01-01T00:00:00.000Z");
+      await fs.utimes(filePath, initialDate, initialDate);
+      const buffer = await TextBuffer.load(filePath);
+      editor.destroy();
+      editor = new TextEditor({ buffer });
+      const changed = jasmine.createSpy("metadata changed");
+      const textChanged = jasmine.createSpy("text changed");
+      const subscription = editor.onDidChangeMetadata(changed);
+      const textSubscription = buffer.onDidChange(textChanged);
+      const before = editor.getMetadata();
+
+      const nextDate = new Date("2001-01-01T00:00:00.000Z");
+      await fs.utimes(filePath, nextDate, nextDate);
+      await buffer.reload();
+
+      expect(changed).toHaveBeenCalled();
+      expect(textChanged).not.toHaveBeenCalled();
+      expect(editor.getMetadata()).toEqual(before);
+      expect((await fs.stat(filePath)).mtime.getTime()).toBe(nextDate.getTime());
+      subscription.dispose();
+      changed.calls.reset();
+      await buffer.reload();
+      expect(changed).not.toHaveBeenCalled();
+      textSubscription.dispose();
+    } finally {
+      editor.destroy();
+      await fs.rm(filePath, { force: true });
+      await fs.rmdir(directory);
+    }
   });
 
   it("honors cancellation and retires destroyed editors", () => {

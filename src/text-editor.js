@@ -2050,6 +2050,7 @@ module.exports = class TextEditor {
       this.onDidChangeReadOnly(invalidate),
       this.onDidChangePath(invalidate),
       this.onDidSave(invalidate),
+      this.buffer.onDidReload(invalidate),
     );
     subscriptions.add(this.onDidDestroy(() => subscriptions.dispose()));
     return subscriptions;
