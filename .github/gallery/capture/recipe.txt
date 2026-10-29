@@ -1,0 +1,88 @@
+// Local main-editor gallery recipe. Runtime package sources remain unchanged.
+async function clearDocuments(lumine) {
+  for (const pane of lumine.workspace.getCenter().getPanes().slice()) {
+    for (const item of pane.getItems().slice()) await pane.destroyItem(item, true);
+  }
+}
+
+module.exports = {
+  version: 1,
+  dependencies: [
+    "about", "settings-view", "tree-view", "title-bar", "markdown-preview",
+    "language-gfm", "language-python", "metadata", "symbol", "symbol-tree-sitter",
+  ],
+  viewport: { width: 1440, height: 900 },
+  async before({ lumine }) {
+    lumine.config.set("markdown-preview.useGitHubStyle", true);
+    lumine.config.set("markdown-preview.gitHubStyleMode", "light");
+    lumine.config.set("markdown-preview.openPreviewInSplitPane", true);
+  },
+  async prepare({ lumine, fixture, open, state }) {
+    lumine.project.setPaths([fixture("Signal Lab")]);
+    state.code = await open("Signal Lab/signal.py");
+    await lumine.packages.getActivePackage("tree-view").mainModule.getTreeViewInstance().revealPath(
+      fixture("Signal Lab/signal.py"), { show: true },
+    );
+    lumine.workspace.getLeftDock().setState({ size: 300 });
+  },
+  scenes: [
+    {
+      id: "code", file: "demo-code.png",
+      caption: "Python editing with syntax highlighting and the project tree.",
+      async run({ lumine, state }) {
+        state.code.setCursorBufferPosition([0, 0]);
+        state.code.scrollToBufferPosition([0, 0]);
+        lumine.views.getView(state.code).focus();
+      },
+      ready({ state }) {
+        return Boolean(state.code.getGrammar().scopeName === "source.python" && document.querySelector(".breadcrumbs:not([hidden])"));
+      },
+    },
+    {
+      id: "markdown", file: "demo-markdown.png",
+      caption: "A live Markdown preview beside its source in a split pane.",
+      async run({ lumine, fixture, open, state }) {
+        await clearDocuments(lumine);
+        state.markdown = await open("Signal Lab/README.md");
+        await lumine.packages.getActivePackage("markdown-preview").mainModule.addPreviewForEditor(state.markdown);
+        state.preview = lumine.workspace.getPaneItems().find((item) => item.getURI?.()?.startsWith("markdown-preview://"));
+        if (!state.preview) throw new Error("Markdown preview did not open");
+        await state.preview.renderMarkdown();
+        await lumine.packages.getActivePackage("tree-view").mainModule.getTreeViewInstance().revealPath(fixture("Signal Lab/README.md"), { show: true });
+        state.markdown.setCursorBufferPosition([0, 0]);
+        lumine.views.getView(state.markdown).focus();
+      },
+      ready() {
+        return document.querySelector(".markdown-preview h1")?.textContent === "Signal Lab" && Boolean(document.querySelector(".markdown-preview pre"));
+      },
+    },
+    {
+      id: "packages", file: "demo-packages.png",
+      caption: "Installed and bundled packages.",
+      async run({ lumine, waitFor }) {
+        await clearDocuments(lumine);
+        const settings = await lumine.workspace.open("lumine://config/packages");
+        await waitFor(() => document.querySelectorAll(".settings-view .core-packages .package-card").length > 0, "bundled package cards");
+        const header = document.querySelector(".settings-view .installed-packages .sub-section-heading");
+        if (header && !header.parentElement.classList.contains("collapsed")) header.click();
+        lumine.views.getView(settings).focus();
+      },
+      ready() {
+        return Boolean(document.querySelector(".settings-view .core-packages .package-card")) && document.querySelector(".settings-view")?.innerText.includes("Bundled Packages");
+      },
+    },
+    {
+      id: "about", file: "demo-about.png",
+      caption: "Versions and installation details in About.",
+      async run({ lumine }) {
+        await clearDocuments(lumine);
+        const about = await lumine.workspace.open("lumine://about");
+        lumine.views.getView(about).focus();
+      },
+      ready() {
+        return Boolean(document.querySelector(".about-version-container")) && document.querySelectorAll(".about-introduction-action").length === 12;
+      },
+    },
+  ],
+};
+

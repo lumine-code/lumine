@@ -1,6 +1,6 @@
 {
-  "capturedOn": "2026-10-19",
-  "context": "Authentic rectangular captures of Lumine in normal mode on Windows, using the One light theme and default editor font settings. System window borders are excluded, and dock reveal controls are hidden before capture.",
+  "capturedOn": "2026-10-29",
+  "context": "Authentic captures of Lumine in normal mode on Windows, using the One light theme and default editor font settings. System window borders are excluded, corners are rounded, and dock reveal controls are hidden before capture.",
   "scenes": [
     {
       "file": "view-1.png",
@@ -9,30 +9,33 @@
       "description": "Python editing with syntax highlighting and the project tree.",
       "light": "01-light.png",
       "dark": "01-dark.png",
-      "capturedOn": "2026-10-19",
-      "sourceRevision": "e13c8d8e990363ad18820418e75b5a757060f208",
+      "capturedOn": "2026-10-29",
+      "sourceRevision": "b569c426733b65e6e7ea16b00430f701a289996e",
       "packageSourceRevisions": {
-        "about": "108e4af6009ab43bda4f593512a5fc50ed19ce83",
-        "diagnostics": "fe9dc55ce824699f1e79b31817c9c3c6f73ac22d",
-        "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
-        "language-python": "15672768cff17676d2e79de123e9bcea2317f921",
-        "linter": "c9584dda26a14a3859e40a153ab27018a7c6223c",
-        "markdown-preview": "ff4aa417359ad5fac539db3394bfce8ffae8148d",
-        "settings-view": "b1a2edfafade77d2c5ec4c6eb86e0c9697a775b0",
-        "title-bar": "2205575d8b721c7dc0f606d28db1c85a30ea7424",
-        "tree-view": "bb607ede1294006c7276458f5330aea426801471"
+        "breadcrumbs": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+        "about": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
+        "language-gfm": "e2eca2b15d854161c670e5b8815ad48e636957b7",
+        "language-python": "413b30e96e3bb63714958c3e3edeca338b0551aa",
+        "markdown-preview": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
+        "metadata": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
+        "settings-view": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+        "symbol": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
+        "symbol-tree-sitter": "368c44732334783ea790afbcc88a59b66936f289",
+        "title-bar": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
+        "tree-view": "968cf8e9ddd41efecb09474c0a108d476f7ae33e"
       },
-      "themeSourceRevision": "1b8b1b57c87794d068b48e938fd81c9740a2e39d",
+      "themeSourceRevision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
       "capture": {
         "runner": "script/demo.js",
-        "recipeHash": "e1690adc4a0648ff935bef1e51caba5eeb1f0826bf054ed9f7065bb3b73fc893",
+        "recipe": "capture/recipe.txt",
+        "recipeHash": "4512023007a17364c6d14ed737dfc51e3a4b5bde9271c1e589bdc2f3b219dc03",
         "mode": "normal",
         "fontSettings": "default",
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "44.9.0",
-          "chrome": "152.0.7977.167",
+          "electron": "45.0.0",
+          "chrome": "156.0.8078.48",
           "devicePixelRatio": 1,
           "locale": "en-GB",
           "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
@@ -51,57 +54,72 @@
         },
         "sources": {
           "editor": {
-            "revision": "e13c8d8e990363ad18820418e75b5a757060f208",
-            "dirty": true,
-            "workingTreeHash": "20ee038740cf1086ce35ec1f650919f29db893fb0d5631c013187228202ff10d"
-          },
-          "about": {
-            "revision": "108e4af6009ab43bda4f593512a5fc50ed19ce83",
+            "revision": "b569c426733b65e6e7ea16b00430f701a289996e",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
-          "diagnostics": {
-            "revision": "fe9dc55ce824699f1e79b31817c9c3c6f73ac22d",
+          "package": {
+            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "dirty": true,
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+          },
+          "breadcrumbs": {
+            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "dirty": true,
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+          },
+          "about": {
+            "revision": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-gfm": {
-            "revision": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+            "revision": "e2eca2b15d854161c670e5b8815ad48e636957b7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-python": {
-            "revision": "15672768cff17676d2e79de123e9bcea2317f921",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "linter": {
-            "revision": "c9584dda26a14a3859e40a153ab27018a7c6223c",
+            "revision": "413b30e96e3bb63714958c3e3edeca338b0551aa",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "ff4aa417359ad5fac539db3394bfce8ffae8148d",
+            "revision": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "metadata": {
+            "revision": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "1b8b1b57c87794d068b48e938fd81c9740a2e39d",
+            "revision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "b1a2edfafade77d2c5ec4c6eb86e0c9697a775b0",
+            "revision": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "symbol": {
+            "revision": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "symbol-tree-sitter": {
+            "revision": "368c44732334783ea790afbcc88a59b66936f289",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "title-bar": {
-            "revision": "2205575d8b721c7dc0f606d28db1c85a30ea7424",
+            "revision": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "bb607ede1294006c7276458f5330aea426801471",
+            "revision": "968cf8e9ddd41efecb09474c0a108d476f7ae33e",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -109,34 +127,34 @@
         "fixtures": [
           {
             "file": "Signal Lab/data/samples.csv",
-            "sha256": "610aae7d036b6d39210abac8c5cc2759264a90126c2ef6d82cecab54d4a33733"
+            "sha256": "e2aa09f6b3c71550bde2fb40e568843cb5a81b35431d168a2b5f70124dabbed9"
           },
           {
             "file": "Signal Lab/docs/experiments.md",
-            "sha256": "d795671e0f8b07ce5304d3b71fa0e95e9708ca91f4aa4f14963f906f3eecf37f"
+            "sha256": "fb3d0c9760047153815c692248e97c1d78abe70ce7a01c3bb2146a6b998b4501"
           },
           {
             "file": "Signal Lab/notes.md",
-            "sha256": "1eac5f3ec542f0a4d1ae68a3ea6f728196b006b925a5a23de5c3b3f24fee08f9"
+            "sha256": "a35c459c79378ba577689b8d1e81fc144d51a8386f6c583755b0dbe789c6f647"
           },
           {
             "file": "Signal Lab/package.json",
-            "sha256": "13715c356767dcaaf464d097a3cb86c2bd1f9396e7336625692ba6b5497717c7"
+            "sha256": "cb3a7618b04433243426e1193d0e49da9a776c4bf10e8eb6a147d4db53e189c8"
           },
           {
             "file": "Signal Lab/README.md",
-            "sha256": "fd378492b49953457ccd500f063992dd91bef3fcb90cb37fb5a2a8388983f83b"
+            "sha256": "a16243fb2b21e4620a9e7a93c7526b377d06d6947c1ca897eacacea9a756d232"
           },
           {
             "file": "Signal Lab/signal.py",
-            "sha256": "6126a6c2607662f888409a6bb70a174ea99369525a4651339fe22a9623e3ab1b"
+            "sha256": "c1a77cb53c5195a0bbea075b2f488e233f64c94e553a1b966442e62c955f58c9"
           },
           {
             "file": "Signal Lab/src/signal.js",
-            "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
+            "sha256": "2a36953daadd1ae53070d0ff7ceab4624395fdb957104aa6e8ec92d785cadf1d"
           }
         ],
-        "sha256": "450a360bf1dc4316eb32691849edbf39431c5fc1be433ee6219d0ca8349fc4b7"
+        "sha256": "68173264bd486c02372e269bda6b71aec001d7359c83e9d4fbe238135cf3f5cd"
       }
     },
     {
@@ -146,30 +164,33 @@
       "description": "A live Markdown preview beside its source in a split pane.",
       "light": "02-light.png",
       "dark": "02-dark.png",
-      "capturedOn": "2026-10-19",
+      "capturedOn": "2026-10-29",
       "packageSourceRevisions": {
-        "about": "108e4af6009ab43bda4f593512a5fc50ed19ce83",
-        "diagnostics": "fe9dc55ce824699f1e79b31817c9c3c6f73ac22d",
-        "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
-        "language-python": "15672768cff17676d2e79de123e9bcea2317f921",
-        "linter": "c9584dda26a14a3859e40a153ab27018a7c6223c",
-        "markdown-preview": "ff4aa417359ad5fac539db3394bfce8ffae8148d",
-        "settings-view": "b1a2edfafade77d2c5ec4c6eb86e0c9697a775b0",
-        "title-bar": "2205575d8b721c7dc0f606d28db1c85a30ea7424",
-        "tree-view": "bb607ede1294006c7276458f5330aea426801471"
+        "breadcrumbs": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+        "about": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
+        "language-gfm": "e2eca2b15d854161c670e5b8815ad48e636957b7",
+        "language-python": "413b30e96e3bb63714958c3e3edeca338b0551aa",
+        "markdown-preview": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
+        "metadata": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
+        "settings-view": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+        "symbol": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
+        "symbol-tree-sitter": "368c44732334783ea790afbcc88a59b66936f289",
+        "title-bar": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
+        "tree-view": "968cf8e9ddd41efecb09474c0a108d476f7ae33e"
       },
-      "themeSourceRevision": "1b8b1b57c87794d068b48e938fd81c9740a2e39d",
-      "sourceRevision": "e13c8d8e990363ad18820418e75b5a757060f208",
+      "themeSourceRevision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
+      "sourceRevision": "b569c426733b65e6e7ea16b00430f701a289996e",
       "capture": {
         "runner": "script/demo.js",
-        "recipeHash": "e1690adc4a0648ff935bef1e51caba5eeb1f0826bf054ed9f7065bb3b73fc893",
+        "recipe": "capture/recipe.txt",
+        "recipeHash": "4512023007a17364c6d14ed737dfc51e3a4b5bde9271c1e589bdc2f3b219dc03",
         "mode": "normal",
         "fontSettings": "default",
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "44.9.0",
-          "chrome": "152.0.7977.167",
+          "electron": "45.0.0",
+          "chrome": "156.0.8078.48",
           "devicePixelRatio": 1,
           "locale": "en-GB",
           "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
@@ -188,57 +209,72 @@
         },
         "sources": {
           "editor": {
-            "revision": "e13c8d8e990363ad18820418e75b5a757060f208",
-            "dirty": true,
-            "workingTreeHash": "20ee038740cf1086ce35ec1f650919f29db893fb0d5631c013187228202ff10d"
-          },
-          "about": {
-            "revision": "108e4af6009ab43bda4f593512a5fc50ed19ce83",
+            "revision": "b569c426733b65e6e7ea16b00430f701a289996e",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
-          "diagnostics": {
-            "revision": "fe9dc55ce824699f1e79b31817c9c3c6f73ac22d",
+          "package": {
+            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "dirty": true,
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+          },
+          "breadcrumbs": {
+            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "dirty": true,
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+          },
+          "about": {
+            "revision": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-gfm": {
-            "revision": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+            "revision": "e2eca2b15d854161c670e5b8815ad48e636957b7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-python": {
-            "revision": "15672768cff17676d2e79de123e9bcea2317f921",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "linter": {
-            "revision": "c9584dda26a14a3859e40a153ab27018a7c6223c",
+            "revision": "413b30e96e3bb63714958c3e3edeca338b0551aa",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "ff4aa417359ad5fac539db3394bfce8ffae8148d",
+            "revision": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "metadata": {
+            "revision": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "1b8b1b57c87794d068b48e938fd81c9740a2e39d",
+            "revision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "b1a2edfafade77d2c5ec4c6eb86e0c9697a775b0",
+            "revision": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "symbol": {
+            "revision": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "symbol-tree-sitter": {
+            "revision": "368c44732334783ea790afbcc88a59b66936f289",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "title-bar": {
-            "revision": "2205575d8b721c7dc0f606d28db1c85a30ea7424",
+            "revision": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "bb607ede1294006c7276458f5330aea426801471",
+            "revision": "968cf8e9ddd41efecb09474c0a108d476f7ae33e",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -246,34 +282,34 @@
         "fixtures": [
           {
             "file": "Signal Lab/data/samples.csv",
-            "sha256": "610aae7d036b6d39210abac8c5cc2759264a90126c2ef6d82cecab54d4a33733"
+            "sha256": "e2aa09f6b3c71550bde2fb40e568843cb5a81b35431d168a2b5f70124dabbed9"
           },
           {
             "file": "Signal Lab/docs/experiments.md",
-            "sha256": "d795671e0f8b07ce5304d3b71fa0e95e9708ca91f4aa4f14963f906f3eecf37f"
+            "sha256": "fb3d0c9760047153815c692248e97c1d78abe70ce7a01c3bb2146a6b998b4501"
           },
           {
             "file": "Signal Lab/notes.md",
-            "sha256": "1eac5f3ec542f0a4d1ae68a3ea6f728196b006b925a5a23de5c3b3f24fee08f9"
+            "sha256": "a35c459c79378ba577689b8d1e81fc144d51a8386f6c583755b0dbe789c6f647"
           },
           {
             "file": "Signal Lab/package.json",
-            "sha256": "13715c356767dcaaf464d097a3cb86c2bd1f9396e7336625692ba6b5497717c7"
+            "sha256": "cb3a7618b04433243426e1193d0e49da9a776c4bf10e8eb6a147d4db53e189c8"
           },
           {
             "file": "Signal Lab/README.md",
-            "sha256": "fd378492b49953457ccd500f063992dd91bef3fcb90cb37fb5a2a8388983f83b"
+            "sha256": "a16243fb2b21e4620a9e7a93c7526b377d06d6947c1ca897eacacea9a756d232"
           },
           {
             "file": "Signal Lab/signal.py",
-            "sha256": "6126a6c2607662f888409a6bb70a174ea99369525a4651339fe22a9623e3ab1b"
+            "sha256": "c1a77cb53c5195a0bbea075b2f488e233f64c94e553a1b966442e62c955f58c9"
           },
           {
             "file": "Signal Lab/src/signal.js",
-            "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
+            "sha256": "2a36953daadd1ae53070d0ff7ceab4624395fdb957104aa6e8ec92d785cadf1d"
           }
         ],
-        "sha256": "c588bf66ea4bf3bd98b4c17e884b50b8e53b53e2d5382f0ba2c5e84b28991cf2"
+        "sha256": "c4b398299de4227f36a811fc88e0106481220791af4983d75cafe8cb04f95fd7"
       }
     },
     {
@@ -283,30 +319,33 @@
       "description": "Manage installed and bundled packages from the editor.",
       "light": "03-light.png",
       "dark": "03-dark.png",
-      "themeSourceRevision": "1b8b1b57c87794d068b48e938fd81c9740a2e39d",
-      "capturedOn": "2026-10-19",
-      "sourceRevision": "e13c8d8e990363ad18820418e75b5a757060f208",
+      "themeSourceRevision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
+      "capturedOn": "2026-10-29",
+      "sourceRevision": "b569c426733b65e6e7ea16b00430f701a289996e",
       "packageSourceRevisions": {
-        "about": "108e4af6009ab43bda4f593512a5fc50ed19ce83",
-        "diagnostics": "fe9dc55ce824699f1e79b31817c9c3c6f73ac22d",
-        "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
-        "language-python": "15672768cff17676d2e79de123e9bcea2317f921",
-        "linter": "c9584dda26a14a3859e40a153ab27018a7c6223c",
-        "markdown-preview": "ff4aa417359ad5fac539db3394bfce8ffae8148d",
-        "settings-view": "b1a2edfafade77d2c5ec4c6eb86e0c9697a775b0",
-        "title-bar": "2205575d8b721c7dc0f606d28db1c85a30ea7424",
-        "tree-view": "bb607ede1294006c7276458f5330aea426801471"
+        "breadcrumbs": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+        "about": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
+        "language-gfm": "e2eca2b15d854161c670e5b8815ad48e636957b7",
+        "language-python": "413b30e96e3bb63714958c3e3edeca338b0551aa",
+        "markdown-preview": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
+        "metadata": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
+        "settings-view": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+        "symbol": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
+        "symbol-tree-sitter": "368c44732334783ea790afbcc88a59b66936f289",
+        "title-bar": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
+        "tree-view": "968cf8e9ddd41efecb09474c0a108d476f7ae33e"
       },
       "capture": {
         "runner": "script/demo.js",
-        "recipeHash": "e1690adc4a0648ff935bef1e51caba5eeb1f0826bf054ed9f7065bb3b73fc893",
+        "recipe": "capture/recipe.txt",
+        "recipeHash": "4512023007a17364c6d14ed737dfc51e3a4b5bde9271c1e589bdc2f3b219dc03",
         "mode": "normal",
         "fontSettings": "default",
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "44.9.0",
-          "chrome": "152.0.7977.167",
+          "electron": "45.0.0",
+          "chrome": "156.0.8078.48",
           "devicePixelRatio": 1,
           "locale": "en-GB",
           "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
@@ -325,57 +364,72 @@
         },
         "sources": {
           "editor": {
-            "revision": "e13c8d8e990363ad18820418e75b5a757060f208",
-            "dirty": true,
-            "workingTreeHash": "20ee038740cf1086ce35ec1f650919f29db893fb0d5631c013187228202ff10d"
-          },
-          "about": {
-            "revision": "108e4af6009ab43bda4f593512a5fc50ed19ce83",
+            "revision": "b569c426733b65e6e7ea16b00430f701a289996e",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
-          "diagnostics": {
-            "revision": "fe9dc55ce824699f1e79b31817c9c3c6f73ac22d",
+          "package": {
+            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "dirty": true,
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+          },
+          "breadcrumbs": {
+            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "dirty": true,
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+          },
+          "about": {
+            "revision": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-gfm": {
-            "revision": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+            "revision": "e2eca2b15d854161c670e5b8815ad48e636957b7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-python": {
-            "revision": "15672768cff17676d2e79de123e9bcea2317f921",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "linter": {
-            "revision": "c9584dda26a14a3859e40a153ab27018a7c6223c",
+            "revision": "413b30e96e3bb63714958c3e3edeca338b0551aa",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "ff4aa417359ad5fac539db3394bfce8ffae8148d",
+            "revision": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "metadata": {
+            "revision": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "1b8b1b57c87794d068b48e938fd81c9740a2e39d",
+            "revision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "b1a2edfafade77d2c5ec4c6eb86e0c9697a775b0",
+            "revision": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "symbol": {
+            "revision": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "symbol-tree-sitter": {
+            "revision": "368c44732334783ea790afbcc88a59b66936f289",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "title-bar": {
-            "revision": "2205575d8b721c7dc0f606d28db1c85a30ea7424",
+            "revision": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "bb607ede1294006c7276458f5330aea426801471",
+            "revision": "968cf8e9ddd41efecb09474c0a108d476f7ae33e",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -383,34 +437,34 @@
         "fixtures": [
           {
             "file": "Signal Lab/data/samples.csv",
-            "sha256": "610aae7d036b6d39210abac8c5cc2759264a90126c2ef6d82cecab54d4a33733"
+            "sha256": "e2aa09f6b3c71550bde2fb40e568843cb5a81b35431d168a2b5f70124dabbed9"
           },
           {
             "file": "Signal Lab/docs/experiments.md",
-            "sha256": "d795671e0f8b07ce5304d3b71fa0e95e9708ca91f4aa4f14963f906f3eecf37f"
+            "sha256": "fb3d0c9760047153815c692248e97c1d78abe70ce7a01c3bb2146a6b998b4501"
           },
           {
             "file": "Signal Lab/notes.md",
-            "sha256": "1eac5f3ec542f0a4d1ae68a3ea6f728196b006b925a5a23de5c3b3f24fee08f9"
+            "sha256": "a35c459c79378ba577689b8d1e81fc144d51a8386f6c583755b0dbe789c6f647"
           },
           {
             "file": "Signal Lab/package.json",
-            "sha256": "13715c356767dcaaf464d097a3cb86c2bd1f9396e7336625692ba6b5497717c7"
+            "sha256": "cb3a7618b04433243426e1193d0e49da9a776c4bf10e8eb6a147d4db53e189c8"
           },
           {
             "file": "Signal Lab/README.md",
-            "sha256": "fd378492b49953457ccd500f063992dd91bef3fcb90cb37fb5a2a8388983f83b"
+            "sha256": "a16243fb2b21e4620a9e7a93c7526b377d06d6947c1ca897eacacea9a756d232"
           },
           {
             "file": "Signal Lab/signal.py",
-            "sha256": "6126a6c2607662f888409a6bb70a174ea99369525a4651339fe22a9623e3ab1b"
+            "sha256": "c1a77cb53c5195a0bbea075b2f488e233f64c94e553a1b966442e62c955f58c9"
           },
           {
             "file": "Signal Lab/src/signal.js",
-            "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
+            "sha256": "2a36953daadd1ae53070d0ff7ceab4624395fdb957104aa6e8ec92d785cadf1d"
           }
         ],
-        "sha256": "d2bf87f1adc9d4e1e32dd93573b52e739c3722e69c89b443b375d6e8cca38bca"
+        "sha256": "17ee71db6a253066572194622e3013167d622f0b38cae989a0e30e9aef90afa8"
       }
     },
     {
@@ -420,30 +474,33 @@
       "description": "Versions, documentation and updates in the redesigned About pane.",
       "light": "04-light.png",
       "dark": "04-dark.png",
-      "capturedOn": "2026-10-19",
-      "sourceRevision": "e13c8d8e990363ad18820418e75b5a757060f208",
-      "themeSourceRevision": "1b8b1b57c87794d068b48e938fd81c9740a2e39d",
+      "capturedOn": "2026-10-29",
+      "sourceRevision": "b569c426733b65e6e7ea16b00430f701a289996e",
+      "themeSourceRevision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
       "packageSourceRevisions": {
-        "about": "108e4af6009ab43bda4f593512a5fc50ed19ce83",
-        "diagnostics": "fe9dc55ce824699f1e79b31817c9c3c6f73ac22d",
-        "language-gfm": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
-        "language-python": "15672768cff17676d2e79de123e9bcea2317f921",
-        "linter": "c9584dda26a14a3859e40a153ab27018a7c6223c",
-        "markdown-preview": "ff4aa417359ad5fac539db3394bfce8ffae8148d",
-        "settings-view": "b1a2edfafade77d2c5ec4c6eb86e0c9697a775b0",
-        "title-bar": "2205575d8b721c7dc0f606d28db1c85a30ea7424",
-        "tree-view": "bb607ede1294006c7276458f5330aea426801471"
+        "breadcrumbs": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+        "about": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
+        "language-gfm": "e2eca2b15d854161c670e5b8815ad48e636957b7",
+        "language-python": "413b30e96e3bb63714958c3e3edeca338b0551aa",
+        "markdown-preview": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
+        "metadata": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
+        "settings-view": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+        "symbol": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
+        "symbol-tree-sitter": "368c44732334783ea790afbcc88a59b66936f289",
+        "title-bar": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
+        "tree-view": "968cf8e9ddd41efecb09474c0a108d476f7ae33e"
       },
       "capture": {
         "runner": "script/demo.js",
-        "recipeHash": "e1690adc4a0648ff935bef1e51caba5eeb1f0826bf054ed9f7065bb3b73fc893",
+        "recipe": "capture/recipe.txt",
+        "recipeHash": "4512023007a17364c6d14ed737dfc51e3a4b5bde9271c1e589bdc2f3b219dc03",
         "mode": "normal",
         "fontSettings": "default",
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "44.9.0",
-          "chrome": "152.0.7977.167",
+          "electron": "45.0.0",
+          "chrome": "156.0.8078.48",
           "devicePixelRatio": 1,
           "locale": "en-GB",
           "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
@@ -462,57 +519,72 @@
         },
         "sources": {
           "editor": {
-            "revision": "e13c8d8e990363ad18820418e75b5a757060f208",
-            "dirty": true,
-            "workingTreeHash": "20ee038740cf1086ce35ec1f650919f29db893fb0d5631c013187228202ff10d"
-          },
-          "about": {
-            "revision": "108e4af6009ab43bda4f593512a5fc50ed19ce83",
+            "revision": "b569c426733b65e6e7ea16b00430f701a289996e",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
-          "diagnostics": {
-            "revision": "fe9dc55ce824699f1e79b31817c9c3c6f73ac22d",
+          "package": {
+            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "dirty": true,
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+          },
+          "breadcrumbs": {
+            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "dirty": true,
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+          },
+          "about": {
+            "revision": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-gfm": {
-            "revision": "2220adaf1ebdc993a9316394d2cc1be6b48fa1ff",
+            "revision": "e2eca2b15d854161c670e5b8815ad48e636957b7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-python": {
-            "revision": "15672768cff17676d2e79de123e9bcea2317f921",
-            "dirty": false,
-            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-          },
-          "linter": {
-            "revision": "c9584dda26a14a3859e40a153ab27018a7c6223c",
+            "revision": "413b30e96e3bb63714958c3e3edeca338b0551aa",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "ff4aa417359ad5fac539db3394bfce8ffae8148d",
+            "revision": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "metadata": {
+            "revision": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "1b8b1b57c87794d068b48e938fd81c9740a2e39d",
+            "revision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "b1a2edfafade77d2c5ec4c6eb86e0c9697a775b0",
+            "revision": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "symbol": {
+            "revision": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "symbol-tree-sitter": {
+            "revision": "368c44732334783ea790afbcc88a59b66936f289",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "title-bar": {
-            "revision": "2205575d8b721c7dc0f606d28db1c85a30ea7424",
+            "revision": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "bb607ede1294006c7276458f5330aea426801471",
+            "revision": "968cf8e9ddd41efecb09474c0a108d476f7ae33e",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -520,37 +592,38 @@
         "fixtures": [
           {
             "file": "Signal Lab/data/samples.csv",
-            "sha256": "610aae7d036b6d39210abac8c5cc2759264a90126c2ef6d82cecab54d4a33733"
+            "sha256": "e2aa09f6b3c71550bde2fb40e568843cb5a81b35431d168a2b5f70124dabbed9"
           },
           {
             "file": "Signal Lab/docs/experiments.md",
-            "sha256": "d795671e0f8b07ce5304d3b71fa0e95e9708ca91f4aa4f14963f906f3eecf37f"
+            "sha256": "fb3d0c9760047153815c692248e97c1d78abe70ce7a01c3bb2146a6b998b4501"
           },
           {
             "file": "Signal Lab/notes.md",
-            "sha256": "1eac5f3ec542f0a4d1ae68a3ea6f728196b006b925a5a23de5c3b3f24fee08f9"
+            "sha256": "a35c459c79378ba577689b8d1e81fc144d51a8386f6c583755b0dbe789c6f647"
           },
           {
             "file": "Signal Lab/package.json",
-            "sha256": "13715c356767dcaaf464d097a3cb86c2bd1f9396e7336625692ba6b5497717c7"
+            "sha256": "cb3a7618b04433243426e1193d0e49da9a776c4bf10e8eb6a147d4db53e189c8"
           },
           {
             "file": "Signal Lab/README.md",
-            "sha256": "fd378492b49953457ccd500f063992dd91bef3fcb90cb37fb5a2a8388983f83b"
+            "sha256": "a16243fb2b21e4620a9e7a93c7526b377d06d6947c1ca897eacacea9a756d232"
           },
           {
             "file": "Signal Lab/signal.py",
-            "sha256": "6126a6c2607662f888409a6bb70a174ea99369525a4651339fe22a9623e3ab1b"
+            "sha256": "c1a77cb53c5195a0bbea075b2f488e233f64c94e553a1b966442e62c955f58c9"
           },
           {
             "file": "Signal Lab/src/signal.js",
-            "sha256": "24dd268e28826005b369b776a213be9d8f14079f42f7ef6b39002c14c8270987"
+            "sha256": "2a36953daadd1ae53070d0ff7ceab4624395fdb957104aa6e8ec92d785cadf1d"
           }
         ],
-        "sha256": "da885675491a1b2420cde59ff2dd9e4f71b9f99499b1b18dbaea91407ecac1ba"
+        "sha256": "bab907b6c70a01d3fadd975aa0d69b3ff87d01abc2a52c2d092514a7cb2d1155"
       }
     }
   ],
   "mode": "normal",
-  "fontSettings": "default"
+  "fontSettings": "default",
+  "recipe": "capture/recipe.txt"
 }
