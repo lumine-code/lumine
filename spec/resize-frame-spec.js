@@ -242,6 +242,7 @@ describe("frame-bound layout resizing", () => {
       dock.setState({ size: 230 });
       expect(dockSize(dock)).toBe(230);
       dock.hide();
+      expect(dockSize(dock)).toBe(0);
       advanceFrame();
       expect(dockSize(dock)).toBe(0);
       dock.show();

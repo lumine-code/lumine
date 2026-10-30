@@ -215,12 +215,12 @@ module.exports = class Dock {
     const shouldBeVisible = visible || this.state.showDropTarget;
     const wasVisible = prevState.visible || prevState.showDropTarget;
 
-    // Render immediately if the dock becomes visible or the size changes in case people are
-    // measuring after opening, for example. Revealing a dock as a drop target counts: it
-    // moves the dock back into the flow, and the drag hit testing measures it right after.
+    // Visibility changes layout immediately in both directions. Callers and
+    // overlay geometry must never measure a dock still occupying its old size.
+    // Revealing it as a drop target follows the same rule.
     if (this.element != null) {
       if (
-        (shouldBeVisible && !wasVisible) ||
+        shouldBeVisible !== wasVisible ||
         this.state.size !== prevState.size ||
         this.state.restoring !== prevState.restoring
       )
