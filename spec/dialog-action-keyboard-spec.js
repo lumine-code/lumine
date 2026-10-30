@@ -49,14 +49,16 @@ describe("dialog action keyboard activation", () => {
   });
 
   jasmine.itWithDocumentFocus("activates the focused Cancel with a real Enter key", async () => {
-    const { confirmed, cancelled } = await createDialog();
-    for (const type of ["keyDown", "keyUp"]) {
+    const { cancel, confirmed, cancelled } = await createDialog();
+    expect(document.activeElement).toBe(cancel);
+    for (const type of ["keyDown", "char", "keyUp"]) {
       await ipcRenderer.invoke("lumine:window", "sendInputEvent", {
         type,
         keyCode: "Enter",
       });
     }
-    await conditionPromise(() => !host.isVisible());
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    expect(host.isVisible()).toBe(false);
     expect(cancelled).toHaveBeenCalledTimes(1);
     expect(confirmed).not.toHaveBeenCalled();
   });
