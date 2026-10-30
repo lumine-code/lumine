@@ -372,6 +372,28 @@ describe("Shared overlay scrollbars", () => {
   const flush = () =>
     new Promise((resolve) => lumine.views.readDocument(() => lumine.views.updateDocument(resolve)));
 
+  it("retains authored stacking when a disconnected scrollport gets new chrome", async () => {
+    const { fixture, element, controller } = scrollport();
+    element.dataset.scrollbarKind = "panel";
+    element.dataset.scrollbarZIndex = "101";
+    controller.write(controller.read());
+    expect(controller.layer.style.zIndex).toBe("101");
+    fixture.remove();
+    await flush();
+    await flush();
+    expect(controller.destroyed).toBeTrue();
+    jasmine.attachToDOM(fixture);
+    await flush();
+    await flush();
+    const restored = lumine.scrollbars.documents.get(document)?.controllers.get(element);
+    expect(restored).toBeDefined();
+    expect(restored).not.toBe(controller);
+    components.push(restored);
+    expect(restored.layer.style.zIndex).toBe("101");
+    expect(restored.geometry.layout).toBe("overlay");
+    expect(restored.layer.classList.contains("is-persistent")).toBeFalse();
+  });
+
   for (const [attribute, value, layout] of [
     ["data-scrollbar-kind", "panel", "overlay"],
     ["data-scrollbar-layout", "gutter", "gutter"],

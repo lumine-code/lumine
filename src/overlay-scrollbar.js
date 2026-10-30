@@ -228,7 +228,7 @@ function createScrollbarRuntime() {
   }
 
   const candidates =
-    "div,section,article,main,nav,aside,pre,ul,ol,textarea,dialog,[data-scrollbar],[data-scrollbar-kind],[data-scrollbar-layout]";
+    "div,section,article,main,nav,aside,pre,ul,ol,textarea,dialog,[data-scrollbar],[data-scrollbar-kind],[data-scrollbar-layout],[data-scrollbar-z-index]";
   const excluded =
     "lumine-text-editor,.lumine-scrollbar,.lumine-scrollbar-overlay,[data-scrollbar='none'],.xterm";
   const owners = new WeakMap();
@@ -327,6 +327,7 @@ function createScrollbarRuntime() {
         : 0;
       const layerWidth = width + verticalGutter;
       const layerHeight = height + horizontalGutter;
+      const configuredZIndex = this.options.zIndex ?? Number(element.dataset.scrollbarZIndex);
       const x =
         this.options.horizontal !== false &&
         (/auto|scroll/.test(style.overflowX) || this.options.horizontal === true);
@@ -394,8 +395,8 @@ function createScrollbarRuntime() {
         layerWidth,
         layerHeight,
         followSibling,
-        stacking: Number.isFinite(this.options.zIndex)
-          ? String(Math.trunc(this.options.zIndex))
+        stacking: Number.isFinite(configuredZIndex)
+          ? String(Math.trunc(configuredZIndex))
           : followSibling
             ? style.zIndex
             : "10",
@@ -641,6 +642,7 @@ function createScrollbarRuntime() {
           "data-scrollbar",
           "data-scrollbar-layout",
           "data-scrollbar-kind",
+          "data-scrollbar-z-index",
           "hidden",
           "open",
         ],
