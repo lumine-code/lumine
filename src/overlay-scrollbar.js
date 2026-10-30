@@ -334,6 +334,11 @@ function createScrollbarRuntime() {
       const leftGutter = gutter
         ? Math.max(0, element.clientLeft - (parseFloat(style.borderLeftWidth) || 0))
         : 0;
+      const edge = gutter
+        ? leftGutter
+          ? "left"
+          : "right"
+        : this.options.edge || (this.rtl ? "left" : "right");
       const layerWidth = width + verticalGutter;
       const layerHeight = height + horizontalGutter;
       const configuredZIndex = this.options.zIndex ?? Number(element.dataset.scrollbarZIndex);
@@ -459,11 +464,7 @@ function createScrollbarRuntime() {
         clip: `inset(${Math.max(0, clipTop)}px ${Math.max(0, clipRight)}px ${Math.max(0, clipBottom)}px ${Math.max(0, clipLeft)}px)`,
         visible: rect.width > 0 && rect.height > 0 && style.visibility !== "hidden",
         persistent,
-        edge: gutter
-          ? leftGutter
-            ? "left"
-            : "right"
-          : this.options.edge || (this.rtl ? "left" : "right"),
+        edge,
         verticalSize: size,
         horizontalSize: size,
         viewportWidth: width,
@@ -472,11 +473,7 @@ function createScrollbarRuntime() {
         // a native gutter already excludes the horizontal rail from height.
         verticalTrackSize: height,
         horizontalTrackSize: Math.max(0, width - (!gutter && verticalSlot ? size : 0)),
-        horizontalInset: gutter
-          ? leftGutter
-          : (this.rtl || this.options.edge === "left") && verticalSlot
-            ? size
-            : 0,
+        horizontalInset: gutter ? leftGutter : edge === "left" && verticalSlot ? size : 0,
         scrollWidth,
         scrollHeight,
         canScrollHorizontally,
@@ -485,6 +482,9 @@ function createScrollbarRuntime() {
         scrollLeft,
         wheelChain,
         wheelLineHeight: parseFloat(style.lineHeight) || 16,
+        // Match native defaults: macOS preserves the delivered axes; other
+        // platforms use Shift+Y for horizontal scrolling.
+        wheelShiftHorizontal: !/Mac/i.test(window.navigator.platform),
       };
     }
 
@@ -623,7 +623,7 @@ function createScrollbarRuntime() {
         x *= this.geometry.viewportWidth;
         y *= this.geometry.viewportHeight;
       }
-      if (event.shiftKey && !x) {
+      if (event.shiftKey && !x && this.geometry.wheelShiftHorizontal) {
         x = y;
         y = 0;
       }

@@ -159,6 +159,28 @@ describe("Shared overlay scrollbars", () => {
       expect(controller.horizontal.element.contains(target)).toBeFalse();
     });
 
+    for (const edge of ["left", "right"]) {
+      it(`honors an explicit ${edge} overlay edge in ${direction} without crossing rails`, () => {
+        const { element, controller } = scrollport({ edge, policy: "always" });
+        element.style.direction = direction;
+        controller.write(controller.read());
+        const bounds = element.getBoundingClientRect();
+        const vertical = controller.vertical.element.getBoundingClientRect();
+        const horizontal = controller.horizontal.element.getBoundingClientRect();
+        expect(vertical.left).toBe(edge === "left" ? bounds.left : bounds.right - 10);
+        expect(horizontal.left).toBe(bounds.left + (edge === "left" ? 10 : 0));
+        expect(horizontal.right).toBe(bounds.right - (edge === "right" ? 10 : 0));
+        element.scrollTop = element.scrollHeight;
+        controller.syncPosition();
+        const target = document.elementFromPoint(
+          vertical.left + vertical.width / 2,
+          vertical.bottom - 2,
+        );
+        expect(target).toBe(controller.vertical.thumb);
+        expect(controller.horizontal.element.contains(target)).toBeFalse();
+      });
+    }
+
     for (const kind of ["document", "panel"]) {
       it(`keeps the visible ${direction} ${kind} vertical slot consistent when only X overflows`, () => {
         const { element, content, controller } = scrollport({ kind, policy: "always" });
@@ -292,8 +314,9 @@ describe("Shared overlay scrollbars", () => {
     wheel(controller.horizontal.element, { deltaX: 30, deltaY: 0 });
     expect(element.scrollLeft).toBe(30);
     wheel(controller.vertical.thumb, { deltaY: 25, shiftKey: true });
-    expect(element.scrollLeft).toBe(55);
-    expect(element.scrollTop).toBe(0);
+    const mac = /Mac/i.test(navigator.platform);
+    expect(element.scrollLeft).toBe(mac ? 30 : 55);
+    expect(element.scrollTop).toBe(mac ? 25 : 0);
   });
 
   it("removes the wheel bridge with a retired controller", () => {
