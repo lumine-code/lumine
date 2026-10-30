@@ -372,6 +372,29 @@ describe("Shared overlay scrollbars", () => {
   const flush = () =>
     new Promise((resolve) => lumine.views.readDocument(() => lumine.views.updateDocument(resolve)));
 
+  for (const [attribute, value, layout] of [
+    ["data-scrollbar-kind", "panel", "overlay"],
+    ["data-scrollbar-layout", "gutter", "gutter"],
+  ]) {
+    it(`discovers custom scrollports declared only through ${attribute}`, async () => {
+      const element = document.createElement("demo-scrollport");
+      element.setAttribute(attribute, value);
+      element.style.cssText = "display:block;width:300px;height:180px;overflow:auto";
+      const content = document.createElement("div");
+      content.style.height = "1000px";
+      element.appendChild(content);
+      jasmine.attachToDOM(element);
+      fixtures.push(element);
+      await flush();
+      await flush();
+      const controller = lumine.scrollbars.documents.get(document)?.controllers.get(element);
+      expect(controller).toBeDefined();
+      components.push(controller);
+      expect(controller.geometry.layout).toBe(layout);
+      expect(controller.geometry.canScrollVertically).toBeTrue();
+    });
+  }
+
   it("publishes geometry changes independently of scroll position and supports multiple consumers", async () => {
     const { element, content, controller } = scrollport();
     const first = jasmine.createSpy("first geometry consumer");

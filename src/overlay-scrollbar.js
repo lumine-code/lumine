@@ -228,7 +228,7 @@ function createScrollbarRuntime() {
   }
 
   const candidates =
-    "div,section,article,main,nav,aside,pre,ul,ol,textarea,dialog,[data-scrollbar]";
+    "div,section,article,main,nav,aside,pre,ul,ol,textarea,dialog,[data-scrollbar],[data-scrollbar-kind],[data-scrollbar-layout]";
   const excluded =
     "lumine-text-editor,.lumine-scrollbar,.lumine-scrollbar-overlay,[data-scrollbar='none'],.xterm";
   const owners = new WeakMap();
