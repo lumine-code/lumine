@@ -1,6 +1,12 @@
 # Electron 45
 
-The editor pins Electron 45.0.0, Chromium 156 and Node 24.22.0. The ordinary Node toolchain remains separate from Electron's embedded runtime. Update both Electron selectors in `package.json` and regenerate the lockfile with npm when advancing the runtime.
+The editor pins Electron 45.2.0, Chromium 156.0.8078.49 and Node 24.22.1. The ordinary Node toolchain remains separate from Electron's embedded runtime. Update both Electron selectors in `package.json` and regenerate the lockfile with npm when advancing the runtime.
+
+## Updates through 45.2.0
+
+The [45.1.0 release](https://github.com/electron/electron/releases/tag/v45.1.0) fixes fetch rules for native protocol sources, ASAR path handling across main and child processes, malformed ASAR validation and repeated native menu popups on macOS. These fixes cover the editor's resource delivery and packaged execution paths without requiring API changes. Existing package-resource tests cover native assets, HEAD requests, Unicode paths, sandbox isolation and resources inside ASAR archives.
+
+The [45.2.0 release](https://github.com/electron/electron/releases/tag/v45.2.0) improves bodyless fetch requests and repeated file URL fetches. Mutable package resources use this path through `session.fetch()`. DevTools saves also retain their chosen destination correctly. Menu highlight colors on Windows and additional Chrome extension APIs are optional additions; the update requires no change to the editor's current menu rendering or package services.
 
 ## Window ownership
 

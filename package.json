@@ -24,7 +24,7 @@
   },
   "lumineTestRunner": "runners/jasmine-test-runner",
   "license": "MIT",
-  "electronVersion": "45.0.0",
+  "electronVersion": "45.2.0",
   "dependencies": {
     "@babel/core": "8.0.9",
     "@jasminejs/reporters": "1.1.0",
@@ -194,7 +194,7 @@
     "@electron/notarize": "^3.1.2",
     "@electron/rebuild": "4.2.1",
     "@eslint/js": "^10.0.1",
-    "electron": "45.0.0",
+    "electron": "45.2.0",
     "electron-builder": "26.18.0",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
