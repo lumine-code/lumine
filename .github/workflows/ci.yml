@@ -188,6 +188,13 @@ jobs:
       # hang the job. No retries and no per-file fallback: a failure here is a
       # real regression or a flaky spec, and flaky specs get fixed rather than
       # absorbed into a 30-minute isolation pass.
+      - name: Test trusted scrollbar wheel input
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          prefix=""
+          if [ "$RUNNER_OS" = "Linux" ]; then prefix="xvfb-run --auto-servernum"; fi
+          $prefix node script/test-overlay-scrollbar-wheel.js
       - name: Run editor specs
         shell: bash
         timeout-minutes: 60

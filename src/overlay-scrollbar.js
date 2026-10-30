@@ -245,6 +245,10 @@ function createScrollbarRuntime() {
       this.layer.className = "lumine-scrollbar-overlay";
       this.layer.dataset.scrollbarChrome = "";
       this.layer.setAttribute("aria-hidden", "true");
+      this.wheel = (event) => this.routeWheel(event);
+      // This non-passive listener belongs only to the interactive chrome.
+      // Ordinary content scrolling keeps the browser's compositor fast path.
+      this.layer.addEventListener("wheel", this.wheel, { passive: false });
       this.previousScrollbarWidth = element.style.scrollbarWidth;
       element.classList.add("lumine-scrollport");
       element.style.scrollbarWidth = "none";
@@ -296,6 +300,11 @@ function createScrollbarRuntime() {
         return null;
       const window = element.ownerDocument.defaultView;
       const style = window.getComputedStyle(element);
+      const styles = new Map([[element, style]]);
+      const styleFor = (node) => {
+        if (!styles.has(node)) styles.set(node, window.getComputedStyle(node));
+        return styles.get(node);
+      };
       this.rtl = style.direction === "rtl";
       const size = scrollbarSize(element);
       const width = element.clientWidth;
@@ -342,7 +351,7 @@ function createScrollbarRuntime() {
       let parent = element.offsetParent;
       if (!parent) {
         for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
-          if (window.getComputedStyle(ancestor).position !== "static") {
+          if (styleFor(ancestor).position !== "static") {
             parent = ancestor;
             break;
           }
@@ -360,7 +369,7 @@ function createScrollbarRuntime() {
         ancestor && ancestor !== parent;
         ancestor = ancestor.parentElement
       ) {
-        const ancestorStyle = window.getComputedStyle(ancestor);
+        const ancestorStyle = styleFor(ancestor);
         if (
           !/(auto|scroll|hidden|clip)/.test(`${ancestorStyle.overflowX} ${ancestorStyle.overflowY}`)
         )
@@ -388,6 +397,43 @@ function createScrollbarRuntime() {
       const scrollLeft = this.rtl
         ? Math.max(0, scrollWidth - width) + element.scrollLeft
         : element.scrollLeft;
+      const wheelChain = [];
+      for (let node = element; node; node = node.parentElement) {
+        if (typeof node.scrollBy !== "function") continue;
+        const nodeStyle = styleFor(node);
+        let overflowX = nodeStyle.overflowX;
+        let overflowY = nodeStyle.overflowY;
+        const viewport = node === element.ownerDocument.scrollingElement;
+        if (
+          viewport &&
+          node === element.ownerDocument.documentElement &&
+          element.ownerDocument.body
+        ) {
+          const bodyStyle = styleFor(element.ownerDocument.body);
+          if (overflowX === "visible") overflowX = bodyStyle.overflowX;
+          if (overflowY === "visible") overflowY = bodyStyle.overflowY;
+        }
+        const horizontal =
+          /auto|scroll/.test(overflowX) ||
+          (viewport && overflowX !== "hidden" && overflowX !== "clip") ||
+          (node === element && this.options.horizontal === true);
+        const vertical =
+          /auto|scroll/.test(overflowY) ||
+          (viewport && overflowY !== "hidden" && overflowY !== "clip") ||
+          (node === element && this.options.vertical === true);
+        if (horizontal || vertical)
+          wheelChain.push({
+            element: node,
+            horizontal,
+            vertical,
+            containX:
+              nodeStyle.overscrollBehaviorX === "contain" ||
+              nodeStyle.overscrollBehaviorX === "none",
+            containY:
+              nodeStyle.overscrollBehaviorY === "contain" ||
+              nodeStyle.overscrollBehaviorY === "none",
+          });
+      }
       return {
         parent,
         layout: presentation.layout,
@@ -433,6 +479,8 @@ function createScrollbarRuntime() {
         canScrollVertically,
         scrollTop: element.scrollTop,
         scrollLeft,
+        wheelChain,
+        wheelLineHeight: parseFloat(style.lineHeight) || 16,
       };
     }
 
@@ -512,6 +560,87 @@ function createScrollbarRuntime() {
       );
     }
 
+    routeWheel(event) {
+      if (this.destroyed || !this.geometry || event.defaultPrevented) return;
+      // The chrome is a sibling of its scrollport. Forward its wheel through
+      // the authored content path before emulating the uncancelled native
+      // default; ancestor editors and custom hosts must see it exactly once.
+      event.stopPropagation();
+      const window = this.element.ownerDocument.defaultView;
+      const forwarded = new window.WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        deltaZ: event.deltaZ,
+        deltaMode: event.deltaMode,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+        metaKey: event.metaKey,
+        buttons: event.buttons,
+      });
+      Object.defineProperty(forwarded, "timeStamp", { value: event.timeStamp });
+      if ("momentum" in event)
+        Object.defineProperty(forwarded, "momentum", { value: event.momentum });
+      if (!this.element.dispatchEvent(forwarded)) {
+        event.preventDefault();
+        return;
+      }
+      // Pinch/zoom remains the browser's default when no authored handler
+      // claims it; it is not a request to change a scroll offset.
+      if (event.ctrlKey) return;
+      let x = event.deltaX;
+      let y = event.deltaY;
+      if (event.deltaMode === 1) {
+        x *= this.geometry.wheelLineHeight;
+        y *= this.geometry.wheelLineHeight;
+      } else if (event.deltaMode === 2) {
+        x *= this.geometry.viewportWidth;
+        y *= this.geometry.viewportHeight;
+      }
+      if (event.shiftKey && !x) {
+        x = y;
+        y = 0;
+      }
+      let pendingX = x !== 0;
+      let pendingY = y !== 0;
+      let claimed = false;
+      for (const node of this.geometry.wheelChain) {
+        const left = pendingX && node.horizontal ? x : 0;
+        const top = pendingY && node.vertical ? y : 0;
+        if (left || top) {
+          const beforeLeft = node.element.scrollLeft;
+          const beforeTop = node.element.scrollTop;
+          node.element.scrollBy({ left, top, behavior: "instant" });
+          if (node.element.scrollLeft !== beforeLeft) {
+            pendingX = false;
+            claimed = true;
+          }
+          if (node.element.scrollTop !== beforeTop) {
+            pendingY = false;
+            claimed = true;
+          }
+        }
+        if (pendingX && node.horizontal && node.containX) {
+          pendingX = false;
+          claimed = true;
+        }
+        if (pendingY && node.vertical && node.containY) {
+          pendingY = false;
+          claimed = true;
+        }
+        if (!pendingX && !pendingY) break;
+      }
+      if (claimed) event.preventDefault();
+    }
+
     syncVisibility() {
       if (!this.owner) return;
       const document = this.element.ownerDocument;
@@ -534,6 +663,7 @@ function createScrollbarRuntime() {
       if (this.destroyed) return;
       this.destroyed = true;
       this.observer.disconnect();
+      this.layer.removeEventListener("wheel", this.wheel);
       this.vertical.destroy();
       this.horizontal.destroy();
       this.layer.remove();

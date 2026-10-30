@@ -140,6 +140,90 @@ describe("Shared overlay scrollbars", () => {
     expect(controller.vertical.thumb.style.transform).not.toBe("translateY(0px)");
   });
 
+  function wheel(target, options = {}) {
+    const event = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 40,
+      ...options,
+    });
+    target.dispatchEvent(event);
+    return event;
+  }
+
+  it("routes rail wheels through authored scrollport handlers and preserves cancellation", () => {
+    const { fixture, element, controller } = scrollport();
+    const owner = jasmine.createSpy("owned wheel").and.callFake((event) => {
+      expect(event.target).toBe(element);
+      event.preventDefault();
+    });
+    const ancestor = jasmine.createSpy("ancestor wheel");
+    element.addEventListener("wheel", owner);
+    fixture.addEventListener("wheel", ancestor);
+    const event = wheel(controller.vertical.thumb);
+    expect(owner).toHaveBeenCalledTimes(1);
+    expect(ancestor).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBeTrue();
+    expect(element.scrollTop).toBe(0);
+  });
+
+  it("respects authored wheel ownership without applying a host's scroll twice", () => {
+    const { fixture, element, controller } = scrollport();
+    const host = jasmine.createSpy("custom wheel host").and.callFake((event) => {
+      element.scrollTop += 15;
+      event.preventDefault();
+    });
+    fixture.addEventListener("wheel", host);
+    wheel(controller.vertical.element);
+    expect(host).toHaveBeenCalledTimes(1);
+    expect(element.scrollTop).toBe(15);
+  });
+
+  it("preserves a nested scrollport's propagation stop before an ancestor editor", () => {
+    const { fixture, element, controller } = scrollport();
+    const ancestor = jasmine.createSpy("ancestor editor");
+    element.addEventListener("wheel", (event) => event.stopPropagation());
+    fixture.addEventListener("wheel", ancestor);
+    wheel(controller.vertical.thumb);
+    expect(element.scrollTop).toBe(40);
+    expect(ancestor).not.toHaveBeenCalled();
+  });
+
+  for (const [mode, expected] of [
+    [0, 2],
+    [1, 40],
+    [2, 360],
+  ]) {
+    it(`normalizes native rail wheel mode ${mode} without reading layout`, () => {
+      const { element, controller } = scrollport();
+      element.style.lineHeight = "20px";
+      controller.write(controller.read());
+      const style = spyOn(window, "getComputedStyle").and.callThrough();
+      const read = spyOn(controller, "read").and.callThrough();
+      wheel(controller.vertical.thumb, { deltaY: 2, deltaMode: mode });
+      expect(element.scrollTop).toBe(expected);
+      expect(style).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+    });
+  }
+
+  it("preserves horizontal and Shift wheel motion on native rails", () => {
+    const { element, controller } = scrollport();
+    wheel(controller.horizontal.element, { deltaX: 30, deltaY: 0 });
+    expect(element.scrollLeft).toBe(30);
+    wheel(controller.vertical.thumb, { deltaY: 25, shiftKey: true });
+    expect(element.scrollLeft).toBe(55);
+    expect(element.scrollTop).toBe(0);
+  });
+
+  it("removes the wheel bridge with a retired controller", () => {
+    const { element, controller } = scrollport();
+    const thumb = controller.vertical.thumb;
+    controller.destroy();
+    wheel(thumb);
+    expect(element.scrollTop).toBe(0);
+  });
+
   it("reserves space only for overflowing inline axes and hides empty tracks", () => {
     const { element, content, controller } = scrollport({ layout: "gutter" });
     content.style.cssText = "width:100%;height:20px";
