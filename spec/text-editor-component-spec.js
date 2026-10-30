@@ -654,12 +654,15 @@ describe("TextEditorComponent", () => {
       );
       expect(getVerticalScrollbarWidth(component)).toBeGreaterThan(0);
       expect(getHorizontalScrollbarHeight(component)).toBeGreaterThan(0);
-      expect(verticalScrollbar.style.bottom).toBe(getVerticalScrollbarWidth(component) + "px");
+      expect(verticalScrollbar.style.bottom).toBe("0px");
+      expect(verticalScrollbar.getBoundingClientRect().bottom).toBeNear(
+        component.refs.scrollContainer.getBoundingClientRect().bottom,
+      );
       expect(verticalScrollbar.classList.contains("is-scrollable")).toBe(true);
       expect(horizontalScrollbar.style.right).toBe(getHorizontalScrollbarHeight(component) + "px");
       expect(horizontalScrollbar.classList.contains("is-scrollable")).toBe(true);
       expect(component.refs.scrollbarCorner).toBeDefined();
-      expect(component.refs.scrollbarCorner.style.visibility).toBe("");
+      expect(component.refs.scrollbarCorner.style.visibility).toBe("hidden");
 
       setScrollTop(component, 100);
       await setScrollLeft(component, 100);
@@ -694,9 +697,9 @@ describe("TextEditorComponent", () => {
 
       editor.setText(SAMPLE_TEXT);
       await component.getNextUpdatePromise();
-      expect(verticalScrollbar.style.bottom).toBe(getHorizontalScrollbarHeight(component) + "px");
+      expect(verticalScrollbar.style.bottom).toBe("0px");
       expect(horizontalScrollbar.classList.contains("is-scrollable")).toBe(true);
-      expect(component.refs.scrollbarCorner.style.visibility).toBe("");
+      expect(component.refs.scrollbarCorner.style.visibility).toBe("hidden");
 
       editor.setText("a".repeat(100));
       await component.getNextUpdatePromise();
@@ -760,7 +763,7 @@ describe("TextEditorComponent", () => {
         expect(getHorizontalScrollbarHeight(component)).toBeNear(10);
         expect(getVerticalScrollbarWidth(component)).toBeNear(10);
         expect(component.refs.horizontalScrollbar.element.style.right).toHaveNearPixels("10px");
-        expect(component.refs.verticalScrollbar.element.style.bottom).toHaveNearPixels("10px");
+        expect(component.refs.verticalScrollbar.element.style.bottom).toHaveNearPixels("0px");
         expect(component.refs.horizontalScrollbar.props.scrollLeft).toBeNear(10);
         expect(component.refs.verticalScrollbar.props.scrollTop).toBeNear(20);
         expect(component.getScrollContainerClientHeight()).toBeNear(100);
@@ -775,7 +778,7 @@ describe("TextEditorComponent", () => {
         expect(getHorizontalScrollbarHeight(component)).toBeNear(10);
         expect(getVerticalScrollbarWidth(component)).toBeNear(10);
         expect(component.refs.horizontalScrollbar.element.style.right).toHaveNearPixels("10px");
-        expect(component.refs.verticalScrollbar.element.style.bottom).toHaveNearPixels("10px");
+        expect(component.refs.verticalScrollbar.element.style.bottom).toHaveNearPixels("0px");
         expect(component.refs.horizontalScrollbar.props.scrollLeft).toBeNear(10);
         expect(component.refs.verticalScrollbar.props.scrollTop).toBeNear(20);
         expect(component.getScrollContainerClientHeight()).toBeNear(100);
