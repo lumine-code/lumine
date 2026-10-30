@@ -185,7 +185,7 @@ class TextEditorElement extends HTMLElement {
    * @public
    * @status extended
    *
-   * Observe changes to logical scroll extents, viewport size or row geometry.
+   * Observe changes to logical scroll extents, viewport size, track lengths or row geometry.
    * Ordinary scroll-position changes do not emit this event.
    * @param {Function} callback - Receives the changed geometry snapshot.
    * @returns {Disposable} Subscription to geometry changes.

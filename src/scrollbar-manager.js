@@ -91,10 +91,7 @@ module.exports = class ScrollbarManager {
         verticalTrackSize: Math.max(0, component.getScrollContainerHeight()),
         horizontalTrackSize: Math.max(
           0,
-          component.getScrollContainerWidth() -
-            (!component.props.model.getAutoWidth() || component.canScrollVertically()
-              ? component.getVerticalScrollbarWidth()
-              : 0),
+          component.getScrollContainerWidth() - component.getHorizontalScrollbarTrackInset(),
         ),
         scrollWidth: component.getScrollWidth(),
         scrollHeight: component.getScrollHeight(),

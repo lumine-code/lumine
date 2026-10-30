@@ -911,6 +911,11 @@ module.exports = class TextEditorComponent {
       scrollHeight: this.getScrollHeight(),
       verticalSize: this.getVerticalScrollbarWidth(),
       horizontalSize: this.getHorizontalScrollbarHeight(),
+      verticalTrackSize: Math.max(0, this.getScrollContainerHeight()),
+      horizontalTrackSize: Math.max(
+        0,
+        this.getScrollContainerWidth() - this.getHorizontalScrollbarTrackInset(),
+      ),
       rowGeometryVersion: this.getRowGeometryVersion(),
     };
     if (
@@ -1544,10 +1549,7 @@ module.exports = class TextEditorComponent {
         canScrollHorizontally = this.canScrollHorizontally();
         canScrollVertically = this.canScrollVertically();
         horizontalScrollbarHeight = canScrollHorizontally ? this.getHorizontalScrollbarHeight() : 0;
-        verticalScrollbarWidth =
-          !this.props.model.getAutoWidth() || canScrollVertically
-            ? this.getVerticalScrollbarWidth()
-            : 0;
+        verticalScrollbarWidth = this.getHorizontalScrollbarTrackInset();
       }
 
       const verticalScrollbarProps = {
@@ -4330,6 +4332,13 @@ module.exports = class TextEditorComponent {
 
   getScrollbarLayout() {
     return this.scrollbarPresentation.layout;
+  }
+
+  getHorizontalScrollbarTrackInset() {
+    const { layout, kind } = this.scrollbarPresentation;
+    return this.canScrollVertically() || (layout === "overlay" && kind === "document")
+      ? this.getVerticalScrollbarWidth()
+      : 0;
   }
 
   measureLongestLineWidth() {

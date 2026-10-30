@@ -81,7 +81,7 @@ describe("Editor overlay scrollbars", () => {
       expect(cornerTarget).toBe(vertical);
       pointer(cornerTarget, "pointerdown", x, y);
       // Editor limits round to CSS pixels; the shared rail keeps fractional geometry.
-      expect(component.getScrollTop()).toBeCloseTo(component.getMaxScrollTop(), 0);
+      expect(Math.round(component.getScrollTop())).toBe(component.getMaxScrollTop());
       expect(component.getScrollLeft()).toBe(0);
       pointer(cornerTarget, "pointerup", x, y);
       component.setScrollTop(component.getMaxScrollTop());
@@ -92,6 +92,48 @@ describe("Editor overlay scrollbars", () => {
       expect(horizontal.contains(target)).toBeFalse();
     });
   }
+
+  for (const [layout, kind, inset] of [
+    ["overlay", "document", 12],
+    ["overlay", "panel", 0],
+    ["gutter", "inline", 0],
+  ]) {
+    it(`uses the ${layout} ${kind} horizontal rail's full available width without vertical overflow`, () => {
+      element.dataset.scrollbarLayout = layout;
+      element.dataset.scrollbarKind = kind;
+      editor.setText("long source line ".repeat(20));
+      component.updateSync();
+      expect(component.canScrollVertically()).toBeFalse();
+      expect(component.canScrollHorizontally()).toBeTrue();
+      expect(component.getContentViewportWidth()).toBe(component.getScrollContainerWidth() - 12);
+      const container = component.refs.scrollContainer.getBoundingClientRect();
+      const horizontal = component.refs.horizontalScrollbar.element.getBoundingClientRect();
+      expect(horizontal.right).toBe(container.right - inset);
+      expect(horizontal.width).toBe(lumine.scrollbars.getGeometry(element).horizontalTrackSize);
+    });
+  }
+
+  it("publishes changed horizontal track geometry when a document becomes a utility panel", () => {
+    editor.setText("long source line ".repeat(20));
+    component.updateSync();
+    const snapshots = [];
+    const subscription = element.onDidChangeScrollGeometry((geometry) => snapshots.push(geometry));
+    try {
+      const before = lumine.scrollbars.getGeometry(element);
+      element.dataset.scrollbarKind = "panel";
+      component.updateSync();
+      const after = lumine.scrollbars.getGeometry(element);
+      expect(after.viewportWidth).toBe(before.viewportWidth);
+      expect(after.viewportHeight).toBe(before.viewportHeight);
+      expect(after.scrollWidth).toBe(before.scrollWidth);
+      expect(after.scrollHeight).toBe(before.scrollHeight);
+      expect(after.horizontalTrackSize).toBe(before.horizontalTrackSize + 12);
+      expect(snapshots.length).toBe(1);
+      expect(snapshots[0].horizontalTrackSize).toBe(after.horizontalTrackSize);
+    } finally {
+      subscription.dispose();
+    }
+  });
 
   for (const orientation of ["vertical", "horizontal"]) {
     it(`jumps a ${orientation} track click directly to the centered destination and cancels a wheel glide`, () => {
