@@ -45,12 +45,23 @@ class TextEditorElement extends HTMLElement {
   }
 
   static get observedAttributes() {
-    return ["mini", "placeholder-text", "gutter-hidden", "readonly"];
+    return [
+      "mini",
+      "placeholder-text",
+      "gutter-hidden",
+      "readonly",
+      "data-scrollbar-layout",
+      "data-scrollbar",
+    ];
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
     if (this.component) {
       switch (name) {
+        case "data-scrollbar-layout":
+        case "data-scrollbar":
+          this.component.updateSync();
+          break;
         case "mini":
           this.getModel().update({ mini: newValue != null });
           break;

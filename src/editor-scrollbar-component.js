@@ -1,7 +1,7 @@
 const { OverlayScrollbar } = require("./overlay-scrollbar");
 
 // The editor owns logical geometry and syntax publication. This adapter only
-// projects that state onto the shared overlay rail, without a native scroller
+// projects that state onto the shared custom rail, without a native scroller
 // or any document-sized DOM element.
 module.exports = class EditorScrollbarComponent {
   constructor(props) {

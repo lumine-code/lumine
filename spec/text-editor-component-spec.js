@@ -106,7 +106,7 @@ describe("TextEditorComponent", () => {
   beforeEach(() => {
     jasmine.useRealClock();
 
-    // Fix overlay thickness independently of native system scrollbar settings.
+    // Fix custom rail thickness independently of native system scrollbar settings.
     const scrollbarStyle = document.createElement("style");
     scrollbarStyle.textContent = "lumine-text-editor { --scrollbar-size-editor: 10px; }";
     jasmine.attachToDOM(scrollbarStyle);
@@ -135,6 +135,139 @@ describe("TextEditorComponent", () => {
   });
 
   describe("rendering", () => {
+    describe("scrollbar layout", () => {
+      function primaryItem(element, content = element) {
+        const itemViews = document.createElement("div");
+        itemViews.className = "item-views";
+        itemViews.appendChild(content);
+        jasmine.attachToDOM(itemViews);
+        return itemViews;
+      }
+
+      it("reserves custom rail space in standalone editors", () => {
+        const { component } = buildComponent({ width: 100, height: 100 });
+        expect(component.getScrollbarLayout()).toBe("gutter");
+        expect(component.refs.scrollContainer.classList.contains("is-gutter")).toBe(true);
+        expect(component.refs.scrollContainer.classList.contains("is-document")).toBe(false);
+        expect(component.getScrollContainerClientWidth()).toBeNear(
+          component.getScrollContainerWidth() - component.getVerticalScrollbarWidth(),
+        );
+        expect(component.getScrollContainerClientHeight()).toBeNear(
+          100 - component.getHorizontalScrollbarHeight(),
+        );
+        expect(component.getContentViewportWidth()).toBe(component.getScrollContainerClientWidth());
+        expect(component.getContentViewportHeight()).toBe(
+          component.getScrollContainerClientHeight(),
+        );
+        expect(component.getScrollWidth()).toBe(component.getContentWidth());
+        expect(component.getScrollHeight()).toBe(component.getContentHeight());
+        expect(component.refs.verticalScrollbar.props.viewportExtent).toBe(
+          component.getScrollContainerClientHeight(),
+        );
+      });
+
+      it("uses an overlay only for the primary workspace editor", () => {
+        const { component, element } = buildComponent({ attach: false, width: 100, height: 100 });
+        primaryItem(element);
+        expect(component.getScrollbarLayout()).toBe("overlay");
+        expect(component.refs.scrollContainer.classList.contains("is-document")).toBe(true);
+        expect(component.getScrollContainerClientHeight()).toBe(100);
+        expect(component.getScrollContainerClientWidth()).toBeNear(
+          100 - component.getGutterContainerWidth(),
+        );
+        expect(component.getContentViewportWidth()).toBe(
+          component.getScrollContainerClientWidth() - component.getVerticalScrollbarWidth(),
+        );
+      });
+
+      it("keeps an embedded editor in a panel scrollport in its own reserved gutter", () => {
+        const { component, element } = buildComponent({ attach: false, width: 100, height: 100 });
+        const panel = document.createElement("div");
+        const port = document.createElement("div");
+        port.style.overflow = "auto";
+        port.appendChild(element);
+        panel.appendChild(port);
+        primaryItem(element, panel);
+        expect(component.getScrollbarLayout()).toBe("gutter");
+        expect(component.refs.scrollContainer.classList.contains("is-persistent")).toBe(true);
+        expect(component.refs.scrollContainer.classList.contains("is-document")).toBe(false);
+        expect(component.getScrollContainerClientHeight()).toBeNear(90);
+      });
+
+      it("clips a long single line before an unused reserved vertical rail", () => {
+        const { component, element } = buildComponent({
+          text: "long line ".repeat(100),
+          width: 200,
+          height: 100,
+        });
+        expect(component.canScrollVertically()).toBe(false);
+        expect(component.canScrollHorizontally()).toBe(true);
+        const container = component.refs.scrollContainer.getBoundingClientRect();
+        const viewport = component.refs.contentViewport.getBoundingClientRect();
+        expect(viewport.right).toBeNear(container.right - component.getVerticalScrollbarWidth());
+        expect(viewport.bottom).toBeNear(
+          container.bottom - component.getHorizontalScrollbarHeight(),
+        );
+        const x = container.right - 2;
+        const y = container.top + component.getLineHeight() / 2;
+        const reservedHit = document.elementFromPoint(x, y);
+        expect(component.refs.content.contains(reservedHit)).toBe(false);
+        element.dataset.scrollbarLayout = "overlay";
+        expect(component.refs.contentViewport.getBoundingClientRect().right).toBeNear(
+          container.right,
+        );
+        expect(component.refs.content.contains(document.elementFromPoint(x, y))).toBe(true);
+        element.dataset.scrollbar = "hover";
+        expect(component.refs.scrollContainer.classList.contains("is-persistent")).toBe(false);
+        expect(component.refs.scrollContainer.classList.contains("is-hover")).toBe(true);
+        element.dataset.scrollbar = "always";
+        expect(component.refs.scrollContainer.classList.contains("is-persistent")).toBe(true);
+      });
+
+      it("reclassifies placement changes without a size change and publishes the layout", () => {
+        const { component, element } = buildComponent({ attach: false, width: 100, height: 100 });
+        const itemViews = primaryItem(element);
+        const geometries = [];
+        const subscription = element.onDidChangeScrollGeometry((geometry) =>
+          geometries.push(geometry),
+        );
+        const popup = document.createElement("div");
+        popup.className = "popover";
+        itemViews.insertBefore(popup, element);
+        popup.moveBefore(element, null);
+        expect(component.getScrollbarLayout()).toBe("gutter");
+        expect(geometries.at(-1).layout).toBe("gutter");
+        expect(component.getContentViewportWidth()).toBe(component.getScrollContainerClientWidth());
+        itemViews.moveBefore(element, popup);
+        expect(component.getScrollbarLayout()).toBe("overlay");
+        expect(geometries.at(-1).layout).toBe("overlay");
+        subscription.dispose();
+      });
+
+      it("preserves wrapping and end positions across gutter and overlay layouts", async () => {
+        const { component, element, editor } = buildComponent({
+          text: "long line ".repeat(30) + "\n" + "row\n".repeat(50),
+          width: 200,
+          height: 100,
+        });
+        await editor.update({ softWrapped: true });
+        const wrapColumn = editor.getEditorWidthInChars();
+        const rowCount = editor.getScreenLineCount();
+        element.dataset.scrollbarLayout = "overlay";
+        expect(component.getScrollbarLayout()).toBe("overlay");
+        expect(editor.getEditorWidthInChars()).toBe(wrapColumn);
+        expect(editor.getScreenLineCount()).toBe(rowCount);
+        await editor.update({ softWrapped: false });
+        const maximum = [component.getMaxScrollLeft(), component.getMaxScrollTop()];
+        element.dataset.scrollbarLayout = "gutter";
+        expect([component.getMaxScrollLeft(), component.getMaxScrollTop()]).toEqual(maximum);
+        await setScrollLeft(component, maximum[0]);
+        await setScrollTop(component, maximum[1]);
+        expect(component.getScrollRight()).toBeNear(component.getContentWidth());
+        expect(component.getScrollBottom()).toBeNear(component.getContentHeight());
+      });
+    });
+
     it("renders lines and line numbers for the visible region", async () => {
       const { component, element, editor } = buildComponent({
         rowsPerTile: 3,
@@ -203,8 +336,7 @@ describe("TextEditorComponent", () => {
         expect(editor.getApproximateLongestScreenRow()).toBe(3);
         const expectedWidth = Math.ceil(
           component.pixelPositionForScreenPosition(Point(3, Infinity)).left +
-            component.getBaseCharacterWidth() +
-            component.getVerticalScrollbarWidth(),
+            component.getBaseCharacterWidth(),
         );
         expect(element.querySelector(".lines").style.width).toBe(expectedWidth + "px");
       }
@@ -228,8 +360,7 @@ describe("TextEditorComponent", () => {
         const actualWidth = element.querySelector(".lines").style.width;
         const expectedWidth = Math.ceil(
           component.pixelPositionForScreenPosition(Point(6, Infinity)).left +
-            component.getBaseCharacterWidth() +
-            component.getVerticalScrollbarWidth(),
+            component.getBaseCharacterWidth(),
         );
         expect(actualWidth).toBe(expectedWidth + "px");
       }
@@ -298,15 +429,12 @@ describe("TextEditorComponent", () => {
         width: 50,
         height: 100,
       });
-      expect(component.refs.content.offsetHeight).toBe(100);
+      expect(component.refs.content.offsetHeight).toBe(component.getScrollContainerClientHeight());
 
       editor.setText("a\n".repeat(30));
       await component.getNextUpdatePromise();
       expect(component.refs.content.offsetHeight).toBeGreaterThan(100);
-      expect(component.refs.content.offsetHeight).toBeNear(
-        component.getContentHeight() + getHorizontalScrollbarHeight(component),
-        2,
-      );
+      expect(component.refs.content.offsetHeight).toBeNear(component.getContentHeight(), 2);
     });
 
     it("honors the scrollPastEnd option by adding empty space equivalent to the clientHeight to the end of the content area", async () => {
@@ -459,6 +587,7 @@ describe("TextEditorComponent", () => {
 
     it("renders viewport-sized overlay rails without native scroll containers", async () => {
       const { component, editor } = buildComponent({
+        scrollbarLayout: "overlay",
         height: 100,
         width: 100,
       });
@@ -560,6 +689,7 @@ describe("TextEditorComponent", () => {
     describe("when scrollbar styles change or the editor element is detached and then reattached", () => {
       it("updates the bottom/right of overlay scrollbars and client height/width measurements", async () => {
         const { component, element, editor } = buildComponent({
+          scrollbarLayout: "overlay",
           height: 100,
           width: 100,
         });
@@ -1023,13 +1153,13 @@ describe("TextEditorComponent", () => {
       expect(lineNumberNodeForScreenRow(component, 1).classList.contains("folded")).toBe(true);
     });
 
-    it("makes lines at least as wide as the scrollContainer", async () => {
+    it("makes lines at least as wide as the content viewport", async () => {
       const { component, element, editor } = buildComponent();
-      const { scrollContainer } = component.refs;
+      const { contentViewport } = component.refs;
       editor.setText("a");
       await component.getNextUpdatePromise();
 
-      expect(element.querySelector(".line").offsetWidth).toBe(scrollContainer.offsetWidth);
+      expect(element.querySelector(".line").offsetWidth).toBe(contentViewport.offsetWidth);
     });
 
     it("resizes based on the content when the autoHeight and/or autoWidth options are true", async () => {
@@ -5975,8 +6105,7 @@ describe("TextEditorComponent", () => {
           getElementHeight(item3) +
           getElementHeight(item4) +
           getElementHeight(item5) +
-          getElementHeight(item6) +
-          getHorizontalScrollbarHeight(component),
+          getElementHeight(item6),
       );
       assertTilesAreSizedAndPositionedCorrectly(component, [
         {
@@ -9664,8 +9793,7 @@ describe("TextEditorComponent", () => {
       const actualWidth = element.querySelector(".lines").style.width;
       const expectedWidth = Math.ceil(
         component.pixelPositionForScreenPosition(Point(3, Infinity)).left +
-          component.getBaseCharacterWidth() +
-          component.getVerticalScrollbarWidth(),
+          component.getBaseCharacterWidth(),
       );
       expect(actualWidth).toBe(expectedWidth + "px");
     });
@@ -10473,6 +10601,7 @@ function buildComponent(params = {}) {
     chromeVersion: params.chromeVersion,
   });
   const { element } = component;
+  if (params.scrollbarLayout) element.dataset.scrollbarLayout = params.scrollbarLayout;
   if (!editor.getAutoHeight()) {
     element.style.height = params.height ? params.height + "px" : "600px";
   }
