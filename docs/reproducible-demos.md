@@ -29,6 +29,8 @@ node script/demo.js accept <capture-directory> ../bookmarks
 
 The website uses stable image paths on `master`. Pushing a replacement image updates existing gallery entries after GitHub's cache expires. Additions, removals and caption changes require regenerating the website's gallery catalogue. Keep source revisions in capture metadata even though the public image URL follows the branch.
 
+For a change spanning bundled packages, pass `--source-packages bundled` to capture with the current local checkouts of every bundled package. A comma-separated package-name list selects a narrower set. These sources join the capture's normal-mode profile and revision metadata; separately installed packages are still included only when the target recipe requests them. Capture into review directories before accepting images so source revisions stay fixed across a fleet refresh.
+
 ## Recipe contract
 
 Recipes are trusted executable CommonJS modules, loaded in both Node and the editor renderer. Keep module loading free of side effects and access the editor only inside hooks. A recipe can use module-level constants and closures. Do not import the editor runtime at module scope.

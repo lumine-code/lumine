@@ -25,6 +25,7 @@ const ConfigSchema = require("./config-schema");
 
 const DeserializerManager = require("./deserializer-manager");
 const ViewRegistry = require("./view-registry");
+const ScrollbarManager = require("./scrollbar-manager");
 const NotificationManager = require("./notification-manager");
 const Config = require("./config");
 const KeymapManager = require("./keymap-extensions");
@@ -197,6 +198,14 @@ class Environment {
      * @type {ViewRegistry}
      */
     this.views = new ViewRegistry(this);
+    /**
+     * @public
+     * @status public
+     *
+     * Shared overlay scrollbar presentation and local geometry.
+     * @type {ScrollbarManager}
+     */
+    this.scrollbars = new ScrollbarManager(this);
 
     /**
      * @public
@@ -703,6 +712,7 @@ class Environment {
 
     this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
     this.workspace.getMainWindow().setPresentation(this.domWindow, this.workspace.getElement());
+    this.scrollbars.initialize();
     this.menu.attachWorkspace(this.workspace);
     this.workspaceDrops.initialize();
 
@@ -998,6 +1008,7 @@ class Environment {
       capture(() => this.attachSaveStateListeners());
       capture(() => this.pasteProviders.clear());
       capture(() => this.views.clear());
+      capture(() => this.scrollbars.initialize());
       capture(() => this.pathsWithWaitSessions.clear());
       if (this.#destroyed) {
         appendLifecycleError(
@@ -1037,6 +1048,7 @@ class Environment {
     capture(() => this.tooltips.destroy());
     capture(() => this.disposables.dispose());
     destroyField("themes");
+    destroyField("scrollbars");
     destroyField("paneItemTransfers");
     destroyField("workspaceDrops");
     destroyField("workspace");

@@ -1,0 +1,134 @@
+@property --scrollbar-size {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 10px;
+}
+@property --scrollbar-size-editor {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 10px;
+}
+/* Native scrolling remains available to wheels, keys and programmatic users.
+   Only its visual chrome is replaced. */
+.lumine-scrollport {
+  scrollbar-width: none !important;
+}
+.lumine-scrollport::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+.lumine-scrollbar-overlay {
+  position: absolute;
+  z-index: 10;
+  pointer-events: none;
+  contain: layout style;
+}
+.lumine-scrollbar {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  contain: layout paint style;
+  cursor: default;
+  user-select: none;
+  touch-action: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+  background: transparent;
+  z-index: 1;
+}
+.lumine-scrollbar.vertical {
+  top: 0;
+  right: 0;
+}
+.lumine-scrollbar.horizontal {
+  bottom: 0;
+  left: 0;
+}
+.lumine-scrollbar:not(.is-scrollable):not(:has(.scrollmap, .simplemap)) {
+  visibility: hidden;
+}
+.lumine-scrollbar:not(.is-scrollable) > .scrollbar-thumb {
+  display: none;
+}
+.lumine-scrollbar > .scrollbar-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  border: 3px solid transparent;
+  border-radius: 5px;
+  background: var(--scrollbar-color);
+  background-clip: content-box;
+  z-index: 2;
+  contain: strict;
+}
+.lumine-scrollbar.vertical > .scrollbar-thumb {
+  width: 100%;
+}
+.lumine-scrollbar.horizontal > .scrollbar-thumb {
+  height: 100%;
+}
+.lumine-scrollbar > .scrollbar-thumb:hover,
+.lumine-scrollbar.is-dragging > .scrollbar-thumb {
+  background-color: var(
+    --scrollbar-color-hover,
+    color-mix(in srgb, var(--scrollbar-color) 75%, var(--text-color))
+  );
+}
+.lumine-scrollbar.is-dragging > .scrollbar-thumb {
+  border-radius: 3px;
+}
+.lumine-scrollbar-overlay:is(.is-persistent, .is-revealed) > .lumine-scrollbar,
+.lumine-scrollbar:is(:hover, .is-dragging),
+lumine-pane:not(lumine-dock lumine-pane)
+  lumine-text-editor
+  > div
+  > .scroll-view
+  > .lumine-scrollbar,
+lumine-dock lumine-pane:is(:hover, :focus-within) .lumine-scrollbar,
+lumine-text-editor:is(:hover, :focus-within) .lumine-scrollbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+.lumine-scrollbar-overlay.is-document > .vertical,
+lumine-pane:not(lumine-dock lumine-pane)
+  > .item-views
+  > lumine-text-editor
+  > div
+  > .scroll-view
+  > .lumine-scrollbar.vertical {
+  visibility: visible;
+  box-shadow: inset 1px 0 0 var(--scrollbar-border-color);
+}
+lumine-text-editor .lumine-scrollbar > .scrollbar-thumb {
+  background-color: var(--scrollbar-color-editor);
+}
+lumine-text-editor .lumine-scrollbar > .scrollbar-thumb:hover,
+lumine-text-editor .lumine-scrollbar.is-dragging > .scrollbar-thumb {
+  background-color: var(
+    --scrollbar-color-editor-hover,
+    color-mix(in srgb, var(--scrollbar-color-editor) 75%, var(--syntax-text-color))
+  );
+}
+.lumine-scrollbar-overlay.is-left > .vertical {
+  right: auto;
+  left: 0;
+}
+.lumine-scrollbar-overlay.is-left.is-document > .vertical {
+  box-shadow: inset -1px 0 0 var(--scrollbar-border-color);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lumine-scrollbar {
+    transition: none;
+  }
+}
+.disable-animations .lumine-scrollbar {
+  transition: none;
+}
+@media (forced-colors: active) {
+  .lumine-scrollbar > .scrollbar-thumb {
+    background-color: ButtonText;
+  }
+}

@@ -10,6 +10,7 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const exec = promisify(execFile);
 const ROOT = path.resolve(__dirname, "..");
+const { scanBundledPackageNames } = require("../src/bundled-packages");
 const hash = (value) => crypto.createHash("sha256").update(value).digest("hex");
 const readJSON = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 const writeJSON = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2) + "\n");
@@ -273,7 +274,12 @@ async function capture(repository, options = {}) {
   const manifest = readJSON(path.join(repo, "package.json"));
   if (!manifest.engines?.lumine) throw new Error("Only Lumine packages have editor demos");
   const workspace = path.resolve(options.workspace || path.dirname(repo));
+  const sourcePackages =
+    options["source-packages"] === "bundled"
+      ? scanBundledPackageNames(ROOT)
+      : (options["source-packages"] || "").split(",").filter(Boolean);
   const wanted = [...new Set([manifest.name, "one-theme", ...(recipe.dependencies || [])])];
+  const sourceNames = [...new Set([...wanted, ...sourcePackages])];
   const packages = new Map([[manifest.name, repo]]);
   for (const entry of fs.readdirSync(workspace, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
@@ -282,13 +288,13 @@ async function capture(repository, options = {}) {
     if (!fs.existsSync(file)) continue;
     const candidate = readJSON(file);
     if (
-      wanted.includes(candidate.name) &&
+      sourceNames.includes(candidate.name) &&
       candidate.engines?.lumine &&
       !packages.has(candidate.name)
     )
       packages.set(candidate.name, folder);
   }
-  for (const name of wanted) {
+  for (const name of sourceNames) {
     if (!packages.has(name))
       throw new Error(
         `Missing checkout for ${name}; clone it in --workspace and install its dependencies`,
@@ -485,9 +491,14 @@ async function main(args) {
     const options = {};
     for (let i = 1; i < rest.length; i += 2) {
       if (
-        !["--workspace", "--out", "--settings", "--server-cache", "--secrets-file"].includes(
-          rest[i],
-        ) ||
+        ![
+          "--workspace",
+          "--out",
+          "--settings",
+          "--server-cache",
+          "--secrets-file",
+          "--source-packages",
+        ].includes(rest[i]) ||
         !rest[i + 1]
       )
         throw new Error(`Unknown or incomplete option: ${rest[i]}`);

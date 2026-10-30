@@ -150,42 +150,6 @@ lumine-context-view :is(.menu-box, .select-box-list) {
   > * {
     direction: ltr;
   }
-
-  &::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: var(--scrollbar-background-color);
-    border-radius: var(--menu-box-radius) 0 0 var(--menu-box-radius);
-  }
-
-  &::-webkit-scrollbar-thumb {
-    border: 3px solid var(--scrollbar-background-color);
-    border-radius: 5px;
-    background: var(--scrollbar-color);
-    background-clip: content-box;
-  }
-
-  &::-webkit-scrollbar-corner {
-    background: transparent;
-  }
-}
-
-/* Chromium does not match held scrollbar-part selectors reliably when these
-   two rules are nested. */
-lumine-context-view :is(.menu-box, .select-box-list)::-webkit-scrollbar-thumb:vertical:active {
-  border-right-width: 0;
-  border-left-width: 0;
-  border-radius: 0;
-}
-
-lumine-context-view :is(.menu-box, .select-box-list)::-webkit-scrollbar-thumb:horizontal:active {
-  border-top-width: 0;
-  border-bottom-width: 0;
-  border-radius: 0;
 }
 
 .app-menu {

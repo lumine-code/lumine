@@ -50,6 +50,9 @@
   --tab-border-color: var(--base-border-color);
   --tree-view-background-color: var(--tool-panel-background-color);
   --scrollbar-color: var(--background-color-highlight);
+  --scrollbar-size: 10px;
+  --scrollbar-size-editor: 10px;
+  --scrollbar-border-color: color-mix(in srgb, var(--text-color) 22%, transparent);
   --scrollbar-background-color: var(--app-background-color);
   --badge-background-color: hsl(from var(--background-color-highlight) h s calc(l + 6) / alpha);
   --button-text-color-selected: var(--accent-foreground-color);

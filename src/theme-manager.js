@@ -25,6 +25,7 @@ const BASE_STYLESHEETS = [
   "core-ui/syntax.css",
   "core-ui/text-editor.css",
   "core-ui/workspace-view.css",
+  "core-ui/scrollbars.css",
   "lumine-ui/styles/private/scaffolding.css",
   "lumine-ui/styles/private/alerts.css",
   "lumine-ui/styles/private/close.css",
