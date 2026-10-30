@@ -131,33 +131,52 @@ describe("Shared overlay scrollbars", () => {
   });
 
   for (const direction of ["ltr", "rtl"]) {
-    it(`gives the ${direction} overlay intersection to the full-height vertical rail`, () => {
-      const { element, controller } = scrollport({ policy: "always" });
-      element.style.direction = direction;
-      controller.write(controller.read());
-      const bounds = element.getBoundingClientRect();
-      const vertical = controller.vertical.element.getBoundingClientRect();
-      const horizontal = controller.horizontal.element.getBoundingClientRect();
-      expect(vertical.height).toBe(element.clientHeight);
-      expect(vertical.bottom).toBe(bounds.bottom);
-      expect(horizontal.width).toBe(element.clientWidth - 10);
-      expect(direction === "rtl" ? horizontal.left : horizontal.right).toBe(
-        direction === "rtl" ? vertical.right : vertical.left,
-      );
-      const geometry = lumine.scrollbars.getGeometry(element);
-      expect(geometry.verticalTrackSize).toBe(vertical.height);
-      expect(geometry.horizontalTrackSize).toBe(horizontal.width);
-      element.scrollTo({ top: element.scrollHeight, left: direction === "rtl" ? -10000 : 10000 });
-      controller.syncPosition();
-      const thumb = controller.vertical.thumb.getBoundingClientRect();
-      expect(thumb.bottom).toBeCloseTo(bounds.bottom, 0);
-      const target = document.elementFromPoint(
-        vertical.left + vertical.width / 2,
-        bounds.bottom - 2,
-      );
-      expect(target).toBe(controller.vertical.thumb);
-      expect(controller.horizontal.element.contains(target)).toBeFalse();
-    });
+    for (const layout of ["overlay", "gutter"]) {
+      it(`gives the ${direction} ${layout} intersection to the full-height vertical rail`, () => {
+        const { element, controller } = scrollport({ layout, policy: "always" });
+        element.style.direction = direction;
+        controller.write(controller.read());
+        const bounds = element.getBoundingClientRect();
+        const vertical = controller.vertical.element.getBoundingClientRect();
+        const horizontal = controller.horizontal.element.getBoundingClientRect();
+        expect(vertical.height).toBe(bounds.height);
+        expect(vertical.bottom).toBe(bounds.bottom);
+        expect(horizontal.width).toBe(element.clientWidth - (layout === "overlay" ? 10 : 0));
+        expect(direction === "rtl" ? horizontal.left : horizontal.right).toBe(
+          direction === "rtl" ? vertical.right : vertical.left,
+        );
+        const geometry = lumine.scrollbars.getGeometry(element);
+        expect(geometry.verticalTrackSize).toBe(vertical.height);
+        expect(geometry.horizontalTrackSize).toBe(horizontal.width);
+        expect(geometry.viewportHeight).toBe(bounds.height - (layout === "gutter" ? 10 : 0));
+        const x = vertical.left + vertical.width / 2;
+        const y = bounds.bottom - 2;
+        const cornerTarget = document.elementFromPoint(x, y);
+        expect(cornerTarget).toBe(controller.vertical.element);
+        for (const type of ["pointerdown", "pointerup"])
+          cornerTarget.dispatchEvent(
+            new PointerEvent(type, {
+              bubbles: true,
+              button: 0,
+              pointerId: 1,
+              clientX: x,
+              clientY: y,
+            }),
+          );
+        expect(element.scrollTop).toBe(element.scrollHeight - element.clientHeight);
+        expect(element.scrollLeft).toBe(0);
+        element.scrollTo({ top: element.scrollHeight, left: direction === "rtl" ? -10000 : 10000 });
+        controller.syncPosition();
+        const thumb = controller.vertical.thumb.getBoundingClientRect();
+        expect(thumb.bottom).toBeCloseTo(bounds.bottom, 0);
+        const target = document.elementFromPoint(
+          vertical.left + vertical.width / 2,
+          bounds.bottom - 2,
+        );
+        expect(target).toBe(controller.vertical.thumb);
+        expect(controller.horizontal.element.contains(target)).toBeFalse();
+      });
+    }
 
     for (const edge of ["left", "right"]) {
       it(`honors an explicit ${edge} overlay edge in ${direction} without crossing rails`, () => {
@@ -352,10 +371,10 @@ describe("Shared overlay scrollbars", () => {
     controller.write(controller.read());
     expect(element.clientHeight).toBe(170);
     expect(controller.horizontal.metrics.trackSize).toBe(290);
-    expect(controller.vertical.metrics.trackSize).toBe(170);
+    expect(controller.vertical.metrics.trackSize).toBe(180);
     const bounds = element.getBoundingClientRect();
     const corner = document.elementFromPoint(bounds.right - 2, bounds.bottom - 2);
-    expect(controller.vertical.element.contains(corner)).toBeFalse();
+    expect(controller.vertical.element.contains(corner)).toBeTrue();
     expect(controller.horizontal.element.contains(corner)).toBeFalse();
     content.style.cssText = "width:100%;height:20px";
     controller.write(controller.read());
@@ -363,6 +382,24 @@ describe("Shared overlay scrollbars", () => {
     expect(element.clientHeight).toBe(180);
     expect(visibility(controller.vertical)).toBe("hidden");
     expect(visibility(controller.horizontal)).toBe("hidden");
+  });
+
+  it("reports the same full-height gutter track before and after attaching bordered content", () => {
+    const { element, controller } = scrollport({ layout: "gutter" });
+    controller.destroy();
+    element.dataset.scrollbarLayout = "gutter";
+    element.style.border = "3px solid transparent";
+    element.style.padding = "4px";
+    const before = lumine.scrollbars.getGeometry(element);
+    expect(before.verticalTrackSize).toBe(element.clientHeight + 10);
+    expect(before.verticalTrackSize).toBe(element.offsetHeight - 6);
+    const replacement = lumine.scrollbars.attach(element);
+    components.push(replacement);
+    replacement.write(replacement.read());
+    expect(lumine.scrollbars.getGeometry(element)).toEqual(before);
+    expect(replacement.vertical.element.getBoundingClientRect().bottom).toBe(
+      element.getBoundingClientRect().bottom - 3,
+    );
   });
 
   it("uses overlay only for primary ports and keeps nested or modal content in gutters", () => {

@@ -76,7 +76,7 @@ module.exports = class ScrollbarManager {
    * Read track thickness and viewport/document extents in CSS pixels.
    * Thickness stays stable when a thumb is hidden or content fits the viewport.
    * @param {HTMLElement} element - Editor element or native DOM scrollport.
-   * @returns {Object} layout (overlay or gutter); CSS-pixel verticalSize and horizontalSize track thicknesses, viewportWidth and viewportHeight excluding reserved gutters, verticalTrackSize and horizontalTrackSize lengths (overlay vertical spans the full height, horizontal excludes the vertical rail; gutters retain the reserved corner), scrollWidth and scrollHeight, canScrollVertically and canScrollHorizontally. Editor snapshots also include rowGeometryVersion for marker projection invalidation.
+   * @returns {Object} layout (overlay or gutter); CSS-pixel verticalSize and horizontalSize track thicknesses, viewportWidth and viewportHeight excluding reserved gutters, verticalTrackSize and horizontalTrackSize lengths (vertical spans the full height including any horizontal gutter, horizontal excludes the vertical rail), scrollWidth and scrollHeight, canScrollVertically and canScrollHorizontally. Editor snapshots also include rowGeometryVersion for marker projection invalidation.
    * @category Geometry
    */
   getGeometry(element) {
@@ -88,13 +88,7 @@ module.exports = class ScrollbarManager {
         horizontalSize: component.getHorizontalScrollbarHeight(),
         viewportWidth: component.getScrollContainerClientWidth(),
         viewportHeight: component.getScrollContainerClientHeight(),
-        verticalTrackSize: Math.max(
-          0,
-          component.getScrollContainerHeight() -
-            (component.getScrollbarLayout() === "gutter" && component.canScrollHorizontally()
-              ? component.getHorizontalScrollbarHeight()
-              : 0),
-        ),
+        verticalTrackSize: Math.max(0, component.getScrollContainerHeight()),
         horizontalTrackSize: Math.max(
           0,
           component.getScrollContainerWidth() -
@@ -112,13 +106,23 @@ module.exports = class ScrollbarManager {
     if (controller?.publicGeometry) return controller.publicGeometry;
     const size = scrollbarSize(element);
     const { layout, kind } = scrollbarPresentation(element);
+    const style =
+      layout === "gutter" ? element.ownerDocument.defaultView?.getComputedStyle(element) : null;
     return {
       layout,
       verticalSize: size,
       horizontalSize: size,
       viewportWidth: element.clientWidth,
       viewportHeight: element.clientHeight,
-      verticalTrackSize: element.clientHeight,
+      verticalTrackSize:
+        layout === "gutter"
+          ? Math.max(
+              0,
+              element.offsetHeight -
+                (parseFloat(style?.borderTopWidth) || 0) -
+                (parseFloat(style?.borderBottomWidth) || 0),
+            )
+          : element.clientHeight,
       horizontalTrackSize: Math.max(
         0,
         element.clientWidth -

@@ -1592,37 +1592,16 @@ module.exports = class TextEditorComponent {
         const verticalScrollbar = new EditorScrollbarComponent(verticalScrollbarProps);
         const horizontalScrollbar = new EditorScrollbarComponent(horizontalScrollbarProps);
 
-        // Only reserved gutters have a corner. Overlay intersections belong
-        // to the full-height vertical rail.
-        const scrollbarCorner = this.document.createElement("div");
-        scrollbarCorner.className = "scrollbar-corner";
-        const style = scrollbarCorner.style;
-        style.position = "absolute";
-        style.bottom = 0;
-        style.right = 0;
-        style.pointerEvents = "none";
-
         this.refs.verticalScrollbar = verticalScrollbar;
         this.refs.horizontalScrollbar = horizontalScrollbar;
-        this.refs.scrollbarCorner = scrollbarCorner;
         this.refs.scrollContainer.appendChild(verticalScrollbar.element);
         this.refs.scrollContainer.appendChild(horizontalScrollbar.element);
-        this.refs.scrollContainer.appendChild(scrollbarCorner);
       }
-
-      this.refs.scrollbarCorner.style.visibility =
-        this.getScrollbarLayout() === "gutter" && canScrollHorizontally && canScrollVertically
-          ? ""
-          : "hidden";
-      this.refs.scrollbarCorner.style.width = this.getVerticalScrollbarWidth() + "px";
-      this.refs.scrollbarCorner.style.height = this.getHorizontalScrollbarHeight() + "px";
     } else if (!positionsOnly && this.refs.verticalScrollbar) {
       this.refs.verticalScrollbar.destroy();
       this.refs.horizontalScrollbar.destroy();
-      this.refs.scrollbarCorner.remove();
       delete this.refs.verticalScrollbar;
       delete this.refs.horizontalScrollbar;
-      delete this.refs.scrollbarCorner;
     }
   }
 

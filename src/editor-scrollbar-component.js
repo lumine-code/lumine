@@ -24,11 +24,7 @@ module.exports = class EditorScrollbarComponent {
   update(props) {
     this.props = props;
     const horizontal = props.orientation === "horizontal";
-    const opposite = horizontal
-      ? props.verticalScrollbarWidth
-      : props.layout === "overlay"
-        ? 0
-        : props.horizontalScrollbarHeight;
+    const opposite = horizontal ? props.verticalScrollbarWidth : 0;
     const edge = horizontal ? "right" : "bottom";
     const value = (opposite || 0) + "px";
     if (this.element.style[edge] !== value) this.element.style[edge] = value;

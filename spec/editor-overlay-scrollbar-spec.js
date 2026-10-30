@@ -58,7 +58,7 @@ describe("Editor overlay scrollbars", () => {
   });
 
   for (const layout of ["overlay", "gutter"]) {
-    it(`uses the ${layout} corner policy consistently for both rails and public geometry`, () => {
+    it(`gives the ${layout} intersection to the full-height vertical rail and public geometry`, () => {
       element.dataset.scrollbarLayout = layout;
       component.updateSync();
       expect(component.canScrollHorizontally()).toBeTrue();
@@ -71,22 +71,25 @@ describe("Editor overlay scrollbars", () => {
       const geometry = lumine.scrollbars.getGeometry(element);
       expect(v.height).toBe(geometry.verticalTrackSize);
       expect(h.width).toBe(geometry.horizontalTrackSize);
-      expect(v.bottom).toBe(container.bottom - (layout === "gutter" ? 12 : 0));
+      expect(v.bottom).toBe(container.bottom);
       expect(h.right).toBe(v.left);
-      expect(component.refs.scrollbarCorner.style.visibility).toBe(
-        layout === "overlay" ? "hidden" : "",
-      );
+      expect(component.refs.scrollContainer.querySelector(".scrollbar-corner")).toBeNull();
+      expect(geometry.viewportHeight).toBe(container.height - (layout === "gutter" ? 12 : 0));
+      const x = v.left + v.width / 2;
+      const y = container.bottom - 2;
+      const cornerTarget = document.elementFromPoint(x, y);
+      expect(cornerTarget).toBe(vertical);
+      pointer(cornerTarget, "pointerdown", x, y);
+      // Editor limits round to CSS pixels; the shared rail keeps fractional geometry.
+      expect(component.getScrollTop()).toBeCloseTo(component.getMaxScrollTop(), 0);
+      expect(component.getScrollLeft()).toBe(0);
+      pointer(cornerTarget, "pointerup", x, y);
       component.setScrollTop(component.getMaxScrollTop());
       component.setScrollLeft(component.getMaxScrollLeft());
       component.updateSync();
-      const target = document.elementFromPoint(v.left + v.width / 2, container.bottom - 2);
-      if (layout === "overlay") {
-        expect(target).toBe(component.refs.verticalScrollbar.scrollbar.thumb);
-        expect(horizontal.contains(target)).toBeFalse();
-      } else {
-        expect(vertical.contains(target)).toBeFalse();
-        expect(horizontal.contains(target)).toBeFalse();
-      }
+      const target = document.elementFromPoint(x, y);
+      expect(target).toBe(component.refs.verticalScrollbar.scrollbar.thumb);
+      expect(horizontal.contains(target)).toBeFalse();
     });
   }
 

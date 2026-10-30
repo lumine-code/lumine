@@ -469,9 +469,9 @@ function createScrollbarRuntime() {
         horizontalSize: size,
         viewportWidth: width,
         viewportHeight: height,
-        // Overlay rails give the full-height vertical track the intersection;
-        // a native gutter already excludes the horizontal rail from height.
-        verticalTrackSize: height,
+        // The vertical rail owns the intersection in every layout, including
+        // the space reserved by the native horizontal gutter.
+        verticalTrackSize: layerHeight,
         horizontalTrackSize: Math.max(0, width - (!gutter && verticalSlot ? size : 0)),
         horizontalInset: gutter ? leftGutter : edge === "left" && verticalSlot ? size : 0,
         scrollWidth,
