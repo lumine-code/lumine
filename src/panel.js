@@ -16,12 +16,15 @@ module.exports = class Panel {
    */
 
   constructor(
-    { item, autoFocus, restoreFocus, visible, priority, className, crumb },
+    { item, autoFocus, dismissOnBlur = false, restoreFocus, visible, priority, className, crumb },
     viewRegistry,
   ) {
     this.destroyed = false;
     this.item = item;
-    this.autoFocus = autoFocus == null ? false : autoFocus;
+    if (typeof dismissOnBlur !== "boolean" && typeof dismissOnBlur !== "function")
+      throw new TypeError("dismissOnBlur must be a boolean or synchronous predicate.");
+    this.dismissOnBlur = dismissOnBlur;
+    this.autoFocus = autoFocus == null ? dismissOnBlur !== false : autoFocus;
     this.restoreFocus = restoreFocus == null ? true : restoreFocus;
     this.visible = visible == null ? true : visible;
     this.priority = priority == null ? 100 : priority;
@@ -129,6 +132,13 @@ module.exports = class Panel {
    */
   getItem() {
     return this.item;
+  }
+
+  /** @private A pending operation may temporarily prevent click-away dismissal. */
+  shouldDismissOnBlur() {
+    return typeof this.dismissOnBlur === "function"
+      ? this.dismissOnBlur() === true
+      : this.dismissOnBlur;
   }
 
   /**

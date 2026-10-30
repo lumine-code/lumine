@@ -1,8 +1,7 @@
 "use strict";
 
-const { createFocusTrap } = require("focus-trap");
 const { CompositeDisposable } = require("@lumine-code/event-kit");
-const { isWindowControlTarget } = require("./window-control-target");
+const ModalPanelFocusPolicy = require("./modal-panel-focus-policy");
 
 class PanelContainerElement extends HTMLElement {
   constructor() {
@@ -84,38 +83,24 @@ class PanelContainerElement extends HTMLElement {
         );
       }
 
-      if (panel.autoFocus) {
-        const focusOptions = {
-          document: this.ownerDocument,
-          // focus-trap will attempt to give focus to the first tabbable element
-          // on activation. If there aren't any tabbable elements,
-          // give focus to the panel element itself
-          fallbackFocus: panelElement,
-          // closing is handled by core Lumine commands and this already deactivates
-          // on visibility changes
-          escapeDeactivates: false,
-          // Native window actions do not leave the modal's document flow.
-          allowOutsideClick: (event) => isWindowControlTarget(event.target),
-          delayInitialFocus: false,
-          // focus restoration is handled centrally by the container, which
-          // tracks focus across chained modals instead of per activation
-          returnFocusOnDeactivate: false,
-        };
-
-        if (panel.autoFocus !== true) {
-          focusOptions.initialFocus = panel.autoFocus;
-        }
-        const modalFocusTrap = createFocusTrap(panelElement, focusOptions);
-
-        this.subscriptions.add(
+      if (panel.autoFocus || panel.dismissOnBlur !== false) {
+        const focusPolicy = new ModalPanelFocusPolicy({
+          panel,
+          initialFocus: panel.autoFocus !== true ? panel.autoFocus : undefined,
+          trapFocus: Boolean(panel.autoFocus),
+          canDismiss: () => panel.shouldDismissOnBlur(),
+          dismiss: () => panel.hide(),
+        });
+        const subscriptions = new CompositeDisposable(
+          focusPolicy,
           panel.onDidChangeVisible((visible) => {
-            if (visible) {
-              modalFocusTrap.activate();
-            } else {
-              modalFocusTrap.deactivate();
-            }
+            if (visible) focusPolicy.activate();
+            else focusPolicy.deactivate();
           }),
         );
+        subscriptions.add(panel.onDidDestroy(() => subscriptions.dispose()));
+        this.subscriptions.add(subscriptions);
+        if (panel.isVisible()) focusPolicy.activate();
       }
     }
   }

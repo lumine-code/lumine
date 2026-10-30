@@ -5016,6 +5016,7 @@ module.exports = class Workspace extends Model {
    * @param {Number} [options.priority] - Determines stacking order. Lower priority items are forced closer to the edges of the window. (default: 100)
    * @param {Boolean|Element} [options.autoFocus] - true if you want modal focus managed for you by Lumine. Lumine will automatically focus on this element or your modal panel's first tabbable element when the modal opens and will restore the previously selected element when the modal closes. Lumine will also automatically restrict user tab focus within your modal while it is open. (default: false)
    * @param {Boolean} [options.restoreFocus] - false if you want to manage focus restoration yourself. By default, when a modal panel is hidden, focus returns to the element that was focused before the modal opened — or, for chained modals, before the first modal in the chain opened. (default: true)
+   * @param {Boolean|Function} [options.dismissOnBlur=false] - Hide after an outside click or same-document focus departure. A synchronous predicate must return true to permit dismissal. Window blur and owned menus preserve the panel. Enabling this option defaults autoFocus to true unless explicitly disabled.
    * @param {String} [options.crumb] - the label this panel carries on the modal breadcrumb trail. Used when the panel is shown as a flow step without an explicit label — `panel.show({crumb: true})` — and when a step shown on top of this panel adopts it as the trail root. See {@link Panel#show}.
    * @returns {Panel}
    */

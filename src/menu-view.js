@@ -463,6 +463,13 @@ class MenuPopup {
     let popup = this;
     try {
       this.handle = contextViewManager.show({
+        ownerElement: Object.hasOwn(options, "ownerElement")
+          ? options.ownerElement
+          : options.anchor?.nodeType === 1
+            ? options.anchor
+            : options.anchor?.target?.nodeType === 1
+              ? options.anchor.target
+              : (options.contextTarget ?? options.target),
         anchor: options.anchor ?? options.target,
         placement: options.placement,
         fixedPlacement: options.fixedPlacement,

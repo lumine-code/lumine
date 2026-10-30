@@ -17,6 +17,7 @@ module.exports = class SelectBoxView {
   constructor(menuManager, options = {}) {
     this.menuManager = menuManager;
     this.options = options;
+    const document = options.document ?? options.popupAnchor?.ownerDocument ?? globalThis.document;
     this.items = (options.items ?? []).map(normalizeItem);
     this.selectedValue = options.value;
     this.enabled = options.disabled !== true;
@@ -133,7 +134,11 @@ module.exports = class SelectBoxView {
         this.element.removeAttribute("aria-busy");
       }
       if (!this.enabled || this.destroyed || this.popup || !this.element.isConnected) return null;
-      this.popup = this.menuManager.contextViewManager.show({
+      const contextViews =
+        this.menuManager.ensureContextViewManager?.(this.element.ownerDocument) ??
+        this.menuManager.contextViewManager;
+      this.popup = contextViews.show({
+        ownerElement: this.element,
         anchor: this.options.popupAnchor ?? this.element,
         matchAnchorWidth: true,
         fixedPlacement: true,
@@ -184,6 +189,7 @@ module.exports = class SelectBoxView {
 
   renderList() {
     if (!this.listElement) return;
+    const document = this.listElement.ownerDocument;
     this.listElement.classList.add("select-box-list");
     this.listElement.id = `${this.id}-listbox`;
     this.listElement.setAttribute("role", "listbox");
@@ -380,6 +386,19 @@ module.exports = class SelectBoxView {
         return true;
       case "Tab":
         this.close({ cancelled: true });
+        this.element.focus({ preventScroll: true });
+        if (!this.element.contains(event.target)) {
+          const KeyboardEvent = this.element.ownerDocument.defaultView.KeyboardEvent;
+          const forwarded = new KeyboardEvent("keydown", {
+            key: "Tab",
+            code: "Tab",
+            shiftKey: event.shiftKey,
+            bubbles: true,
+            cancelable: true,
+          });
+          this.element.dispatchEvent(forwarded);
+          if (forwarded.defaultPrevented) event.preventDefault();
+        }
         return false;
       default:
         return this.handleTypeahead(event.key, { commit: false });

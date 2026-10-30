@@ -90,7 +90,6 @@ class ContextViewHandle {
     manager.window.requestAnimationFrame?.(() => {
       if (!this.closed) this.layout();
     });
-    options.focus?.(this.surface, this);
   }
 
   onDidClose(callback) {
@@ -156,7 +155,10 @@ class ContextViewHandle {
   close({ cancelled = false, restoreFocus = true } = {}) {
     if (this.closed) return false;
     this.closed = true;
-    if (this.manager.activeHandle === this) this.manager.activeHandle = null;
+    if (this.manager.activeHandle === this) {
+      this.manager.activeHandle = null;
+      this.manager.didChangeActive();
+    }
     this.resizeObserver?.disconnect();
     this.manager.window.removeEventListener("mousedown", this.boundOutsideMouseDown, true);
     this.manager.window.removeEventListener("blur", this.boundWindowBlur);
@@ -199,6 +201,7 @@ module.exports = class ContextViewManager {
     this.document = document ?? globalThis.document;
     this.window = window ?? this.document?.defaultView ?? globalThis.window;
     this.activeHandle = null;
+    this.emitter = new Emitter();
     this.contextGesture = null;
     this.captureContextGesture = (event) => {
       const contextual = event.button === 2 || (event.button === 0 && event.ctrlKey);
@@ -237,10 +240,53 @@ module.exports = class ContextViewManager {
     if (typeof options.render !== "function") {
       throw new TypeError("ContextViewManager::show requires a render callback");
     }
+    const parent = this.activeHandle;
+    if (options.ownerElement?.nodeType === 1 && parent?.element.contains(options.ownerElement)) {
+      options = { ...options, ownerElement: parent.options.ownerElement };
+    }
     this.hide({ cancelled: true });
     const handle = new ContextViewHandle(this, options);
     this.activeHandle = handle;
+    this.didChangeActive();
+    if (!handle.closed) options.focus?.(handle.surface, handle);
     return handle;
+  }
+
+  /** @private Observe portal ownership before a popup takes focus. */
+  onDidChangeActive(callback) {
+    return this.emitter.on("did-change-active", callback);
+  }
+
+  /** @private */
+  didChangeActive() {
+    this.emitter.emit("did-change-active", this.activeHandle);
+  }
+
+  /** @private Only an explicit trigger owns a body-mounted popup. */
+  getOwnedSurfaces(owner) {
+    const handle = this.activeHandle;
+    const trigger = handle?.options.ownerElement;
+    return owner?.nodeType === 1 &&
+      trigger?.nodeType === 1 &&
+      (owner === trigger || owner.contains(trigger)) &&
+      !handle.closed
+      ? [handle.element]
+      : [];
+  }
+
+  /** @private */
+  containsOwnedElement(owner, target) {
+    return Boolean(
+      target?.nodeType &&
+      this.getOwnedSurfaces(owner).some(
+        (surface) => surface === target || surface.contains(target),
+      ),
+    );
+  }
+
+  /** @private Retire child portals without touching an unrelated popup. */
+  hideOwnedBy(owner, options = { restoreFocus: false }) {
+    return this.getOwnedSurfaces(owner).length ? this.hide(options) : false;
   }
 
   hide(options) {
@@ -254,6 +300,7 @@ module.exports = class ContextViewManager {
     this.document.removeEventListener("mousedown", this.captureContextGesture, true);
     this.document.removeEventListener("keydown", this.clearContextGesture, true);
     this.contextGesture = null;
+    this.emitter.dispose();
     this.document = null;
     this.window = null;
   }

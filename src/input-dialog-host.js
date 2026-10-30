@@ -1,8 +1,7 @@
 "use strict";
 
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
-const { createFocusTrap } = require("focus-trap");
-const { isWindowControlTarget } = require("./window-control-target");
+const ModalPanelFocusPolicy = require("./modal-panel-focus-policy");
 
 const HOST_OPTIONS = new Set([
   "item",
@@ -13,8 +12,6 @@ const HOST_OPTIONS = new Set([
   "className",
   "window",
 ]);
-const INTERACTIVE_SELECTOR =
-  "input, textarea, select, button, a[href], [tabindex], lumine-text-editor";
 
 /**
  * @public
@@ -609,49 +606,24 @@ class InputDialogHost {
   }
 
   installFocusPolicy() {
-    const element = this.panel.getElement();
-    this.focusTrap = createFocusTrap(element, {
-      document: this.document,
-      fallbackFocus: element,
+    this.focusPolicy = new ModalPanelFocusPolicy({
+      panel: this.panel,
       initialFocus: this.model.getQueryEditor().getElement(),
-      escapeDeactivates: false,
-      clickOutsideDeactivates: (event) => this.isPointerOutsidePanelSurface(event),
-      allowOutsideClick: (event) =>
-        isWindowControlTarget(event.target) || this.isModalFlowTarget(event.target),
-      delayInitialFocus: false,
-      returnFocusOnDeactivate: false,
+      focusQuery: () => this.focus(),
+      isPending: () => this.model.isActionPending(),
+      canDismiss: () => true,
+      dismiss: (reason) => this.cancel(reason),
     });
-    const didLoseFocus = (event) => this.didLoseFocus(event);
-    const didMouseDown = (event) => this.didMouseDownOnElement(event);
-    element.addEventListener("focusout", didLoseFocus);
-    element.addEventListener("mousedown", didMouseDown);
-    this.panelDisposables.add(
-      {
-        dispose() {
-          element.removeEventListener("focusout", didLoseFocus);
-          element.removeEventListener("mousedown", didMouseDown);
-        },
-      },
-      { dispose: () => this.deactivateFocusPolicy() },
-    );
+    this.focusTrap = this.focusPolicy.focusTrap;
+    this.panelDisposables.add(this.focusPolicy);
   }
 
   activateFocusTrap() {
-    if (!this.pointerPolicyActive) {
-      this.document.addEventListener("mousedown", this.boundPointerDown, true);
-      this.document.addEventListener("touchstart", this.boundPointerDown, true);
-      this.pointerPolicyActive = true;
-    }
-    this.focusTrap?.activate();
-    if (this.model.isActionPending()) this.focusTrap?.pause();
+    this.focusPolicy.activate();
   }
 
   deactivateFocusPolicy() {
-    this.focusTrap?.deactivate();
-    if (!this.pointerPolicyActive) return;
-    this.document.removeEventListener("mousedown", this.boundPointerDown, true);
-    this.document.removeEventListener("touchstart", this.boundPointerDown, true);
-    this.pointerPolicyActive = false;
+    this.focusPolicy?.deactivate();
   }
 
   pauseFocusTrap() {
@@ -663,83 +635,19 @@ class InputDialogHost {
   }
 
   didLoseFocus(event) {
-    if (isWindowControlTarget(event.relatedTarget)) return;
-    const element = this.panel.getElement();
-    const queryElement = this.model.getQueryEditor().getElement();
-    if (element.contains(event.relatedTarget)) {
-      if (queryElement.contains(event.relatedTarget)) return;
-      if (this.isInteractiveTarget(event.relatedTarget)) return;
-      queryElement.focus();
-      return;
-    }
-    if (this.model.isActionPending()) return;
-    const generation = this.panelLifecycleGeneration;
-    this.document.defaultView.requestAnimationFrame(() => {
-      if (!this.document.hasFocus() || !this.isCurrentPanelLifecycle(generation, true)) return;
-      if (this.model.isActionPending()) return;
-      // The focus trap can restore focus after the original focusout event.
-      if (element.contains(this.document.activeElement)) return;
-      this.cancel("focus-lost");
-    });
+    this.focusPolicy.didLoseFocus(event);
   }
 
   didMouseDownOnElement(event) {
-    // ::before paints the card and ::after paints its full-window backdrop,
-    // but events from both pseudo-elements target the panel itself. The
-    // document-level hit test distinguishes them by the panel's border box.
-    if (this.isPointerOutsidePanelSurface(event)) return;
-    const queryElement = this.model.getQueryEditor().getElement();
-    if (queryElement.contains(event.target) || this.isInteractiveTarget(event.target)) return;
-    event.preventDefault();
-    queryElement.focus();
+    this.focusPolicy.didMouseDownOnElement(event);
   }
 
   didPointerDown(event) {
-    if (!this.isVisible() || !this.isPointerOutsidePanelSurface(event)) return;
-    const generation = this.panelLifecycleGeneration;
-    // Let the click reach the surface behind the backdrop before dismissing
-    // the dialog. A modal-flow transition caused by that click changes the
-    // generation and makes this callback a no-op.
-    this.document.defaultView.requestAnimationFrame(() => {
-      if (!this.isCurrentPanelLifecycle(generation, true)) return;
-      this.cancel("click-outside");
-    });
+    this.focusPolicy.didPointerDown(event);
   }
 
   isPointerOutsidePanelSurface(event) {
-    if (isWindowControlTarget(event.target)) return false;
-    if (this.isModalFlowTarget(event.target)) return false;
-    const element = this.panel?.getElement();
-    if (!element || !element.contains(event.target)) return true;
-    if (event.target !== element) return false;
-
-    const point = event.touches?.[0] ?? event.changedTouches?.[0] ?? event;
-    const rect = element.getBoundingClientRect();
-    if (
-      !Number.isFinite(point.clientX) ||
-      !Number.isFinite(point.clientY) ||
-      rect.width <= 0 ||
-      rect.height <= 0
-    ) {
-      return false;
-    }
-    return (
-      point.clientX < rect.left ||
-      point.clientX > rect.right ||
-      point.clientY < rect.top ||
-      point.clientY > rect.bottom
-    );
-  }
-
-  isModalFlowTarget(node) {
-    return Boolean(this.panel?.flowKeeper?.containsElement(node));
-  }
-
-  isInteractiveTarget(node) {
-    if (!node?.closest) return false;
-    const element = this.panel.getElement();
-    const match = node.closest(INTERACTIVE_SELECTOR);
-    return Boolean(match && match !== element && element.contains(match));
+    return this.focusPolicy.isPointerOutsidePanelSurface(event);
   }
 
   consumeUiAction(result) {

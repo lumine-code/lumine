@@ -179,12 +179,33 @@ module.exports = class EditorWindow {
    *
    * Add a modal panel to this presentation's own document.
    * @param {Object} options - Panel content, visibility and modal options.
+   * @param {Boolean|Function} [options.dismissOnBlur=false] - Hide after an outside click or same-document focus departure. A synchronous predicate must return true to permit dismissal. Window blur preserves the panel. Supplying this option enables autoFocus unless explicitly disabled.
    * @returns {Panel} The local modal panel.
    */
   addModalPanel(options) {
     const panel = new Panel(options, this.workspace.viewRegistry);
     panel.flowKeeper = this.getModalFlow();
     return this.panelContainers.modal.addPanel(panel);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Observe this window's existing and newly added modal panels.
+   * @param {Function} callback - Receives each Panel once; observe its visibility and destruction separately.
+   * @returns {Disposable} Stops observing new panels.
+   */
+  observeModalPanels(callback) {
+    const container = this.panelContainers.modal;
+    const subscription = container.onDidAddPanel(({ panel }) => callback(panel));
+    try {
+      for (const panel of container.getPanels()) callback(panel);
+    } catch (error) {
+      subscription.dispose();
+      throw error;
+    }
+    return subscription;
   }
 
   /** @private Own a separate breadcrumb trail for this document. */

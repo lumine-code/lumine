@@ -46,3 +46,11 @@ Use `lumine.workspace.buildTextEditor({ mini: true })` for free text, register i
 ```
 
 The shared CSS owns form padding, field gaps, heading size and action spacing. Keep package styles for content-specific previews and specialized controls. A long body scrolls within the available window height, and actions wrap when the window becomes narrow. The modal theme continues to own width, surface, border, shadow and backdrop. Core preserves native Enter activation on buttons inside `dialog-form`, so a focused Cancel button cancels instead of submitting the primary action.
+
+## Focus and dismissal
+
+A dialog's logical surface includes its fields, buttons and owned menus or select-box popups, even when the popup is rendered elsewhere in the document. Moving focus within that surface preserves the dialog. Escape closes an open child popup before it cancels the parent. Switching applications or opening a native file picker preserves the draft.
+
+InputDialog owns this policy automatically. A custom modal form opts into the same outside-click and focusout dismissal with `dismissOnBlur: true`, or a synchronous predicate such as `dismissOnBlur: () => !pending`. The owner handles an ordinary hide as cancellation, while ignoring a destroyed panel, a modal-flow suspension and an operation already committing. Observe the whole logical surface rather than a mini editor's `blur` event: Tab from a field to Cancel is still inside the dialog.
+
+Pending operations disable Cancel and reject dismissal until they settle. Bind completion and error callbacks to the request that started them, so an older response cannot close a newer form. Required kernel input and document-password requests keep their request alive across blur; a temporarily covered kernel prompt resumes after the covering modal closes. Modeless image controls keep their different selection workflow and cancel or roll back when their image changes windows.
