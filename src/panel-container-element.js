@@ -2,6 +2,7 @@
 
 const { createFocusTrap } = require("focus-trap");
 const { CompositeDisposable } = require("@lumine-code/event-kit");
+const { isWindowControlTarget } = require("./window-control-target");
 
 class PanelContainerElement extends HTMLElement {
   constructor() {
@@ -93,6 +94,8 @@ class PanelContainerElement extends HTMLElement {
           // closing is handled by core Lumine commands and this already deactivates
           // on visibility changes
           escapeDeactivates: false,
+          // Native window actions do not leave the modal's document flow.
+          allowOutsideClick: (event) => isWindowControlTarget(event.target),
           delayInitialFocus: false,
           // focus restoration is handled centrally by the container, which
           // tracks focus across chained modals instead of per activation

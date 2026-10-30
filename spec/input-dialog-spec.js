@@ -1346,6 +1346,38 @@ describe("InputDialog", () => {
       outside.remove();
     });
 
+    it("lets window controls run without dismissing the dialog or releasing its focus trap", async () => {
+      spyOn(document, "hasFocus").and.returnValue(true);
+      const cancelled = jasmine.createSpy("cancelled");
+      const activateWindowControl = jasmine.createSpy("activate window control");
+      const windowControl = document.createElement("button");
+      windowControl.setAttribute("data-window-control", "minimize");
+      const icon = document.createElement("span");
+      windowControl.appendChild(icon);
+      windowControl.addEventListener("click", activateWindowControl);
+      lumine.workspace.getElement().appendChild(windowControl);
+      createHostedInputDialog({});
+      host.onDidCancel(cancelled);
+
+      try {
+        await host.show();
+        const press = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+        icon.dispatchEvent(press);
+        windowControl.focus();
+        icon.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+
+        expect(press.defaultPrevented).toBe(false);
+        expect(activateWindowControl).toHaveBeenCalledTimes(1);
+        expect(cancelled).not.toHaveBeenCalled();
+        expect(host.isVisible()).toBe(true);
+        expect(view.getElement().contains(document.activeElement)).toBe(true);
+      } finally {
+        windowControl.remove();
+      }
+    });
+
     it("treats the panel's backdrop pseudo-element as an outside click", async () => {
       spyOn(document, "hasFocus").and.returnValue(true);
       const cancellations = [];

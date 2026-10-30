@@ -2,6 +2,7 @@
 
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { createFocusTrap } = require("focus-trap");
+const { isWindowControlTarget } = require("./window-control-target");
 
 const HOST_OPTIONS = new Set([
   "item",
@@ -610,7 +611,8 @@ class InputDialogHost {
       initialFocus: this.model.getQueryEditor().getElement(),
       escapeDeactivates: false,
       clickOutsideDeactivates: (event) => this.isPointerOutsidePanelSurface(event),
-      allowOutsideClick: (event) => this.isModalFlowTarget(event.target),
+      allowOutsideClick: (event) =>
+        isWindowControlTarget(event.target) || this.isModalFlowTarget(event.target),
       delayInitialFocus: false,
       returnFocusOnDeactivate: false,
     });
@@ -656,6 +658,7 @@ class InputDialogHost {
   }
 
   didLoseFocus(event) {
+    if (isWindowControlTarget(event.relatedTarget)) return;
     const element = this.panel.getElement();
     const queryElement = this.model.getQueryEditor().getElement();
     if (element.contains(event.relatedTarget)) {
@@ -699,6 +702,7 @@ class InputDialogHost {
   }
 
   isPointerOutsidePanelSurface(event) {
+    if (isWindowControlTarget(event.target)) return false;
     if (this.isModalFlowTarget(event.target)) return false;
     const element = this.panel?.getElement();
     if (!element || !element.contains(event.target)) return true;

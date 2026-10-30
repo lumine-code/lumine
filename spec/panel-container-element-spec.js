@@ -231,6 +231,49 @@ describe("PanelContainerElement", () => {
         panel.destroy();
       });
 
+      it("lets window controls run while keeping other outside clicks blocked", () => {
+        const panel = createPanel();
+        const input = document.createElement("input");
+        panel.getElement().appendChild(input);
+        const windowControl = document.createElement("button");
+        windowControl.setAttribute("data-window-control", "minimize");
+        const icon = document.createElement("span");
+        windowControl.appendChild(icon);
+        const outside = document.createElement("button");
+        const activateWindowControl = jasmine.createSpy("activate window control");
+        const activateOutside = jasmine.createSpy("activate outside");
+        windowControl.addEventListener("click", activateWindowControl);
+        outside.addEventListener("click", activateOutside);
+        jasmineContent.append(windowControl, outside);
+
+        try {
+          panel.show();
+          const press = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+          icon.dispatchEvent(press);
+          windowControl.focus();
+          icon.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+          expect(press.defaultPrevented).toBe(false);
+          expect(activateWindowControl).toHaveBeenCalledTimes(1);
+          expect(panel.isVisible()).toBe(true);
+          expect(document.activeElement).toBe(input);
+
+          const outsidePress = new MouseEvent("mousedown", {
+            bubbles: true,
+            cancelable: true,
+          });
+          outside.dispatchEvent(outsidePress);
+          outside.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+          expect(outsidePress.defaultPrevented).toBe(true);
+          expect(activateOutside).not.toHaveBeenCalled();
+        } finally {
+          panel.destroy();
+          windowControl.remove();
+          outside.remove();
+        }
+      });
+
       it("returns focus to the original activeElement", async () => {
         const panel = createPanel();
         const previousActiveElement = document.activeElement;
