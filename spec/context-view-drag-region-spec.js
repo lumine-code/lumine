@@ -23,10 +23,21 @@ describe("Context views above window drag regions", () => {
     jasmine.attachToDOM(dragStrip);
   });
 
-  afterEach(() => {
-    commands?.dispose();
-    contextViews.destroy();
-    dragStrip.remove();
+  afterEach(async () => {
+    try {
+      // Trusted clicks change Chromium's focus modality across spec boundaries.
+      // Restore keyboard modality before removing the currently focused surface.
+      for (const type of ["keyDown", "keyUp"]) {
+        await ipcRenderer.invoke("lumine:window", "sendInputEvent", {
+          type,
+          keyCode: "Shift",
+        });
+      }
+    } finally {
+      commands?.dispose();
+      contextViews.destroy();
+      dragStrip.remove();
+    }
   });
 
   function manager(template = []) {
