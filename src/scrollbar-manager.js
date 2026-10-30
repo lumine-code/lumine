@@ -76,7 +76,7 @@ module.exports = class ScrollbarManager {
    * Read track thickness and viewport/document extents in CSS pixels.
    * Thickness stays stable when a thumb is hidden or content fits the viewport.
    * @param {HTMLElement} element - Editor element or native DOM scrollport.
-   * @returns {Object} layout (overlay or gutter); CSS-pixel verticalSize and horizontalSize track thicknesses, viewportWidth and viewportHeight excluding reserved gutters, verticalTrackSize and horizontalTrackSize lengths excluding the opposite rail, scrollWidth and scrollHeight, canScrollVertically and canScrollHorizontally. Editor snapshots also include rowGeometryVersion for marker projection invalidation.
+   * @returns {Object} layout (overlay or gutter); CSS-pixel verticalSize and horizontalSize track thicknesses, viewportWidth and viewportHeight excluding reserved gutters, verticalTrackSize and horizontalTrackSize lengths (overlay vertical spans the full height, horizontal excludes the vertical rail; gutters retain the reserved corner), scrollWidth and scrollHeight, canScrollVertically and canScrollHorizontally. Editor snapshots also include rowGeometryVersion for marker projection invalidation.
    * @category Geometry
    */
   getGeometry(element) {
@@ -91,7 +91,9 @@ module.exports = class ScrollbarManager {
         verticalTrackSize: Math.max(
           0,
           component.getScrollContainerHeight() -
-            (component.canScrollHorizontally() ? component.getHorizontalScrollbarHeight() : 0),
+            (component.getScrollbarLayout() === "gutter" && component.canScrollHorizontally()
+              ? component.getHorizontalScrollbarHeight()
+              : 0),
         ),
         horizontalTrackSize: Math.max(
           0,
@@ -109,22 +111,21 @@ module.exports = class ScrollbarManager {
     const controller = this.documents.get(element.ownerDocument)?.controllers.get(element);
     if (controller?.publicGeometry) return controller.publicGeometry;
     const size = scrollbarSize(element);
-    const layout = scrollbarPresentation(element).layout;
+    const { layout, kind } = scrollbarPresentation(element);
     return {
       layout,
       verticalSize: size,
       horizontalSize: size,
       viewportWidth: element.clientWidth,
       viewportHeight: element.clientHeight,
-      verticalTrackSize: Math.max(
-        0,
-        element.clientHeight -
-          (layout === "overlay" && element.scrollWidth > element.clientWidth ? size : 0),
-      ),
+      verticalTrackSize: element.clientHeight,
       horizontalTrackSize: Math.max(
         0,
         element.clientWidth -
-          (layout === "overlay" && element.scrollHeight > element.clientHeight ? size : 0),
+          (layout === "overlay" &&
+          (kind === "document" || element.scrollHeight > element.clientHeight)
+            ? size
+            : 0),
       ),
       scrollWidth: element.scrollWidth,
       scrollHeight: element.scrollHeight,

@@ -345,6 +345,8 @@ function createScrollbarRuntime() {
         (/auto|scroll/.test(style.overflowY) || this.options.vertical === true);
       const canScrollHorizontally = x && scrollWidth > width + 0.5;
       const canScrollVertically = y && scrollHeight > height + 0.5;
+      const documentTrack = !gutter && presentation.kind === "document";
+      const verticalSlot = canScrollVertically || documentTrack;
       const rect = element.getBoundingClientRect();
       // Mount in the existing containing block: never wrap/reparent authored
       // content or change which ancestor positions a package's own overlays.
@@ -437,7 +439,7 @@ function createScrollbarRuntime() {
       return {
         parent,
         layout: presentation.layout,
-        documentTrack: !gutter && presentation.kind === "document",
+        documentTrack,
         layerWidth,
         layerHeight,
         followSibling,
@@ -466,11 +468,13 @@ function createScrollbarRuntime() {
         horizontalSize: size,
         viewportWidth: width,
         viewportHeight: height,
-        verticalTrackSize: Math.max(0, height - (!gutter && canScrollHorizontally ? size : 0)),
-        horizontalTrackSize: Math.max(0, width - (!gutter && canScrollVertically ? size : 0)),
+        // Overlay rails give the full-height vertical track the intersection;
+        // a native gutter already excludes the horizontal rail from height.
+        verticalTrackSize: height,
+        horizontalTrackSize: Math.max(0, width - (!gutter && verticalSlot ? size : 0)),
         horizontalInset: gutter
           ? leftGutter
-          : (this.rtl || this.options.edge === "left") && canScrollVertically
+          : (this.rtl || this.options.edge === "left") && verticalSlot
             ? size
             : 0,
         scrollWidth,

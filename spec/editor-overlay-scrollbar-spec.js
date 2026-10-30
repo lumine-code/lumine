@@ -57,6 +57,39 @@ describe("Editor overlay scrollbars", () => {
     expect(component.getContentViewportWidth()).toBe(component.getScrollContainerWidth() - 12);
   });
 
+  for (const layout of ["overlay", "gutter"]) {
+    it(`uses the ${layout} corner policy consistently for both rails and public geometry`, () => {
+      element.dataset.scrollbarLayout = layout;
+      component.updateSync();
+      expect(component.canScrollHorizontally()).toBeTrue();
+      expect(component.canScrollVertically()).toBeTrue();
+      const vertical = component.refs.verticalScrollbar.element;
+      const horizontal = component.refs.horizontalScrollbar.element;
+      const container = component.refs.scrollContainer.getBoundingClientRect();
+      const v = vertical.getBoundingClientRect();
+      const h = horizontal.getBoundingClientRect();
+      const geometry = lumine.scrollbars.getGeometry(element);
+      expect(v.height).toBe(geometry.verticalTrackSize);
+      expect(h.width).toBe(geometry.horizontalTrackSize);
+      expect(v.bottom).toBe(container.bottom - (layout === "gutter" ? 12 : 0));
+      expect(h.right).toBe(v.left);
+      expect(component.refs.scrollbarCorner.style.visibility).toBe(
+        layout === "overlay" ? "hidden" : "",
+      );
+      component.setScrollTop(component.getMaxScrollTop());
+      component.setScrollLeft(component.getMaxScrollLeft());
+      component.updateSync();
+      const target = document.elementFromPoint(v.left + v.width / 2, container.bottom - 2);
+      if (layout === "overlay") {
+        expect(target).toBe(component.refs.verticalScrollbar.scrollbar.thumb);
+        expect(horizontal.contains(target)).toBeFalse();
+      } else {
+        expect(vertical.contains(target)).toBeFalse();
+        expect(horizontal.contains(target)).toBeFalse();
+      }
+    });
+  }
+
   for (const orientation of ["vertical", "horizontal"]) {
     it(`jumps a ${orientation} track click directly to the centered destination and cancels a wheel glide`, () => {
       const horizontal = orientation === "horizontal";

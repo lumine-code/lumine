@@ -130,6 +130,56 @@ describe("Shared overlay scrollbars", () => {
     expect(controller.horizontal.metrics.trackSize).toBe(290);
   });
 
+  for (const direction of ["ltr", "rtl"]) {
+    it(`gives the ${direction} overlay intersection to the full-height vertical rail`, () => {
+      const { element, controller } = scrollport({ policy: "always" });
+      element.style.direction = direction;
+      controller.write(controller.read());
+      const bounds = element.getBoundingClientRect();
+      const vertical = controller.vertical.element.getBoundingClientRect();
+      const horizontal = controller.horizontal.element.getBoundingClientRect();
+      expect(vertical.height).toBe(element.clientHeight);
+      expect(vertical.bottom).toBe(bounds.bottom);
+      expect(horizontal.width).toBe(element.clientWidth - 10);
+      expect(direction === "rtl" ? horizontal.left : horizontal.right).toBe(
+        direction === "rtl" ? vertical.right : vertical.left,
+      );
+      const geometry = lumine.scrollbars.getGeometry(element);
+      expect(geometry.verticalTrackSize).toBe(vertical.height);
+      expect(geometry.horizontalTrackSize).toBe(horizontal.width);
+      element.scrollTo({ top: element.scrollHeight, left: direction === "rtl" ? -10000 : 10000 });
+      controller.syncPosition();
+      const thumb = controller.vertical.thumb.getBoundingClientRect();
+      expect(thumb.bottom).toBeCloseTo(bounds.bottom, 0);
+      const target = document.elementFromPoint(
+        vertical.left + vertical.width / 2,
+        bounds.bottom - 2,
+      );
+      expect(target).toBe(controller.vertical.thumb);
+      expect(controller.horizontal.element.contains(target)).toBeFalse();
+    });
+
+    for (const kind of ["document", "panel"]) {
+      it(`keeps the visible ${direction} ${kind} vertical slot consistent when only X overflows`, () => {
+        const { element, content, controller } = scrollport({ kind, policy: "always" });
+        element.style.direction = direction;
+        content.style.height = "20px";
+        controller.write(controller.read());
+        expect(controller.geometry.canScrollVertically).toBeFalse();
+        expect(controller.geometry.canScrollHorizontally).toBeTrue();
+        const bounds = element.getBoundingClientRect();
+        const horizontal = controller.horizontal.element.getBoundingClientRect();
+        const size = kind === "document" ? 10 : 0;
+        expect(horizontal.width).toBe(element.clientWidth - size);
+        expect(horizontal.left).toBe(bounds.left + (direction === "rtl" ? size : 0));
+        expect(getComputedStyle(controller.vertical.element).visibility).toBe(
+          kind === "document" ? "visible" : "hidden",
+        );
+        expect(lumine.scrollbars.getGeometry(element).horizontalTrackSize).toBe(horizontal.width);
+      });
+    }
+  }
+
   it("updates only the thumb during ordinary DOM scrolling", () => {
     const { element, controller } = scrollport();
     const measure = spyOn(controller, "read").and.callThrough();
@@ -280,6 +330,10 @@ describe("Shared overlay scrollbars", () => {
     expect(element.clientHeight).toBe(170);
     expect(controller.horizontal.metrics.trackSize).toBe(290);
     expect(controller.vertical.metrics.trackSize).toBe(170);
+    const bounds = element.getBoundingClientRect();
+    const corner = document.elementFromPoint(bounds.right - 2, bounds.bottom - 2);
+    expect(controller.vertical.element.contains(corner)).toBeFalse();
+    expect(controller.horizontal.element.contains(corner)).toBeFalse();
     content.style.cssText = "width:100%;height:20px";
     controller.write(controller.read());
     expect(element.clientWidth).toBe(300);
@@ -386,7 +440,7 @@ describe("Shared overlay scrollbars", () => {
     const track = controller.vertical.element;
     const rect = track.getBoundingClientRect();
     expect(rect.top).toBe(element.getBoundingClientRect().top);
-    expect(rect.height).toBe(170);
+    expect(rect.height).toBe(180);
     const target = document.elementFromPoint(rect.right - 3, rect.top + 40);
     expect(track.contains(target)).toBeTrue();
     target.dispatchEvent(

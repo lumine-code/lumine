@@ -106,7 +106,7 @@ async function main(argv) {
   try {
     await command("launch", "--no-dev", "--fresh");
     client = await connect(port);
-    if (await client.evaluate("lumine.inDevMode()"))
+    if (await client.evaluate("lumine.window.isDevMode()"))
       throw new Error("Trusted input must be checked in a normal window");
     await client.evaluate(
       fs.readFileSync(

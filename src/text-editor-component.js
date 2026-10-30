@@ -1552,6 +1552,7 @@ module.exports = class TextEditorComponent {
 
       const verticalScrollbarProps = {
         document: this.document,
+        layout: this.getScrollbarLayout(),
         orientation: "vertical",
         viewportExtent: this.getScrollContainerClientHeight(),
         trackExtent: this.getScrollContainerHeight(),
@@ -1565,6 +1566,7 @@ module.exports = class TextEditorComponent {
       };
       const horizontalScrollbarProps = {
         document: this.document,
+        layout: this.getScrollbarLayout(),
         orientation: "horizontal",
         viewportExtent: this.getScrollContainerClientWidth(),
         trackExtent: this.getScrollContainerWidth(),
@@ -1590,7 +1592,8 @@ module.exports = class TextEditorComponent {
         const verticalScrollbar = new EditorScrollbarComponent(verticalScrollbarProps);
         const horizontalScrollbar = new EditorScrollbarComponent(horizontalScrollbarProps);
 
-        // The corner covers the intersection of the two overlay rails.
+        // Only reserved gutters have a corner. Overlay intersections belong
+        // to the full-height vertical rail.
         const scrollbarCorner = this.document.createElement("div");
         scrollbarCorner.className = "scrollbar-corner";
         const style = scrollbarCorner.style;
@@ -1608,7 +1611,9 @@ module.exports = class TextEditorComponent {
       }
 
       this.refs.scrollbarCorner.style.visibility =
-        canScrollHorizontally && canScrollVertically ? "" : "hidden";
+        this.getScrollbarLayout() === "gutter" && canScrollHorizontally && canScrollVertically
+          ? ""
+          : "hidden";
       this.refs.scrollbarCorner.style.width = this.getVerticalScrollbarWidth() + "px";
       this.refs.scrollbarCorner.style.height = this.getHorizontalScrollbarHeight() + "px";
     } else if (!positionsOnly && this.refs.verticalScrollbar) {
