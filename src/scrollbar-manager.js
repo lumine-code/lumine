@@ -5,13 +5,14 @@ const {
   DOMScrollbarManager,
   scrollbarSize,
   createScrollbarRuntime,
+  scrollbarPresentation,
 } = require("./overlay-scrollbar");
 
 /**
  * @public
  * @status public
  *
- * Shared overlay scrollbars and local geometry for document and package views.
+ * Shared scrollbar presentation and local geometry for document and package views.
  * Access this namespace through `lumine.scrollbars`.
  */
 module.exports = class ScrollbarManager {
@@ -58,9 +59,9 @@ module.exports = class ScrollbarManager {
    * @public
    * @status public
    *
-   * Attach overlay chrome without wrapping or reparenting the scrollport.
+   * Attach shared scrollbar chrome without wrapping or reparenting the scrollport.
    * @param {HTMLElement} element - Existing DOM scrollport.
-   * @param {Object} [options] - policy (auto, always or hover), edge (left or right), focusOwner and axis overrides.
+   * @param {Object} [options] - layout (overlay or gutter), policy (auto, always or hover), edge (left or right), focusOwner, zIndex and horizontal/vertical axis overrides. Defaults use overlays for primary pane scrollports and reserved, always-visible gutters for nested surfaces.
    * @returns {Object|null} A controller with refresh() and dispose(), or null for an inert document.
    * @category DOM Surfaces
    */
@@ -75,13 +76,14 @@ module.exports = class ScrollbarManager {
    * Read track thickness and viewport/document extents in CSS pixels.
    * Thickness stays stable when a thumb is hidden or content fits the viewport.
    * @param {HTMLElement} element - Editor element or native DOM scrollport.
-   * @returns {Object} verticalSize, horizontalSize, viewportWidth, viewportHeight, scrollWidth, scrollHeight and axis availability.
+   * @returns {Object} layout (overlay or gutter); CSS-pixel verticalSize and horizontalSize track thicknesses, viewportWidth and viewportHeight excluding reserved gutters, verticalTrackSize and horizontalTrackSize lengths excluding the opposite rail, scrollWidth and scrollHeight, canScrollVertically and canScrollHorizontally. Editor snapshots also include rowGeometryVersion for marker projection invalidation.
    * @category Geometry
    */
   getGeometry(element) {
     const component = element.matches("lumine-text-editor") ? element.getComponent?.() : null;
     if (component)
       return {
+        layout: component.getScrollbarLayout(),
         verticalSize: component.getVerticalScrollbarWidth(),
         horizontalSize: component.getHorizontalScrollbarHeight(),
         viewportWidth: component.getScrollContainerClientWidth(),
@@ -93,7 +95,10 @@ module.exports = class ScrollbarManager {
         ),
         horizontalTrackSize: Math.max(
           0,
-          component.getScrollContainerWidth() - component.getVerticalScrollbarWidth(),
+          component.getScrollContainerWidth() -
+            (!component.props.model.getAutoWidth() || component.canScrollVertically()
+              ? component.getVerticalScrollbarWidth()
+              : 0),
         ),
         scrollWidth: component.getScrollWidth(),
         scrollHeight: component.getScrollHeight(),
@@ -104,18 +109,22 @@ module.exports = class ScrollbarManager {
     const controller = this.documents.get(element.ownerDocument)?.controllers.get(element);
     if (controller?.publicGeometry) return controller.publicGeometry;
     const size = scrollbarSize(element);
+    const layout = scrollbarPresentation(element).layout;
     return {
+      layout,
       verticalSize: size,
       horizontalSize: size,
       viewportWidth: element.clientWidth,
       viewportHeight: element.clientHeight,
       verticalTrackSize: Math.max(
         0,
-        element.clientHeight - (element.scrollWidth > element.clientWidth ? size : 0),
+        element.clientHeight -
+          (layout === "overlay" && element.scrollWidth > element.clientWidth ? size : 0),
       ),
       horizontalTrackSize: Math.max(
         0,
-        element.clientWidth - (element.scrollHeight > element.clientHeight ? size : 0),
+        element.clientWidth -
+          (layout === "overlay" && element.scrollHeight > element.clientHeight ? size : 0),
       ),
       scrollWidth: element.scrollWidth,
       scrollHeight: element.scrollHeight,
@@ -129,6 +138,7 @@ module.exports = class ScrollbarManager {
    * @status public
    *
    * Obtain the local vertical track for a noninteractive marker canvas.
+   * A DOM scrollport is attached to the shared manager if needed.
    * @param {HTMLElement} element - Editor element or native DOM scrollport.
    * @returns {HTMLElement|null} Track owned by this scroll surface.
    * @category Geometry
@@ -147,7 +157,7 @@ module.exports = class ScrollbarManager {
    *
    * Observe geometry changes, independently of thumb movement.
    * @param {HTMLElement} element - Editor element or native DOM scrollport.
-   * @param {Function} callback - Receives an immediate snapshot and changed geometry.
+   * @param {Function} callback - Receives an immediate getGeometry(element) snapshot, then changed layout or geometry; scroll position alone does not trigger it.
    * @returns {Disposable} Removes exactly this observation.
    * @category Geometry
    */
@@ -160,6 +170,7 @@ module.exports = class ScrollbarManager {
       if (disposed) return;
       const geometry = this.getGeometry(element);
       const signature = JSON.stringify(geometry, [
+        "layout",
         "verticalSize",
         "horizontalSize",
         "viewportWidth",

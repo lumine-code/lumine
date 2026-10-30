@@ -266,6 +266,7 @@ describe("Overlay scrollbar work budgets", () => {
 
   it("discovers class-driven overflow and refreshes an existing track's policy", async () => {
     const { element } = fixture({ overflow: "visible" });
+    element.dataset.scrollbar = "hover";
     const style = document.createElement("style");
     style.textContent = ".benchmark-scrollable { overflow: auto !important; }";
     document.head.appendChild(style);
@@ -274,6 +275,7 @@ describe("Overlay scrollbar work budgets", () => {
     element.classList.add("benchmark-scrollable");
     await settle();
     const controller = dom.controllers.get(element);
+    if (!baseline) expect(controller.layer.classList.contains("is-persistent")).toBe(false);
     element.dataset.scrollbar = "always";
     await settle();
     const persistent = !!controller?.layer.classList.contains("is-persistent");

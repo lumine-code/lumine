@@ -1,4 +1,4 @@
-const { OverlayScrollbar } = require("../src/overlay-scrollbar");
+const { OverlayScrollbar, scrollbarPresentation } = require("../src/overlay-scrollbar");
 
 describe("Shared overlay scrollbars", () => {
   let components, fixtures;
@@ -111,7 +111,7 @@ describe("Shared overlay scrollbars", () => {
     fixture.appendChild(element);
     jasmine.attachToDOM(fixture);
     fixtures.push(fixture);
-    const controller = lumine.scrollbars.attach(element, options);
+    const controller = lumine.scrollbars.attach(element, { layout: "overlay", ...options });
     components.push(controller);
     controller.write(controller.read());
     return { fixture, element, content, controller };
@@ -138,6 +138,69 @@ describe("Shared overlay scrollbars", () => {
     expect(controller.vertical.metrics.position).toBe(100);
     expect(measure).not.toHaveBeenCalled();
     expect(controller.vertical.thumb.style.transform).not.toBe("translateY(0px)");
+  });
+
+  it("reserves space only for overflowing inline axes and hides empty tracks", () => {
+    const { element, content, controller } = scrollport({ layout: "gutter" });
+    content.style.cssText = "width:100%;height:20px";
+    controller.write(controller.read());
+    const visibility = (bar) => getComputedStyle(bar.element).visibility;
+    expect(element.clientWidth).toBe(300);
+    expect(element.clientHeight).toBe(180);
+    expect(visibility(controller.vertical)).toBe("hidden");
+    expect(visibility(controller.horizontal)).toBe("hidden");
+    content.style.height = "1000px";
+    controller.write(controller.read());
+    expect(element.clientWidth).toBe(290);
+    expect(element.clientHeight).toBe(180);
+    expect(controller.geometry.viewportWidth).toBe(290);
+    expect(controller.vertical.metrics.trackSize).toBe(180);
+    expect(controller.layer.classList.contains("is-persistent")).toBeTrue();
+    expect(visibility(controller.vertical)).toBe("visible");
+    expect(visibility(controller.horizontal)).toBe("hidden");
+    expect(controller.vertical.element.getBoundingClientRect().left).toBe(
+      element.getBoundingClientRect().left + element.clientWidth,
+    );
+    content.style.width = "900px";
+    controller.write(controller.read());
+    expect(element.clientHeight).toBe(170);
+    expect(controller.horizontal.metrics.trackSize).toBe(290);
+    expect(controller.vertical.metrics.trackSize).toBe(170);
+    content.style.cssText = "width:100%;height:20px";
+    controller.write(controller.read());
+    expect(element.clientWidth).toBe(300);
+    expect(element.clientHeight).toBe(180);
+    expect(visibility(controller.vertical)).toBe("hidden");
+    expect(visibility(controller.horizontal)).toBe("hidden");
+  });
+
+  it("uses overlay only for primary ports and keeps nested or modal content in gutters", () => {
+    const { fixture, element, content } = scrollport();
+    fixture.className = "item-views";
+    expect(scrollbarPresentation(element).layout).toBe("overlay");
+    expect(scrollbarPresentation(element).policy).toBe("always");
+    const nested = document.createElement("div");
+    nested.style.overflow = "auto";
+    content.appendChild(nested);
+    expect(scrollbarPresentation(nested).layout).toBe("gutter");
+    element.dataset.scrollbarLayout = "overlay";
+    expect(scrollbarPresentation(nested).layout).toBe("gutter");
+    delete element.dataset.scrollbarLayout;
+    fixture.classList.add("panel", "modal");
+    expect(scrollbarPresentation(element).layout).toBe("gutter");
+    expect(scrollbarPresentation(element).policy).toBe("always");
+  });
+
+  it("puts the RTL horizontal rail after the left gutter and reaches the right edge", () => {
+    const { element, controller } = scrollport({ layout: "gutter" });
+    element.style.direction = "rtl";
+    controller.write(controller.read());
+    const rect = controller.horizontal.element.getBoundingClientRect();
+    const outer = element.getBoundingClientRect();
+    expect(rect.left).toBe(outer.left + 10);
+    expect(rect.right).toBe(outer.right);
+    const target = document.elementFromPoint(rect.right - 2, rect.top + 5);
+    expect(controller.horizontal.element.contains(target)).toBeTrue();
   });
 
   it("reveals a panel for keyboard focus without changing viewport dimensions", () => {
@@ -175,6 +238,33 @@ describe("Shared overlay scrollbars", () => {
     const rect = controller.vertical.element.getBoundingClientRect();
     const target = document.elementFromPoint(rect.left + 5, rect.top + 60);
     expect(controller.vertical.element.contains(target)).toBeTrue();
+  });
+
+  it("keeps a panel rail above sticky content without changing its viewport range", () => {
+    const { fixture, element, controller } = scrollport({ zIndex: 101 });
+    const sticky = document.createElement("div");
+    sticky.style.cssText =
+      "position:absolute;top:0;left:0;right:0;height:60px;z-index:100;background:white";
+    fixture.appendChild(sticky);
+    controller.layer.classList.add("is-revealed");
+    const track = controller.vertical.element;
+    const rect = track.getBoundingClientRect();
+    expect(rect.top).toBe(element.getBoundingClientRect().top);
+    expect(rect.height).toBe(170);
+    const target = document.elementFromPoint(rect.right - 3, rect.top + 40);
+    expect(track.contains(target)).toBeTrue();
+    target.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        buttons: 1,
+        pointerId: 1,
+        clientX: rect.right - 3,
+        clientY: rect.bottom - 1,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    expect(element.scrollTop).toBe(element.scrollHeight - element.clientHeight);
   });
 
   it("scrolls an actual popup track without dismissing the popup or choosing an option", async () => {

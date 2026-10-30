@@ -8,6 +8,31 @@
   inherits: true;
   initial-value: 10px;
 }
+/* Renderer-owned or not-yet-registered ports retain the previous appearance. */
+::-webkit-scrollbar {
+  width: clamp(4px, var(--scrollbar-size), 40px);
+  height: clamp(4px, var(--scrollbar-size), 40px);
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-background-color);
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 5px;
+  background: var(--scrollbar-color);
+  background-clip: content-box;
+}
+lumine-text-editor ::-webkit-scrollbar-track,
+lumine-text-editor ::-webkit-scrollbar-corner {
+  background: var(--scrollbar-background-color-editor);
+}
+lumine-text-editor ::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-color-editor);
+}
 /* Native scrolling remains available to wheels, keys and programmatic users.
    Only its visual chrome is replaced. */
 .lumine-scrollport {
@@ -16,6 +41,28 @@
 .lumine-scrollport::-webkit-scrollbar {
   width: 0 !important;
   height: 0 !important;
+  display: none !important;
+}
+/* Let the browser reserve the old scrollbar space while shared chrome owns
+   painting and input. Preserve authored padding and content containment. */
+.lumine-scrollport-gutter {
+  scrollbar-width: auto !important;
+  scrollbar-color: auto !important;
+}
+.lumine-scrollport-gutter::-webkit-scrollbar {
+  display: block !important;
+  width: clamp(4px, var(--scrollbar-size), 40px) !important;
+  height: clamp(4px, var(--scrollbar-size), 40px) !important;
+}
+.lumine-scrollport-gutter::-webkit-scrollbar,
+.lumine-scrollport-gutter::-webkit-scrollbar-track,
+.lumine-scrollport-gutter::-webkit-scrollbar-thumb,
+.lumine-scrollport-gutter::-webkit-scrollbar-corner {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.lumine-scrollport-gutter::-webkit-scrollbar-button {
   display: none !important;
 }
 .lumine-scrollbar-overlay {
@@ -82,25 +129,28 @@
 }
 .lumine-scrollbar-overlay:is(.is-persistent, .is-revealed) > .lumine-scrollbar,
 .lumine-scrollbar:is(:hover, .is-dragging),
-lumine-pane:not(lumine-dock lumine-pane)
-  lumine-text-editor
-  > div
-  > .scroll-view
-  > .lumine-scrollbar,
-lumine-dock lumine-pane:is(:hover, :focus-within) .lumine-scrollbar,
-lumine-text-editor:is(:hover, :focus-within) .lumine-scrollbar {
+.scroll-view:is(.is-gutter, .is-persistent) > .lumine-scrollbar,
+.scroll-view.is-hover:hover > .lumine-scrollbar,
+lumine-text-editor:is(:hover, :focus-within) > div > .scroll-view.is-hover > .lumine-scrollbar,
+lumine-dock lumine-pane:is(:hover, :focus-within) .scroll-view.is-overlay > .lumine-scrollbar {
   opacity: 1;
   pointer-events: auto;
 }
 .lumine-scrollbar-overlay.is-document > .vertical,
-lumine-pane:not(lumine-dock lumine-pane)
-  > .item-views
-  > lumine-text-editor
-  > div
-  > .scroll-view
-  > .lumine-scrollbar.vertical {
+.scroll-view.is-document > .lumine-scrollbar.vertical {
   visibility: visible;
   box-shadow: inset 1px 0 0 var(--scrollbar-border-color);
+}
+.lumine-scrollbar-overlay.is-gutter > .lumine-scrollbar,
+.scroll-view.is-gutter > .lumine-scrollbar {
+  background: var(--scrollbar-background-color);
+}
+.scroll-view.is-gutter > .lumine-scrollbar {
+  background: var(--scrollbar-background-color-editor);
+}
+.lumine-scrollbar-overlay.is-gutter > .lumine-scrollbar:not(.is-scrollable),
+.scroll-view.is-gutter > .lumine-scrollbar:not(.is-scrollable) {
+  visibility: hidden;
 }
 lumine-text-editor .lumine-scrollbar > .scrollbar-thumb {
   background-color: var(--scrollbar-color-editor);
@@ -128,7 +178,14 @@ lumine-text-editor .lumine-scrollbar.is-dragging > .scrollbar-thumb {
   transition: none;
 }
 @media (forced-colors: active) {
-  .lumine-scrollbar > .scrollbar-thumb {
-    background-color: ButtonText;
+  .lumine-scrollbar {
+    --scrollbar-color: ButtonText;
+    --scrollbar-color-hover: ButtonText;
+    --scrollbar-color-editor: ButtonText;
+    --scrollbar-color-editor-hover: ButtonText;
+  }
+  .lumine-scrollbar-overlay.is-document > .vertical,
+  .scroll-view.is-document > .lumine-scrollbar.vertical {
+    border-inline-start: 1px solid ButtonText;
   }
 }

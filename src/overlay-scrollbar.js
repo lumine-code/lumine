@@ -14,6 +14,47 @@ function createScrollbarRuntime() {
     return Number.isFinite(value) ? clamp(value, 4, 40) : 10;
   }
 
+  function scrollbarPresentation(element, options = {}) {
+    const item = element.closest(".item-views > *");
+    const window = element.ownerDocument.defaultView;
+    const requestedLayout = options.layout || element.dataset.scrollbarLayout;
+    const explicitLayout = ["overlay", "gutter"].includes(requestedLayout) ? requestedLayout : null;
+    const inheritedGutter = element.parentElement?.closest("[data-scrollbar-layout='gutter']");
+    const gutter = explicitLayout === "gutter" || (!explicitLayout && !!inheritedGutter);
+    let primary = !!item && !gutter;
+    if (
+      element.closest(
+        ".panel.modal,[role='dialog'],[role='menu'],[role='listbox'],.select-list,.popover,.tooltip",
+      )
+    )
+      primary = false;
+    if (primary && element !== item) {
+      for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        const style = window?.getComputedStyle(ancestor);
+        if (style && /auto|scroll/.test(`${style.overflowX} ${style.overflowY}`)) {
+          primary = false;
+          break;
+        }
+        if (ancestor === item) break;
+      }
+    }
+    const layout = explicitLayout || (inheritedGutter || !primary ? "gutter" : "overlay");
+    const requestedPolicy = options.policy || element.dataset.scrollbar;
+    const policy =
+      requestedPolicy && requestedPolicy !== "auto"
+        ? requestedPolicy
+        : layout === "gutter" || !element.closest("lumine-dock")
+          ? "always"
+          : "hover";
+    return {
+      layout,
+      policy,
+      primary,
+      focusOwner:
+        options.focusOwner || (primary ? element.closest("lumine-pane") : element) || element,
+    };
+  }
+
   class OverlayScrollbar {
     constructor({ document, orientation = "vertical", onScroll, onDragChange = () => {} }) {
       this.orientation = orientation;
@@ -193,6 +234,8 @@ function createScrollbarRuntime() {
       this.previousScrollbarWidth = element.style.scrollbarWidth;
       element.classList.add("lumine-scrollport");
       element.style.scrollbarWidth = "none";
+      this.layout = scrollbarPresentation(element, options).layout;
+      element.classList.toggle("lumine-scrollport-gutter", this.layout === "gutter");
       const create = (orientation) =>
         new OverlayScrollbar({
           document: element.ownerDocument,
@@ -245,6 +288,31 @@ function createScrollbarRuntime() {
       const height = element.clientHeight;
       const scrollWidth = element.scrollWidth;
       const scrollHeight = element.scrollHeight;
+      const presentation = scrollbarPresentation(element, this.options);
+      const gutter = presentation.layout === "gutter";
+      const verticalGutter = gutter
+        ? Math.max(
+            0,
+            element.offsetWidth -
+              width -
+              (parseFloat(style.borderLeftWidth) || 0) -
+              (parseFloat(style.borderRightWidth) || 0),
+          )
+        : 0;
+      const horizontalGutter = gutter
+        ? Math.max(
+            0,
+            element.offsetHeight -
+              height -
+              (parseFloat(style.borderTopWidth) || 0) -
+              (parseFloat(style.borderBottomWidth) || 0),
+          )
+        : 0;
+      const leftGutter = gutter
+        ? Math.max(0, element.clientLeft - (parseFloat(style.borderLeftWidth) || 0))
+        : 0;
+      const layerWidth = width + verticalGutter;
+      const layerHeight = height + horizontalGutter;
       const x =
         this.options.horizontal !== false &&
         (/auto|scroll/.test(style.overflowX) || this.options.horizontal === true);
@@ -284,47 +352,66 @@ function createScrollbarRuntime() {
           continue;
         const bounds = ancestor.getBoundingClientRect();
         const top = rect.top + element.clientTop;
-        const left = rect.left + element.clientLeft;
+        const left = rect.left + element.clientLeft - leftGutter;
         if (/(auto|scroll|hidden|clip)/.test(ancestorStyle.overflowY)) {
           clipTop = Math.max(clipTop, bounds.top + ancestor.clientTop - top);
           clipBottom = Math.max(
             clipBottom,
-            top + height - bounds.top - ancestor.clientTop - ancestor.clientHeight,
+            top + layerHeight - bounds.top - ancestor.clientTop - ancestor.clientHeight,
           );
         }
         if (/(auto|scroll|hidden|clip)/.test(ancestorStyle.overflowX)) {
           clipLeft = Math.max(clipLeft, bounds.left + ancestor.clientLeft - left);
           clipRight = Math.max(
             clipRight,
-            left + width - bounds.left - ancestor.clientLeft - ancestor.clientWidth,
+            left + layerWidth - bounds.left - ancestor.clientLeft - ancestor.clientWidth,
           );
         }
       }
-      this.owner = this.options.focusOwner || element.closest("lumine-pane") || element;
-      const policy = this.options.policy || element.dataset.scrollbar;
-      const persistent =
-        policy === "always" ||
-        (policy !== "hover" && !element.closest("lumine-dock") && !!element.closest("lumine-pane"));
+      this.owner = presentation.focusOwner;
+      const persistent = presentation.policy === "always";
       const scrollLeft = this.rtl
         ? Math.max(0, scrollWidth - width) + element.scrollLeft
         : element.scrollLeft;
       return {
         parent,
+        layout: presentation.layout,
+        documentTrack: !gutter && presentation.primary && !element.closest("lumine-dock"),
+        layerWidth,
+        layerHeight,
         followSibling,
-        stacking: followSibling ? style.zIndex : "10",
+        stacking: Number.isFinite(this.options.zIndex)
+          ? String(Math.trunc(this.options.zIndex))
+          : followSibling
+            ? style.zIndex
+            : "10",
         left:
-          rect.left + element.clientLeft - parentRect.left - parent.clientLeft + parent.scrollLeft,
+          rect.left +
+          element.clientLeft -
+          leftGutter -
+          parentRect.left -
+          parent.clientLeft +
+          parent.scrollLeft,
         top: rect.top + element.clientTop - parentRect.top - parent.clientTop + parent.scrollTop,
         clip: `inset(${Math.max(0, clipTop)}px ${Math.max(0, clipRight)}px ${Math.max(0, clipBottom)}px ${Math.max(0, clipLeft)}px)`,
         visible: rect.width > 0 && rect.height > 0 && style.visibility !== "hidden",
         persistent,
-        edge: this.options.edge || (this.rtl ? "left" : "right"),
+        edge: gutter
+          ? leftGutter
+            ? "left"
+            : "right"
+          : this.options.edge || (this.rtl ? "left" : "right"),
         verticalSize: size,
         horizontalSize: size,
         viewportWidth: width,
         viewportHeight: height,
-        verticalTrackSize: Math.max(0, height - (canScrollHorizontally ? size : 0)),
-        horizontalTrackSize: Math.max(0, width - (canScrollVertically ? size : 0)),
+        verticalTrackSize: Math.max(0, height - (!gutter && canScrollHorizontally ? size : 0)),
+        horizontalTrackSize: Math.max(0, width - (!gutter && canScrollVertically ? size : 0)),
+        horizontalInset: gutter
+          ? leftGutter
+          : (this.rtl || this.options.edge === "left") && canScrollVertically
+            ? size
+            : 0,
         scrollWidth,
         scrollHeight,
         canScrollHorizontally,
@@ -336,6 +423,12 @@ function createScrollbarRuntime() {
 
     write(snapshot) {
       if (this.destroyed || !snapshot) return;
+      if (this.layout !== snapshot.layout) {
+        this.layout = snapshot.layout;
+        this.element.classList.toggle("lumine-scrollport-gutter", this.layout === "gutter");
+        this.manager.invalidate(this);
+        return;
+      }
       const old = this.geometry;
       this.geometry = snapshot;
       if (snapshot.followSibling) {
@@ -347,15 +440,16 @@ function createScrollbarRuntime() {
       for (const [key, value] of Object.entries({
         left: `${snapshot.left}px`,
         top: `${snapshot.top}px`,
-        width: `${snapshot.viewportWidth}px`,
-        height: `${snapshot.viewportHeight}px`,
+        width: `${snapshot.layerWidth}px`,
+        height: `${snapshot.layerHeight}px`,
         clipPath: snapshot.clip,
         display: snapshot.visible ? "" : "none",
         zIndex: snapshot.stacking,
       }))
         if (style[key] !== value) style[key] = value;
       this.layer.classList.toggle("is-persistent", snapshot.persistent);
-      this.layer.classList.toggle("is-document", snapshot.persistent);
+      this.layer.classList.toggle("is-document", snapshot.documentTrack);
+      this.layer.classList.toggle("is-gutter", snapshot.layout === "gutter");
       this.layer.classList.toggle("is-left", snapshot.edge === "left");
       this.vertical.update({
         extent: snapshot.scrollHeight,
@@ -373,8 +467,10 @@ function createScrollbarRuntime() {
         thickness: snapshot.horizontalSize,
         canScroll: snapshot.canScrollHorizontally,
       });
+      this.horizontal.element.style.left = `${snapshot.horizontalInset}px`;
       this.syncVisibility();
       const keys = [
+        "layout",
         "verticalSize",
         "horizontalSize",
         "viewportWidth",
@@ -427,6 +523,7 @@ function createScrollbarRuntime() {
       this.horizontal.destroy();
       this.layer.remove();
       this.element.classList.remove("lumine-scrollport");
+      this.element.classList.remove("lumine-scrollport-gutter");
       if (this.element.style.scrollbarWidth === "none")
         this.element.style.scrollbarWidth = this.previousScrollbarWidth;
       if (owners.get(this.element) === this) owners.delete(this.element);
@@ -524,7 +621,14 @@ function createScrollbarRuntime() {
         subtree: true,
         attributes: true,
         attributeOldValue: true,
-        attributeFilter: ["class", "style", "data-scrollbar", "hidden", "open"],
+        attributeFilter: [
+          "class",
+          "style",
+          "data-scrollbar",
+          "data-scrollbar-layout",
+          "hidden",
+          "open",
+        ],
       });
       this.schedule();
     }
@@ -548,7 +652,9 @@ function createScrollbarRuntime() {
         const withoutChrome = (value) =>
           value
             .split(/\s+/)
-            .filter((name) => name && name !== "lumine-scrollport")
+            .filter(
+              (name) => name && name !== "lumine-scrollport" && name !== "lumine-scrollport-gutter",
+            )
             .sort()
             .join(" ");
         return (
@@ -665,7 +771,7 @@ function createScrollbarRuntime() {
       this.dirty.clear();
     }
   }
-  return { OverlayScrollbar, DOMScrollbarManager, scrollbarSize };
+  return { OverlayScrollbar, DOMScrollbarManager, scrollbarSize, scrollbarPresentation };
 }
 
 module.exports = { ...createScrollbarRuntime(), createScrollbarRuntime };

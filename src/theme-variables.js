@@ -207,12 +207,12 @@ const THEME_VARIABLES = Object.freeze([
       "Tree view background color.",
     ],
     ["scrollbar-color", "color", "var(--background-color-highlight)", "Scrollbar color."],
-    ["scrollbar-size", "length", "10px", "Overlay scrollbar track thickness."],
-    ["scrollbar-size-editor", "length", "10px", "Editor overlay track and safe text inset."],
+    ["scrollbar-size", "length", "10px", "Custom scrollbar track thickness."],
+    ["scrollbar-size-editor", "length", "10px", "Editor track thickness and safe text inset."],
     [
       "scrollbar-border-color",
       "color",
-      "color-mix(in srgb, var(--text-color) 22%, transparent)",
+      "color-mix(in srgb, var(--text-color) 14%, transparent)",
       "Document scrollbar separator.",
     ],
     [
