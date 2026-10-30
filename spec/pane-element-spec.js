@@ -438,6 +438,22 @@ describe("PaneElement", function () {
       expect(document.activeElement).toBe(item);
     });
 
+    it("falls back to the pane when the active view cannot take focus from its tab bar", function () {
+      const item = copyableElement("div");
+      pane.activateItem(item);
+      const tabBar = document.createElement("ul");
+      tabBar.className = "tab-bar";
+      tabBar.tabIndex = -1;
+      jasmine.attachToDOM(paneElement);
+      paneElement.insertBefore(tabBar, paneElement.itemViews);
+      tabBar.focus();
+      expect(document.activeElement).toBe(tabBar);
+
+      paneElement.focusActiveView();
+
+      expect(document.activeElement).toBe(paneElement);
+    });
+
     it("reaches the active view even when no focus event is delivered", function () {
       const item = copyableElement("div");
       item.tabIndex = -1;

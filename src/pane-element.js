@@ -129,7 +129,7 @@ class PaneElement extends HTMLElement {
     const view = this.getActiveView();
     if (view) {
       view.focus();
-      if (this.hasFocus()) return;
+      if (view.contains(this.ownerDocument.activeElement)) return;
     }
     this.focus();
   }
