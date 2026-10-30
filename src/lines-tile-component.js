@@ -367,15 +367,19 @@ module.exports = class LinesTileComponent {
     const { blockDecorations, lineComponentsByScreenLineId } = newProps;
 
     if (oldProps.blockDecorations) {
-      oldProps.blockDecorations.forEach((oldDecorations, screenLineId) => {
-        const newDecorations = newProps.blockDecorations
-          ? newProps.blockDecorations.get(screenLineId)
-          : null;
+      // A screen line or decoration descriptor can be replaced while the
+      // resolved view stays alive. Retention belongs to that view, across all
+      // keys in this tile's new block map.
+      const retainedElements = new Set();
+      blockDecorations?.forEach((decorations) => {
+        for (const decoration of decorations)
+          retainedElements.add(TextEditor.viewForItem(decoration.item));
+      });
+      oldProps.blockDecorations.forEach((oldDecorations) => {
         for (let i = 0; i < oldDecorations.length; i++) {
           const oldDecoration = oldDecorations[i];
-          if (newDecorations && newDecorations.includes(oldDecoration)) continue;
-
           const element = TextEditor.viewForItem(oldDecoration.item);
+          if (retainedElements.has(element)) continue;
           if (element.parentElement !== this.element) continue;
 
           element.remove();
@@ -384,35 +388,56 @@ module.exports = class LinesTileComponent {
     }
 
     if (blockDecorations) {
+      const place = (element, nextElement) => {
+        if (
+          element === nextElement ||
+          (element.parentNode === this.element && element.nextSibling === nextElement)
+        )
+          return;
+        // Detaching a live result destroys its native scroll offsets,
+        // focus and other browser-owned state, even within the same tile.
+        if (
+          element.isConnected &&
+          this.element.isConnected &&
+          element.ownerDocument === this.element.ownerDocument
+        )
+          this.element.moveBefore(element, nextElement);
+        else this.element.insertBefore(element, nextElement);
+      };
       blockDecorations.forEach((newDecorations, screenLineId) => {
-        const oldDecorations = oldProps.blockDecorations
-          ? oldProps.blockDecorations.get(screenLineId)
-          : null;
-        const lineComponent = lineComponentsByScreenLineId.get(screenLineId);
+        let lineComponent = lineComponentsByScreenLineId.get(screenLineId);
+        // Overlapping tiles share the lookup, so a neighbor can register a
+        // replacement first. Placement still needs this tile's owned anchor.
+        if (lineComponent?.element.parentNode !== this.element)
+          lineComponent = this.lineComponents.find(
+            (component) =>
+              component.props.screenLine.id === screenLineId &&
+              component.element.parentNode === this.element,
+          );
         // Skip block decorations whose screen line is not in this tile.
         // This can happen when decorations are destroyed or moved between
         // tiles during the same update cycle.
         if (!lineComponent) return;
         const lineNode = lineComponent.element;
+
+        // Walk backwards toward the line so already ordered before-items
+        // remain untouched instead of moving each past its siblings.
+        let nextBefore = lineNode;
+        for (let i = newDecorations.length - 1; i >= 0; i--) {
+          const decoration = newDecorations[i];
+          if (decoration.position === "after") continue;
+          const element = TextEditor.viewForItem(decoration.item);
+          place(element, nextBefore);
+          nextBefore = element;
+        }
+
         let lastAfter = lineNode;
-
         for (let i = 0; i < newDecorations.length; i++) {
-          const newDecoration = newDecorations[i];
-          const element = TextEditor.viewForItem(newDecoration.item);
-
-          if (oldDecorations && oldDecorations.includes(newDecoration)) {
-            if (newDecoration.position === "after") {
-              lastAfter = element;
-            }
-            continue;
-          }
-
-          if (newDecoration.position === "after") {
-            this.element.insertBefore(element, lastAfter.nextSibling);
-            lastAfter = element;
-          } else {
-            this.element.insertBefore(element, lineNode);
-          }
+          const decoration = newDecorations[i];
+          if (decoration.position !== "after") continue;
+          const element = TextEditor.viewForItem(decoration.item);
+          place(element, lastAfter.nextSibling);
+          lastAfter = element;
         }
       });
     }

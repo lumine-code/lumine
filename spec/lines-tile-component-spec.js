@@ -35,6 +35,29 @@ describe("LinesTileComponent row replacement", () => {
       ...extra,
     };
   }
+
+  function scrollableBlock() {
+    const tag = `tile-scroll-fixture-${++id}`;
+    customElements.define(
+      tag,
+      class extends HTMLElement {
+        disconnectedCallback() {
+          this.disconnects = (this.disconnects || 0) + 1;
+        }
+        connectedMoveCallback() {
+          this.moves = (this.moves || 0) + 1;
+        }
+      },
+    );
+    const item = document.createElement(tag);
+    item.style.cssText = "display:block;width:120px;height:80px;overflow:auto";
+    const content = document.createElement("div");
+    content.style.cssText = "width:800px;height:1000px";
+    const input = document.createElement("input");
+    content.appendChild(input);
+    item.appendChild(content);
+    return { item, input };
+  }
   afterEach(() => {
     tile?.destroy();
     tile = null;
@@ -213,5 +236,148 @@ describe("LinesTileComponent row replacement", () => {
     tile.update(props([second], { blockDecorations: new Map([[second.id, [decoration]]]) }));
     expect(item.parentNode).toBe(tile.element);
     expect(item.previousSibling).toBe(tile.lineComponents[0].element);
+  });
+
+  for (const change of ["screen line", "descriptor", "screen line and descriptor"]) {
+    it(`preserves a live block's scroll, focus and connection through ${change} replacement`, () => {
+      const first = line("old one");
+      const next = change.includes("screen line") ? line("new one") : first;
+      const { item, input } = scrollableBlock();
+      const decoration = { position: "after", item };
+      const replacement = change.includes("descriptor") ? { ...decoration } : decoration;
+      tile = new LinesTileComponent(
+        props([first], { blockDecorations: new Map([[first.id, [decoration]]]) }),
+      );
+      jasmine.attachToDOM(tile.element);
+      input.focus({ preventScroll: true });
+      item.scrollTo({ left: 200, top: 200, behavior: "instant" });
+      expect(document.activeElement).toBe(input);
+      expect(item.scrollLeft).toBe(200);
+      expect(item.scrollTop).toBe(200);
+      tile.update(props([next], { blockDecorations: new Map([[next.id, [replacement]]]) }));
+      expect(item.scrollLeft).toBe(200);
+      expect(item.scrollTop).toBe(200);
+      expect(document.activeElement).toBe(input);
+      expect(item.disconnects || 0).toBe(0);
+      expect(item.parentNode).toBe(tile.element);
+      expect(item.previousSibling).toBe(tile.lineComponents[0].element);
+    });
+  }
+
+  it("removes a block whose resolved item is no longer present", () => {
+    const first = line("old one");
+    const { item } = scrollableBlock();
+    tile = new LinesTileComponent(
+      props([first], {
+        blockDecorations: new Map([[first.id, [{ position: "after", item }]]]),
+      }),
+    );
+    jasmine.attachToDOM(tile.element);
+    tile.update(props([first], { blockDecorations: new Map() }));
+    expect(item.isConnected).toBeFalse();
+    expect(item.parentNode).toBeNull();
+    expect(item.disconnects).toBe(1);
+    expect(tile.element.childNodes.length).toBe(1);
+  });
+
+  it("reorders retained blocks before and after a replacement row without disconnecting them", () => {
+    const first = line("old one");
+    const next = line("new one");
+    const blocks = [scrollableBlock(), scrollableBlock(), scrollableBlock()];
+    const [before, after, moved] = blocks.map(({ item }) => item);
+    tile = new LinesTileComponent(
+      props([first], {
+        blockDecorations: new Map([
+          [
+            first.id,
+            [
+              { position: "before", item: before },
+              { position: "after", item: after },
+              { position: "after", item: moved },
+            ],
+          ],
+        ]),
+      }),
+    );
+    jasmine.attachToDOM(tile.element);
+    tile.update(
+      props([next], {
+        blockDecorations: new Map([
+          [
+            next.id,
+            [
+              { position: "before", item: moved },
+              { position: "before", item: before },
+              { position: "after", item: after },
+            ],
+          ],
+        ]),
+      }),
+    );
+    expect([...tile.element.children]).toEqual([
+      moved,
+      before,
+      tile.lineComponents[0].element,
+      after,
+    ]);
+    for (const { item } of blocks) expect(item.disconnects || 0).toBe(0);
+  });
+
+  it("does not move already ordered blocks when only their descriptors are replaced", () => {
+    const first = line("old one");
+    const blocks = [scrollableBlock(), scrollableBlock(), scrollableBlock()];
+    const decorations = blocks.map(({ item }, index) => ({
+      position: index < 2 ? "before" : "after",
+      item,
+    }));
+    tile = new LinesTileComponent(
+      props([first], { blockDecorations: new Map([[first.id, decorations]]) }),
+    );
+    jasmine.attachToDOM(tile.element);
+    tile.update(
+      props([first], {
+        blockDecorations: new Map([
+          [first.id, decorations.map((decoration) => ({ ...decoration }))],
+        ]),
+      }),
+    );
+    for (const { item } of blocks) {
+      expect(item.moves || 0).toBe(0);
+      expect(item.disconnects || 0).toBe(0);
+    }
+  });
+
+  it("uses its local row anchor for a retained block when a neighbor replaced the shared lookup", () => {
+    const retained = line("retained row");
+    const { item, input } = scrollableBlock();
+    const decoration = { position: "before", item };
+    const shared = props([retained], {
+      blockDecorations: new Map([[retained.id, [decoration]]]),
+    });
+    tile = new LinesTileComponent(shared);
+    jasmine.attachToDOM(tile.element);
+    const neighbor = new LinesTileComponent({
+      ...shared,
+      screenLines: [line("old neighbor")],
+      blockDecorations: undefined,
+    });
+    jasmine.attachToDOM(neighbor.element);
+    try {
+      neighbor.update({ ...shared, blockDecorations: undefined });
+      expect(shared.lineComponentsByScreenLineId.get(retained.id).element.parentNode).toBe(
+        neighbor.element,
+      );
+      input.focus({ preventScroll: true });
+      item.scrollTo({ left: 200, top: 200, behavior: "instant" });
+      expect(() => tile.update({ ...shared, height: 80 })).not.toThrow();
+      expect(item.nextSibling).toBe(tile.lineComponents[0].element);
+      expect(item.scrollLeft).toBe(200);
+      expect(item.scrollTop).toBe(200);
+      expect(document.activeElement).toBe(input);
+      expect(item.disconnects || 0).toBe(0);
+      expect(neighbor.lineComponents[0].element.parentNode).toBe(neighbor.element);
+    } finally {
+      neighbor.destroy();
+    }
   });
 });
