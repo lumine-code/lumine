@@ -848,6 +848,10 @@ describe("FileIndex", () => {
         events.push({ action: "created", path: touch("bulk", `f${i}.js`) });
       }
       const before = project.crawls.length;
+      // Force classification to yield before admission arms the recrawl timer,
+      // rather than depending on how quickly this runner processes the burst.
+      let now = 0;
+      spyOn(performance, "now").and.callFake(() => (now += 6));
       project.emitFileEvents(events);
       await index.whenIdle();
 
