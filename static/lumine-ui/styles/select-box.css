@@ -65,19 +65,22 @@
   overflow-y: auto;
 
   .select-box-option {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: var(--ui-icon-spacing);
     min-height: var(--menu-item-height, 28px);
     padding: 5px 10px;
     border-radius: var(--menu-item-radius, 4px);
     white-space: nowrap;
 
+    .select-box-option-label {
+      min-width: 0;
+    }
+
     &.active:not(.disabled),
     &:hover:not(.disabled) {
       background-color: var(--background-color-highlight);
-    }
-
-    &[aria-selected="true"]:not(.disabled) {
-      color: var(--text-color-selected);
-      background-color: var(--background-color-selected);
     }
 
     &.disabled {

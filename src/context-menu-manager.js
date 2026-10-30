@@ -139,6 +139,8 @@ module.exports = class ContextMenuManager {
    *
    * @param {Object} itemsBySelector - An `Object` whose keys are CSS selectors and whose values are item `Arrays` or `{items, groupOrder, sortBy}` descriptors. A descriptor's `groupOrder` lists named groups in display order; `sortBy: 'label'` sorts its items by label. Items contain the following keys:
    * @param {String} [itemsBySelector.label] - A `String` containing the menu item's label.
+   * @param {String} [itemsBySelector.type] - Use `checkbox` for an independent option, `radio` for an exclusive choice, or `separator` with no other keys for a divider. Ordinary actions have no choice type.
+   * @param {Boolean|String|Function} [itemsBySelector.checked] - Explicit state or a synchronous `({target, detail})` callback; otherwise the row inherits its command's scoped state. A checkbox may use `mixed`.
    * @param {String} [itemsBySelector.command] - A `String` containing the command to invoke on the target of the right click that invoked the context menu.
    * @param {String} [itemsBySelector.scope] - An additional CSS selector restricting this row to its command target or an ancestor. It never selects another target or command registration.
    * @param {String} [itemsBySelector.commandTarget] - Set to `focus` to dispatch at the element focused before the menu opened, or `context` to use the clicked element (the default). A selector descriptor and submenu may supply an inherited default.
@@ -146,7 +148,6 @@ module.exports = class ContextMenuManager {
    * @param {Element|Function} [itemsBySelector.keyBindingTarget] - The element used only to resolve the shortcut. A function is called with the invoking element as `this` and its first argument, matching tooltip target callbacks; return its editor or another binding scope, or `null` to suppress the shortcut. The selected command still dispatches to the original menu target.
    * @param {Boolean} [itemsBySelector.enabled] - A `Boolean` indicating whether the menu item should be clickable. Disabled menu items typically appear grayed out. Defaults to `true`.
    * @param {Array} [itemsBySelector.submenu] - An `Array` of additional items.
-   * @param {String} [itemsBySelector.type] - If you want to create a separator, provide an item with `type: 'separator'` and no other keys.
    * @param {Boolean} [itemsBySelector.visible] - A `Boolean` indicating whether the menu item should appear in the menu. Defaults to `true`.
    * @param {String} [itemsBySelector.id] - A stable identifier for this item. Defaults to its normalized label. Give shared submenu contributions the same id so they merge into one item.
    * @param {String} [itemsBySelector.group] - The named group this item joins in the selected layout policy. Unknown or omitted groups join `extensions`.

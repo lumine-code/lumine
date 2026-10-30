@@ -3,6 +3,7 @@ const { keyBindingLabelForCommand, resolveKeyBindingTarget } = require("./key-bi
 const { validateSelector } = require("./css-selectors");
 
 const ItemSpecificities = new WeakMap();
+const reportedStateErrors = new WeakSet();
 
 // Add an item to a menu, ensuring separators are not duplicated.
 function addItemToMenu(item, menu) {
@@ -250,6 +251,49 @@ function isMenuItemEnabled(item, target, commandRegistry = globalThis.lumine?.co
   );
 }
 
+// A row may own its state, or inherit it from the same scoped command it runs.
+// Resolve callbacks in the renderer; neither a function nor a DOM target may
+// cross the native menu IPC boundary.
+function readMenuItemState(item, target, commandRegistry) {
+  if (item.type === "separator" || Array.isArray(item.submenu)) return null;
+  if (item.checked == null && item.command) {
+    const state = commandRegistry?.getCommandState?.(item.command, {
+      target,
+      detail: item.commandDetail,
+    });
+    if (state) return state;
+  }
+  if (item.checked == null && item.type !== "checkbox" && item.type !== "radio") return null;
+  const type = item.type === "radio" ? "radio" : "checkbox";
+  const checked =
+    typeof item.checked === "function"
+      ? item.checked(Object.freeze({ target, detail: item.commandDetail ?? null }))
+      : (item.checked ?? false);
+  if (typeof checked !== "boolean" && !(type === "checkbox" && checked === "mixed")) {
+    if (typeof checked?.then === "function") Promise.resolve(checked).catch(() => {});
+    throw new TypeError(
+      "Menu checked must return a Boolean, or 'mixed' for a checkbox, synchronously.",
+    );
+  }
+  return { type, checked };
+}
+
+function menuItemState(item, target, commandRegistry = globalThis.lumine?.commands) {
+  try {
+    return readMenuItemState(item, target, commandRegistry);
+  } catch (error) {
+    const source = typeof item.checked === "function" ? item.checked : item;
+    if (!reportedStateErrors.has(source)) {
+      reportedStateErrors.add(source);
+      console.error(
+        `Unable to evaluate menu '${item.label ?? item.command ?? ""}' choice state`,
+        error,
+      );
+    }
+    return { type: item.type === "radio" ? "radio" : "checkbox", checked: false };
+  }
+}
+
 function acceleratorForKeystroke(keystroke) {
   if (!keystroke) {
     return null;
@@ -290,4 +334,5 @@ module.exports = {
   matchesScope,
   normalizeCommandTarget,
   isMenuItemEnabled,
+  menuItemState,
 };

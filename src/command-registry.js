@@ -144,6 +144,8 @@ module.exports = class CommandRegistry {
    * @param {Boolean|String} [listener.modal] - Declares that the command opens a
    *   modal, optionally naming its breadcrumb label.
    * @param {Function} [listener.isAvailable] - A synchronous, side-effect-free predicate returning a Boolean. It receives `{target, currentTarget, detail, context}` with `this` set to the matching node. It runs only after the registration scope matches, for availability queries and immediately before invoking this handler. Omit it when the scope alone is sufficient.
+   * @param {Function|Boolean|String} [listener.checked] - Persistent choice state, or a synchronous, side-effect-free function receiving the same context as `isAvailable`. Return a Boolean, or `mixed` for a checkbox. Menus and command presentations share this state.
+   * @param {String} [listener.type=checkbox] - Use `radio` for an exclusive choice or `checkbox` for an independent choice when `checked` is supplied.
    * @param {Boolean} [throwOnInvalidSelector=true] - Throw when `target` is an
    *   invalid selector.
    * @returns {Disposable} on which `.dispose()` can be called to remove the added command handler(s).
@@ -176,6 +178,22 @@ module.exports = class CommandRegistry {
     }
     if (listener.isAvailable != null && typeof listener.isAvailable !== "function") {
       throw new TypeError("Command isAvailable must be a synchronous predicate function.");
+    }
+    if (
+      listener.checked != null &&
+      !["function", "boolean"].includes(typeof listener.checked) &&
+      listener.checked !== "mixed"
+    ) {
+      throw new TypeError(
+        "Command checked must be a Boolean, 'mixed', or a synchronous state function.",
+      );
+    }
+    if (
+      listener.checked != null &&
+      listener.type != null &&
+      !["checkbox", "radio"].includes(listener.type)
+    ) {
+      throw new TypeError("Command choice type must be 'checkbox' or 'radio'.");
     }
 
     if (typeof target === "string") {
@@ -342,6 +360,77 @@ module.exports = class CommandRegistry {
    * @public
    * @status experimental
    *
+   * Read persistent choice state from the nearest scoped command registration.
+   * This never dispatches the command or loads its implementation. A matching
+   * handler without state shadows an ancestor's state as it does its label.
+   *
+   * @param {String} commandName - Command whose state should be read.
+   * @param {Object} options
+   * @param {Node|Window} options.target - Dispatch target.
+   * @param {*} [options.detail] - Arguments that would be passed to the command.
+   * @returns {Object|null} Frozen `{type, checked}` or null for an ordinary command.
+   */
+  getCommandState(commandName, { target, detail } = {}) {
+    if (!target || typeof commandName !== "string") return null;
+    const inline = Object.hasOwn(this.inlineListenersByCommandName, commandName)
+      ? this.inlineListenersByCommandName[commandName]
+      : null;
+    const selectors = Object.hasOwn(this.selectorBasedListenersByCommandName, commandName)
+      ? this.selectorBasedListenersByCommandName[commandName]
+      : null;
+    for (const currentTarget of commandTargetPath(target)) {
+      let listener = inline?.get(currentTarget)?.at(-1);
+      if (!listener) {
+        for (const candidate of selectors ?? []) {
+          if (
+            candidate.matchesTarget(currentTarget) &&
+            (!listener || candidate.compare(listener) > 0)
+          )
+            listener = candidate;
+        }
+      }
+      if (!listener) continue;
+      const descriptor = listener.descriptor;
+      if (descriptor.checked == null) return null;
+      const type = descriptor.type === "radio" ? "radio" : "checkbox";
+      try {
+        const query = createAvailabilityQuery(this, target, commandName, detail);
+        const checked =
+          typeof descriptor.checked === "function"
+            ? descriptor.checked.call(
+                currentTarget,
+                Object.freeze({
+                  target,
+                  currentTarget,
+                  detail: query.detail,
+                  get context() {
+                    return query.context;
+                  },
+                }),
+              )
+            : descriptor.checked;
+        if (typeof checked !== "boolean" && !(type === "checkbox" && checked === "mixed")) {
+          if (typeof checked?.then === "function") Promise.resolve(checked).catch(() => {});
+          throw new TypeError(
+            "Command checked must return a Boolean, or 'mixed' for a checkbox, synchronously.",
+          );
+        }
+        return Object.freeze({ type, checked });
+      } catch (error) {
+        if (!listener.reportedStateError) {
+          listener.reportedStateError = true;
+          console.error(`Unable to evaluate command '${commandName}' choice state`, error);
+        }
+        return Object.freeze({ type, checked: false });
+      }
+    }
+    return null;
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
    * Return the display metadata and effective keybindings for one command at a
    * target. This is the shared presentation used by command pickers and modal
    * action lists.
@@ -370,7 +459,8 @@ module.exports = class CommandRegistry {
       }
     }
     return Object.freeze({
-      ...descriptor,
+      ...presentationMetadata(descriptor),
+      ...this.getCommandState(commandName, { target, detail }),
       enabled: this.canDispatch(target, commandName, detail),
       keystrokes: Object.freeze(keystrokes),
     });
@@ -416,7 +506,8 @@ module.exports = class CommandRegistry {
       ]);
       presentations.push(
         Object.freeze({
-          ...descriptor,
+          ...presentationMetadata(descriptor),
+          ...this.getCommandState(descriptor.name, { target }),
           enabled: this.canDispatch(target, descriptor.name),
           keystrokes,
         }),
@@ -508,7 +599,7 @@ module.exports = class CommandRegistry {
    * @public
    * @status public
    *
-   * Notify command surfaces that state used by `isAvailable` predicates changed.
+   * Notify command surfaces that state used by `isAvailable` or `checked` changed.
    * Predicates are evaluated afresh on every query; this asks live presentations
    * such as the native application menu to refresh without a focus change.
    * @param {Object} [options] - Optional scope of a local state change.
@@ -542,7 +633,15 @@ module.exports = class CommandRegistry {
     let propagationStopped = false;
     let immediatePropagationStopped = false;
     let matched = [];
+    let hasChoiceState = false;
     let currentTarget = event.target;
+    const scheduleChoiceRefresh = () => {
+      if (hasChoiceState) {
+        Promise.allSettled(matched).then(() =>
+          this.invalidateAvailability({ target: event.target }),
+        );
+      }
+    };
 
     const dispatchedEvent = new CustomEvent(event.type, {
       bubbles: true,
@@ -639,7 +738,13 @@ module.exports = class CommandRegistry {
             disabledMatch = true;
             continue;
           }
-          matched.push(listener.didDispatch.call(currentTarget, dispatchedEvent));
+          hasChoiceState ||= listener.descriptor.checked != null;
+          try {
+            matched.push(listener.didDispatch.call(currentTarget, dispatchedEvent));
+          } catch (error) {
+            scheduleChoiceRefresh();
+            throw error;
+          }
         }
 
         if (propagationStopped) {
@@ -653,6 +758,9 @@ module.exports = class CommandRegistry {
         return null;
       }
       const result = Promise.all(matched);
+      // Ordinary editing commands do not rebuild command surfaces. A choice
+      // command refreshes after all matched handlers settle, including failures.
+      scheduleChoiceRefresh();
       // Native DOM dispatch ignores a listener's return value. Observe the
       // rejection here while returning the original Promise to programmatic
       // callers, which can still await and handle the same failure.
@@ -731,6 +839,14 @@ class InlineListener {
 // };
 function extractDescriptor(name, listener) {
   return descriptorFromMetadata(name, extractMetadata(listener));
+}
+
+function presentationMetadata(descriptor) {
+  return _.omit(
+    descriptor,
+    "checked",
+    ...(["checkbox", "radio"].includes(descriptor.type) ? ["type"] : []),
+  );
 }
 
 function descriptorFromMetadata(name, metadata) {

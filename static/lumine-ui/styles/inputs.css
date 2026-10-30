@@ -40,6 +40,96 @@ input.input-toggle {
   }
 }
 
+/* Popup choice indicators are decorative. The menu item or listbox option
+   owns semantics, keyboard navigation and the full-row hit target. */
+.choice-control {
+  box-sizing: border-box;
+  display: inline-block;
+  position: relative;
+  flex: none;
+  width: var(--choice-control-size);
+  height: var(--choice-control-size);
+  border: var(--choice-control-border-width) solid var(--choice-control-border-color);
+  border-radius: var(--choice-control-radius);
+  background-color: var(--choice-control-background-color);
+  vertical-align: middle;
+  pointer-events: none;
+
+  &::before {
+    content: "";
+    box-sizing: border-box;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(var(--choice-control-size) * 0.3);
+    height: calc(var(--choice-control-size) * 0.55);
+    border: solid var(--choice-control-mark-color);
+    border-width: 0 2px 2px 0;
+    transform: translate(-50%, -65%) rotate(45deg);
+    opacity: 0;
+  }
+
+  &[data-checked="true"],
+  &[data-checked="mixed"] {
+    border-color: var(--choice-control-selected-border-color);
+    background-color: var(--choice-control-selected-background-color);
+
+    &::before {
+      opacity: 1;
+    }
+  }
+
+  &.choice-control-radio {
+    border-radius: 50%;
+
+    &::before {
+      width: calc(var(--choice-control-size) * 0.375);
+      height: calc(var(--choice-control-size) * 0.375);
+      border: 0;
+      border-radius: 50%;
+      background-color: var(--choice-control-mark-color);
+      transform: translate(-50%, -50%);
+    }
+  }
+
+  &[data-checked="mixed"]::before {
+    width: calc(var(--choice-control-size) * 0.5);
+    height: 2px;
+    border: 0;
+    border-radius: 1px;
+    background-color: var(--choice-control-mark-color);
+    transform: translate(-50%, -50%);
+  }
+
+  &[data-disabled="true"] {
+    opacity: var(--choice-control-disabled-opacity);
+  }
+}
+
+[aria-disabled="true"] > .choice-control {
+  opacity: var(--choice-control-disabled-opacity);
+}
+
+@media (forced-colors: active) {
+  .choice-control {
+    --choice-control-border-color: ButtonText;
+    --choice-control-background-color: ButtonFace;
+    --choice-control-selected-border-color: Highlight;
+    --choice-control-selected-background-color: Highlight;
+    --choice-control-mark-color: HighlightText;
+    --choice-control-disabled-opacity: 1;
+    forced-color-adjust: none;
+  }
+
+  [aria-disabled="true"] > .choice-control,
+  .choice-control[data-disabled="true"] {
+    --choice-control-border-color: GrayText;
+    --choice-control-selected-border-color: GrayText;
+    --choice-control-selected-background-color: ButtonFace;
+    --choice-control-mark-color: GrayText;
+  }
+}
+
 /*
  * Checkbox
  * -------------------------

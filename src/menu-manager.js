@@ -417,6 +417,8 @@ module.exports = class MenuManager {
    *
    * @param {Array<Object>} items - An `Array` of menu item `Objects` containing the keys:
    * @param {String} items.label - The `String` menu label.
+   * @param {String} items.type - Use `checkbox` for an independent option, `radio` for an exclusive option, or `separator` for a divider. Ordinary actions need no choice type.
+   * @param {Boolean|String|Function} items.checked - Explicit persistent state, or a synchronous `({target, detail})` callback. A checkbox may use `mixed`; otherwise return a Boolean. Omit to inherit the command's scoped state.
    * @param {Array} items.submenu - An optional `Array` of sub menu items.
    * @param {String} items.command - An optional `String` command to trigger when the item is clicked.
    * @param {String} items.scope - An optional CSS selector that must match the command target or an ancestor.
@@ -482,6 +484,17 @@ module.exports = class MenuManager {
         // Application commands and Electron roles are handled by the main
         // process. They do not require a renderer command registration.
         const native = item.role || /^application:/.test(item.command ?? "");
+        const state = MenuHelpers.menuItemState(item, target, commands);
+        if (state) {
+          item.type = state.type;
+          // Electron exposes Boolean checked state in native menus.
+          item.checked = state.checked === true;
+          if (state.checked === "mixed") item.label = `${item.label} (Mixed)`;
+        } else {
+          delete item.checked;
+          if (Array.isArray(item.submenu) && ["checkbox", "radio"].includes(item.type))
+            delete item.type;
+        }
         item.enabled = MenuHelpers.isMenuItemEnabled(
           native ? { ...item, command: undefined } : item,
           target,

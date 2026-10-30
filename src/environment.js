@@ -393,6 +393,7 @@ class Environment {
       confirm: (options) => this.applicationDelegate.confirm(options),
     });
     this.disposables.add(
+      this.config.onDidChangeConfiguration(() => this.commands.invalidateAvailability()),
       this.repositories.onDidChange(() => this.commands.invalidateAvailability()),
       this.repositories.onDidChangeActiveRepository(() => this.commands.invalidateAvailability()),
       this.repositories.onDidChangeRepositoryState(() => this.commands.invalidateAvailability()),

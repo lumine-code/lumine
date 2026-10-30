@@ -395,6 +395,47 @@ const THEME_VARIABLES = Object.freeze([
       "Whether native form controls receive custom presentation.",
     ],
   ]),
+  ...define("Choice controls", "ui", "component", [
+    [
+      "choice-control-size",
+      "length",
+      "var(--ui-icon-size)",
+      "Size of checkbox and radio indicators.",
+    ],
+    ["choice-control-border-width", "length", "1.5px", "Width of choice control outlines."],
+    ["choice-control-radius", "length", "3px", "Corner radius of checkbox indicators."],
+    [
+      "choice-control-border-color",
+      "color",
+      "color-mix(in srgb, var(--text-color) 65%, var(--input-background-color))",
+      "Outline of an unselected choice control.",
+    ],
+    [
+      "choice-control-background-color",
+      "color",
+      "var(--input-background-color)",
+      "Background of an unselected choice control.",
+    ],
+    [
+      "choice-control-selected-background-color",
+      "color",
+      "var(--accent-indicator-color)",
+      "Background of a checked choice control.",
+    ],
+    [
+      "choice-control-selected-border-color",
+      "color",
+      "var(--accent-indicator-color)",
+      "Outline of a checked choice control.",
+    ],
+    [
+      "choice-control-mark-color",
+      "color",
+      "var(--accent-indicator-text-color)",
+      "Checkmark, radio dot and mixed-state dash.",
+    ],
+    ["choice-control-disabled-opacity", "number", "0.5", "Opacity of unavailable choice controls."],
+  ]),
   ...define("Git status colors", "ui", "semantic", [
     ["text-color-added", "color", "var(--text-color-success)", "Foreground for added Git items."],
     [

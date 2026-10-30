@@ -197,7 +197,19 @@ module.exports = class SelectBoxView {
         "aria-selected",
         Object.is(item.value, this.selectedValue) ? "true" : "false",
       );
-      option.textContent = item.label;
+      const indicator = document.createElement("span");
+      indicator.classList.add(
+        "select-box-option-indicator",
+        "choice-control",
+        "choice-control-radio",
+      );
+      indicator.setAttribute("aria-hidden", "true");
+      indicator.dataset.checked = option.getAttribute("aria-selected");
+      indicator.dataset.disabled = String(item.disabled);
+      const label = document.createElement("span");
+      label.classList.add("select-box-option-label");
+      label.textContent = item.label;
+      option.append(indicator, label);
       if (item.title) option.title = item.title;
       if (item.disabled) {
         option.classList.add("disabled");
@@ -248,6 +260,8 @@ module.exports = class SelectBoxView {
         "aria-selected",
         Object.is(this.items[optionIndex].value, this.selectedValue) ? "true" : "false",
       );
+      option.querySelector(".select-box-option-indicator").dataset.checked =
+        option.getAttribute("aria-selected");
     });
     const option = this.optionElements?.[index];
     if (option) {

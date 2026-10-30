@@ -5,6 +5,7 @@
   --menu-item-padding: 14px;
   --menu-item-margin: 3px;
   --menu-item-radius: 4px;
+  --menu-choice-gap: 10px;
   --menu-box-radius: 6px;
   --menu-box-min-width: 200px;
   --menu-box-shadow: 0 2px 8px rgb(0 0 0 / 16%);
@@ -74,20 +75,11 @@ lumine-context-view .context-view-surface.menu-box {
       }
     }
 
-    &.checked::before {
-      content: "✓";
+    .menu-item-indicator {
       position: absolute;
       left: var(--menu-item-padding);
       top: 50%;
-      width: 12px;
-      line-height: 1;
-      text-align: center;
       transform: translateY(-50%);
-    }
-
-    &[role="menuitemradio"].checked::before {
-      content: "●";
-      font-size: 8px;
     }
 
     .menu-item-name,
@@ -119,7 +111,9 @@ lumine-context-view .context-view-surface.menu-box {
   }
 
   > .menu-item[aria-checked] {
-    padding-left: calc(var(--menu-item-padding) + 20px);
+    padding-left: calc(
+      var(--menu-item-padding) + var(--choice-control-size) + var(--menu-choice-gap)
+    );
   }
 
   /* While the pointer is inside this list, :hover is the sole visible row

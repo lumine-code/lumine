@@ -101,6 +101,19 @@
   --ui-panel-icon-spacing: calc(var(--ui-panel-padding) / 3.3);
   --ui-row-height: calc(var(--ui-unit) * 2);
   --use-custom-controls: true;
+  --choice-control-size: var(--ui-icon-size);
+  --choice-control-border-width: 1.5px;
+  --choice-control-radius: 3px;
+  --choice-control-border-color: color-mix(
+    in srgb,
+    var(--text-color) 65%,
+    var(--input-background-color)
+  );
+  --choice-control-background-color: var(--input-background-color);
+  --choice-control-selected-background-color: var(--accent-indicator-color);
+  --choice-control-selected-border-color: var(--accent-indicator-color);
+  --choice-control-mark-color: var(--accent-indicator-text-color);
+  --choice-control-disabled-opacity: 0.5;
   --text-color-added: var(--text-color-success);
   --text-color-added-staged: var(--syntax-color-added-staged);
   --text-color-ignored: var(--text-color-subtle);

@@ -940,8 +940,11 @@ module.exports = function ({
           return this.toggleSoftTabs();
         },
       },
-      "editor:toggle-soft-wrap": function () {
-        return this.toggleSoftWrapped();
+      "editor:toggle-soft-wrap": {
+        checked: ({ currentTarget }) => currentTarget.getModel().isSoftWrapped(),
+        didDispatch: function () {
+          return this.toggleSoftWrapped();
+        },
       },
       "editor:fold-all": function () {
         return this.foldAll();

@@ -595,7 +595,7 @@ describe("HTML menu UI", () => {
     }
   });
 
-  it("reserves a check column only for checkbox and radio rows", () => {
+  it("reserves an indicator column only for checkbox and radio rows", () => {
     const style = document.createElement("style");
     style.textContent = require("node:fs").readFileSync(
       require("node:path").join(__dirname, "../static/lumine-ui/styles/menus.css"),
@@ -616,16 +616,69 @@ describe("HTML menu UI", () => {
         (row) => row.querySelector(".menu-item-name").getBoundingClientRect().left,
       );
       expect(positions[1]).toBe(positions[2]);
-      expect(positions[1] - positions[0]).toBe(20);
+      expect(positions[1] - positions[0]).toBe(26);
       expect(parseFloat(getComputedStyle(rows[0]).paddingLeft)).toBe(14);
-      const marker = getComputedStyle(rows[1], "::before");
-      expect(parseFloat(marker.left) + parseFloat(marker.width)).toBeLessThan(
-        positions[1] - rows[1].getBoundingClientRect().left,
-      );
+      const marker = rows[1].querySelector(".menu-item-indicator");
+      expect(marker.getBoundingClientRect().right).toBeLessThan(positions[1]);
+      expect(marker.getAttribute("aria-hidden")).toBe("true");
       expect(rows[1].getAttribute("role")).toBe("menuitemcheckbox");
       expect(rows[2].getAttribute("role")).toBe("menuitemradio");
     } finally {
       style.remove();
+    }
+  });
+
+  it("shows typed unchecked controls and keeps stored state separate from navigation", () => {
+    const popup = showMenuPopup(contextViews, {
+      anchor: target,
+      template: [
+        { label: "Off", type: "checkbox" },
+        { label: "On", type: "checkbox", checked: true },
+        { label: "Mixed", type: "checkbox", checked: "mixed" },
+        { label: "First", type: "radio", checked: false },
+        { label: "Second", type: "radio", checked: true, enabled: false },
+      ],
+    });
+    const [off, on, mixed, first, second] = popup.rootList.items;
+    expect(off.element.getAttribute("aria-checked")).toBe("false");
+    expect(off.indicatorElement.dataset.checked).toBe("false");
+    expect(off.indicatorElement.getBoundingClientRect().width).toBeGreaterThanOrEqual(16);
+    expect(mixed.indicatorElement.dataset.checked).toBe("mixed");
+    expect(first.indicatorElement.classList.contains("choice-control-radio")).toBe(true);
+    expect(second.indicatorElement.dataset.checked).toBe("true");
+    expect(second.indicatorElement.dataset.disabled).toBe("true");
+    popup.rootList.selectItem(off, { focus: true });
+    expect(off.element.classList.contains("selected")).toBe(true);
+    expect(off.element.getAttribute("aria-checked")).toBe("false");
+    expect(on.element.getAttribute("aria-checked")).toBe("true");
+    expect(popup.element.querySelector("input")).toBeNull();
+  });
+
+  it("refreshes checked command aliases in an open menu and removes retired state", async () => {
+    let checked = false;
+    const registration = lumine.commands.add(target, {
+      "menu-ui-spec:choice": { checked: () => checked, didDispatch() {} },
+    });
+    const popup = showMenuPopup(contextViews, {
+      anchor: target,
+      target,
+      template: [{ label: "Choice", command: "menu-ui-spec:choice" }],
+    });
+    try {
+      const item = popup.rootList.items[0];
+      expect(item.element.getAttribute("aria-checked")).toBe("false");
+      checked = true;
+      lumine.commands.invalidateAvailability({ target });
+      await Promise.resolve();
+      expect(item.element.getAttribute("aria-checked")).toBe("true");
+      expect(item.indicatorElement.dataset.checked).toBe("true");
+      registration.dispose();
+      await Promise.resolve();
+      expect(item.element.getAttribute("role")).toBe("menuitem");
+      expect(item.element.hasAttribute("aria-checked")).toBe(false);
+      expect(item.indicatorElement).toBeNull();
+    } finally {
+      registration.dispose();
     }
   });
 

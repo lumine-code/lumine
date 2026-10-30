@@ -4,6 +4,7 @@ const {
   keyBindingLabelForMenuItem,
   isMenuItemEnabled,
   normalizeCommandTarget,
+  menuItemState,
 } = require("./menu-helpers");
 
 const itemViewsByElement = new WeakMap();
@@ -78,23 +79,14 @@ class MenuItemView {
     }
 
     this.element.classList.add("menu-item");
-    const role =
-      template.checked == null
-        ? "menuitem"
-        : template.type === "radio"
-          ? "menuitemradio"
-          : "menuitemcheckbox";
-    this.element.setAttribute("role", role);
+    this.element.setAttribute("role", "menuitem");
     this.element.tabIndex = -1;
     if (!this.enabled) {
       this.element.classList.add("disabled");
       this.element.setAttribute("aria-disabled", "true");
     }
     if (!this.visible) this.element.classList.add("invisible");
-    if (template.checked != null) {
-      this.element.classList.toggle("checked", Boolean(template.checked));
-      this.element.setAttribute("aria-checked", template.checked ? "true" : "false");
-    }
+    this.refreshState();
 
     this.nameElement = this.popup.document.createElement("span");
     this.nameElement.classList.add("menu-item-name");
@@ -172,6 +164,34 @@ class MenuItemView {
 
   isNavigable() {
     return this.visible && this.enabled && !this.separator;
+  }
+
+  refreshState() {
+    const state = menuItemState(this.template, this.commandTarget);
+    if (!state) {
+      this.indicatorElement?.remove();
+      this.indicatorElement = null;
+      this.element.setAttribute("role", "menuitem");
+      this.element.removeAttribute("aria-checked");
+      this.element.classList.remove("checked", "mixed");
+      return;
+    }
+    this.element.setAttribute(
+      "role",
+      state.type === "radio" ? "menuitemradio" : "menuitemcheckbox",
+    );
+    this.element.setAttribute("aria-checked", String(state.checked));
+    this.element.classList.toggle("checked", state.checked === true);
+    this.element.classList.toggle("mixed", state.checked === "mixed");
+    if (!this.indicatorElement) {
+      this.indicatorElement = this.popup.document.createElement("span");
+      this.indicatorElement.className = "choice-control menu-item-indicator";
+      this.indicatorElement.setAttribute("aria-hidden", "true");
+      this.element.prepend(this.indicatorElement);
+    }
+    this.indicatorElement.classList.toggle("choice-control-radio", state.type === "radio");
+    this.indicatorElement.dataset.checked = String(state.checked);
+    this.indicatorElement.dataset.disabled = String(!this.enabled);
   }
 
   setSelected(selected, { focus = false } = {}) {
@@ -598,6 +618,7 @@ class MenuPopup {
       for (const item of list.items) {
         if (item.separator) continue;
         item.enabled = this.isItemEnabled(item.template);
+        item.refreshState();
         item.element.classList.toggle("disabled", !item.enabled);
         if (item.enabled) item.element.removeAttribute("aria-disabled");
         else {
