@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-30T14:02:09.824Z",
+  "generatedAt": "2026-10-30T15:25:00.134Z",
   "platform": "Windows",
   "originalNativeWheelComparison": {
     "baseline": {
@@ -21,19 +21,19 @@
     },
     "current": {
       "kind": "custom-overlay-scrollbars",
-      "revision": "7b8422b7e2121c600b8f1cf4068c4abec38900f0",
+      "revision": "889ca0e40a6aca84875b3a60923e7d5c058bb8d2",
       "cleanWorkingTree": true,
-      "sourceFingerprint": "5268fc930b50d0726d8092f4c0a3d8c58c703f20dc6d8d54d8d8fd0cdeea21f4",
+      "sourceFingerprint": "ac4a50026db8df488908e929edc134018e454fd48f664b861d676dd919ada65b",
       "files": {
         "benchmarkRaw": "3202bef60b41fe08b34d8da5a19b41519db870945091421de887ec71c4e05067",
         "benchmarkNormalized": "3202bef60b41fe08b34d8da5a19b41519db870945091421de887ec71c4e05067",
         "animatorRaw": "b0552b745464df689924761bc02a53460810fb999602fa08980f7d0dc66ba297",
         "animatorNormalized": "b0552b745464df689924761bc02a53460810fb999602fa08980f7d0dc66ba297",
-        "editorComponent": "d94f4f0642cb7264b882c6df5c1fa7f95cb0d86673d4bb45488ad9017bf9ead1",
+        "editorComponent": "c4f0e9b43947b401047ecfc6819c7b4d432a2471e81b72d782cf9ed36cc4a022",
         "nativeDummy": null,
-        "overlayAdapter": "76f95ccf89edd8a16eb113efcf2ebff3aba6c2453c389cb767e98b849a68bf82",
-        "overlayRuntime": "00603f544a895871e05ddc4f237f069cdd389d98124fb24bef346899de8b2ea8",
-        "packageLock": "f0de038ada398d5a3d5e9f51265653937f33efe77ccd6e0c27ee3e2990047678"
+        "overlayAdapter": "a5a330ee55ea60a3a97cf8509fda9baf7894cc444990088250fca0ba470d980c",
+        "overlayRuntime": "ed6f74ddafd38e4bd767afe2f7fd27a6c0f6e2e2d8b8f1b99a83913885623be5",
+        "packageLock": "cb24fac269b15a19b8ed5f16e2fce651058cb15fe2da076d68d88e572044c0e9"
       }
     },
     "design": {
@@ -43,9 +43,21 @@
       "internalStartPositionSamplesPerCase": 3,
       "unchangedBenchmarkSource": true,
       "unchangedWheelAnimatorSource": true,
-      "unchangedDependencyLock": true,
+      "unchangedDependencyLock": false,
       "identicalInstalledDependencyTree": true,
-      "sourceAndInputIntegrityVerified": true
+      "sourceAndInputIntegrityVerified": true,
+      "dependencyControl": "Both immutable original core and final current core resolve through the exact same current installed node_modules directory. Source lockfiles intentionally differ after fleet repins; the original source archive is not modified.",
+      "sharedResolvedModules": {
+        "installedLockSha256": "7240020a330ed622b9ba41aa32d5546fe247d7397c7d9ff0277833243376bad2",
+        "packageCount": 662,
+        "resolvedPackageTableSha256": "b28202ce77f430ab145ecafa14ccde22101f43f23f95c0dfffe812c2f3568b96"
+      },
+      "benchmarkMount": {
+        "kind": "neutral-primary-item-views",
+        "editorsPerRound": 20,
+        "currentLayout": "overlay",
+        "originalLayout": "original-native"
+      }
     },
     "runtime": {
       "electron": "45.0.0",
@@ -88,111 +100,111 @@
     "baselineObservations": [
       {
         "round": 1,
-        "totalRendererWorkMs": 4743.299999982119,
-        "workIntervalsOver16_7Ms": 0,
+        "totalRendererWorkMs": 4716.099999576807,
+        "workIntervalsOver16_7Ms": 1,
         "workIntervalsOver50Ms": 0,
-        "maximumWorkIntervalMs": 16,
+        "maximumWorkIntervalMs": 18.5,
         "maximumTargetError": 0
       },
       {
         "round": 2,
-        "totalRendererWorkMs": 4813.400000303984,
-        "workIntervalsOver16_7Ms": 1,
+        "totalRendererWorkMs": 4666.299999892712,
+        "workIntervalsOver16_7Ms": 0,
         "workIntervalsOver50Ms": 0,
-        "maximumWorkIntervalMs": 18.099999994039536,
+        "maximumWorkIntervalMs": 14.400000005960464,
         "maximumTargetError": 0
       },
       {
         "round": 3,
-        "totalRendererWorkMs": 4679.700000226498,
+        "totalRendererWorkMs": 4640.299999773502,
         "workIntervalsOver16_7Ms": 0,
         "workIntervalsOver50Ms": 0,
-        "maximumWorkIntervalMs": 15.5,
+        "maximumWorkIntervalMs": 15.099999994039536,
         "maximumTargetError": 0
       }
     ],
     "currentObservations": [
       {
         "round": 1,
-        "totalRendererWorkMs": 3850.9999996721745,
+        "totalRendererWorkMs": 3783.100000143051,
         "workIntervalsOver16_7Ms": 0,
         "workIntervalsOver50Ms": 0,
-        "maximumWorkIntervalMs": 16.400000005960464,
+        "maximumWorkIntervalMs": 15.099999994039536,
         "maximumTargetError": 0
       },
       {
         "round": 2,
-        "totalRendererWorkMs": 3754.699999690056,
+        "totalRendererWorkMs": 3799.7000003755093,
         "workIntervalsOver16_7Ms": 0,
         "workIntervalsOver50Ms": 0,
-        "maximumWorkIntervalMs": 15.700000017881393,
+        "maximumWorkIntervalMs": 15.599999994039536,
         "maximumTargetError": 0
       },
       {
         "round": 3,
-        "totalRendererWorkMs": 3671.400000065565,
-        "workIntervalsOver16_7Ms": 0,
+        "totalRendererWorkMs": 4002.3000002503395,
+        "workIntervalsOver16_7Ms": 1,
         "workIntervalsOver50Ms": 0,
-        "maximumWorkIntervalMs": 15.700000017881393,
+        "maximumWorkIntervalMs": 17.700000017881393,
         "maximumTargetError": 0
       }
     ],
     "medianAggregateRendererWorkMs": {
-      "baseline": 4743.299999982119,
-      "current": 3754.699999690056,
-      "changePercent": -20.842029816705455
+      "baseline": 4666.299999892712,
+      "current": 3799.7000003755093,
+      "changePercent": -18.571459176159433
     },
     "caseMedians": [
       {
         "name": "Plain Text CRLF",
         "scenario": "alt-wheel-burst",
-        "nativeTotalMs": 117.10000002384186,
-        "overlayTotalMs": 80.89999994635582,
-        "totalWorkChangePercent": -30.913748992413005,
-        "nativeP95Ms": 1.5,
-        "overlayP95Ms": 1.100000023841858,
+        "nativeTotalMs": 115.79999995231628,
+        "overlayTotalMs": 82.59999996423721,
+        "totalWorkChangePercent": -28.67012089961144,
+        "nativeP95Ms": 1.4000000059604645,
+        "overlayP95Ms": 1.2000000178813934,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Python LF",
         "scenario": "alt-wheel-burst",
-        "nativeTotalMs": 402.90000000596046,
-        "overlayTotalMs": 336.8999999463558,
-        "totalWorkChangePercent": -16.381236053270854,
+        "nativeTotalMs": 394.0000000298023,
+        "overlayTotalMs": 348.69999995827675,
+        "totalWorkChangePercent": -11.497461946218035,
         "nativeP95Ms": 10.800000011920929,
-        "overlayP95Ms": 9.599999994039536,
+        "overlayP95Ms": 10,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Python CRLF",
         "scenario": "alt-wheel-burst",
-        "nativeTotalMs": 366.2999999821186,
-        "overlayTotalMs": 308.4999999701977,
-        "totalWorkChangePercent": -15.779415783440488,
-        "nativeP95Ms": 10.199999988079071,
-        "overlayP95Ms": 9.399999976158142,
+        "nativeTotalMs": 369.19999998807907,
+        "overlayTotalMs": 321.30000004172325,
+        "totalWorkChangePercent": -12.973997819041827,
+        "nativeP95Ms": 10.599999994039536,
+        "overlayP95Ms": 9.699999988079071,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "IPython CRLF",
         "scenario": "alt-wheel-burst",
-        "nativeTotalMs": 432.6000000834465,
-        "overlayTotalMs": 339.2000000178814,
-        "totalWorkChangePercent": -21.590383737297437,
-        "nativeP95Ms": 12.5,
-        "overlayP95Ms": 10.599999994039536,
+        "nativeTotalMs": 420.09999999403954,
+        "overlayTotalMs": 354.30000001192093,
+        "totalWorkChangePercent": -15.662937391823895,
+        "nativeP95Ms": 11.699999988079071,
+        "overlayP95Ms": 11.399999976158142,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Plain Text CRLF",
         "scenario": "alt-wheel-sparse",
-        "nativeTotalMs": 214.00000008940697,
-        "overlayTotalMs": 141.7000000178814,
-        "totalWorkChangePercent": -33.78504674828009,
+        "nativeTotalMs": 214.09999999403954,
+        "overlayTotalMs": 156.20000007748604,
+        "totalWorkChangePercent": -27.043437607737232,
         "nativeP95Ms": 0.4000000059604645,
         "overlayP95Ms": 0.5,
         "nativeOver16_7": 0,
@@ -201,21 +213,21 @@
       {
         "name": "Python LF",
         "scenario": "alt-wheel-sparse",
-        "nativeTotalMs": 479.1000000834465,
-        "overlayTotalMs": 380.5,
-        "totalWorkChangePercent": -20.58025465795721,
+        "nativeTotalMs": 466.0999999642372,
+        "overlayTotalMs": 396.40000000596046,
+        "totalWorkChangePercent": -14.953872551732395,
         "nativeP95Ms": 0.5999999940395355,
-        "overlayP95Ms": 0.5999999940395355,
+        "overlayP95Ms": 0.699999988079071,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Python CRLF",
         "scenario": "alt-wheel-sparse",
-        "nativeTotalMs": 493.09999999403954,
-        "overlayTotalMs": 379.7999998629093,
-        "totalWorkChangePercent": -22.977083782701225,
-        "nativeP95Ms": 0.6000000238418579,
+        "nativeTotalMs": 490.69999995827675,
+        "overlayTotalMs": 378.2000000178814,
+        "totalWorkChangePercent": -22.92643161808865,
+        "nativeP95Ms": 0.699999988079071,
         "overlayP95Ms": 0.5999999940395355,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
@@ -223,20 +235,20 @@
       {
         "name": "IPython CRLF",
         "scenario": "alt-wheel-sparse",
-        "nativeTotalMs": 460.40000009536743,
-        "overlayTotalMs": 372.2000000178814,
-        "totalWorkChangePercent": -19.157254574113004,
+        "nativeTotalMs": 464.6999999284744,
+        "overlayTotalMs": 379.30000004172325,
+        "totalWorkChangePercent": -18.37744779425344,
         "nativeP95Ms": 0.5999999940395355,
-        "overlayP95Ms": 0.6000000238418579,
+        "overlayP95Ms": 0.699999988079071,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Plain Text CRLF",
         "scenario": "free-wheel-spacing",
-        "nativeTotalMs": 38.30000001192093,
-        "overlayTotalMs": 24.500000059604645,
-        "totalWorkChangePercent": -36.03133145697392,
+        "nativeTotalMs": 39.599999994039536,
+        "overlayTotalMs": 25.700000017881393,
+        "totalWorkChangePercent": -35.10101004608668,
         "nativeP95Ms": 0.29999998211860657,
         "overlayP95Ms": 0.29999998211860657,
         "nativeOver16_7": 0,
@@ -245,10 +257,10 @@
       {
         "name": "Python LF",
         "scenario": "free-wheel-spacing",
-        "nativeTotalMs": 70.90000003576279,
-        "overlayTotalMs": 47.5,
-        "totalWorkChangePercent": -33.00423134550008,
-        "nativeP95Ms": 0.4000000059604645,
+        "nativeTotalMs": 71.30000001192093,
+        "overlayTotalMs": 46.39999994635582,
+        "totalWorkChangePercent": -34.922861236187906,
+        "nativeP95Ms": 0.30000001192092896,
         "overlayP95Ms": 0.30000001192092896,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
@@ -256,10 +268,10 @@
       {
         "name": "Python CRLF",
         "scenario": "free-wheel-spacing",
-        "nativeTotalMs": 79.7000000178814,
-        "overlayTotalMs": 48.500000059604645,
-        "totalWorkChangePercent": -39.146800440748756,
-        "nativeP95Ms": 0.4000000059604645,
+        "nativeTotalMs": 69.2999999821186,
+        "overlayTotalMs": 52.200000047683716,
+        "totalWorkChangePercent": -24.67532458708107,
+        "nativeP95Ms": 0.3999999761581421,
         "overlayP95Ms": 0.30000001192092896,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
@@ -267,21 +279,21 @@
       {
         "name": "IPython CRLF",
         "scenario": "free-wheel-spacing",
-        "nativeTotalMs": 86.2999999821186,
-        "overlayTotalMs": 54.799999952316284,
-        "totalWorkChangePercent": -36.50057941637211,
-        "nativeP95Ms": 0.4000000059604645,
-        "overlayP95Ms": 0.30000001192092896,
+        "nativeTotalMs": 78.70000004768372,
+        "overlayTotalMs": 57.49999997019768,
+        "totalWorkChangePercent": -26.937738328641835,
+        "nativeP95Ms": 0.3999999761581421,
+        "overlayP95Ms": 0.4000000059604645,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Plain Text CRLF",
         "scenario": "alt-wheel-spacing",
-        "nativeTotalMs": 174.39999997615814,
-        "overlayTotalMs": 107.60000002384186,
-        "totalWorkChangePercent": -38.3027522714727,
-        "nativeP95Ms": 0.699999988079071,
+        "nativeTotalMs": 170.7999999821186,
+        "overlayTotalMs": 115.09999996423721,
+        "totalWorkChangePercent": -32.61124123168193,
+        "nativeP95Ms": 0.5999999940395355,
         "overlayP95Ms": 0.5,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
@@ -289,21 +301,21 @@
       {
         "name": "Python LF",
         "scenario": "alt-wheel-spacing",
-        "nativeTotalMs": 414.1000000834465,
-        "overlayTotalMs": 378.6999999284744,
-        "totalWorkChangePercent": -8.548659779724343,
-        "nativeP95Ms": 3.300000011920929,
-        "overlayP95Ms": 4.600000023841858,
+        "nativeTotalMs": 406.2000000178814,
+        "overlayTotalMs": 363.5000001192093,
+        "totalWorkChangePercent": -10.51206299773324,
+        "nativeP95Ms": 3,
+        "overlayP95Ms": 3.300000011920929,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Python CRLF",
         "scenario": "alt-wheel-spacing",
-        "nativeTotalMs": 414.4000000357628,
-        "overlayTotalMs": 331.4999999701977,
-        "totalWorkChangePercent": -20.004826268921526,
-        "nativeP95Ms": 3.199999988079071,
+        "nativeTotalMs": 411.19999998807907,
+        "overlayTotalMs": 340.80000001192093,
+        "totalWorkChangePercent": -17.12062256279161,
+        "nativeP95Ms": 2.9000000059604645,
         "overlayP95Ms": 2.800000011920929,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
@@ -311,20 +323,20 @@
       {
         "name": "IPython CRLF",
         "scenario": "alt-wheel-spacing",
-        "nativeTotalMs": 438.19999998807907,
-        "overlayTotalMs": 344.10000002384186,
-        "totalWorkChangePercent": -21.474212680693093,
-        "nativeP95Ms": 4.5999999940395355,
-        "overlayP95Ms": 2.800000011920929,
+        "nativeTotalMs": 415.7999999523163,
+        "overlayTotalMs": 348.6000000834465,
+        "totalWorkChangePercent": -16.16161613193272,
+        "nativeP95Ms": 3,
+        "overlayP95Ms": 2.9000000059604645,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Plain Text CRLF",
         "scenario": "free-wheel-deltas",
-        "nativeTotalMs": 13.899999976158142,
-        "overlayTotalMs": 9.599999964237213,
-        "totalWorkChangePercent": -30.935251937384656,
+        "nativeTotalMs": 14.200000017881393,
+        "overlayTotalMs": 9.500000059604645,
+        "totalWorkChangePercent": -33.09859121379056,
         "nativeP95Ms": 0.29999998211860657,
         "overlayP95Ms": 0.10000002384185791,
         "nativeOver16_7": 0,
@@ -333,9 +345,9 @@
       {
         "name": "Python LF",
         "scenario": "free-wheel-deltas",
-        "nativeTotalMs": 13.79999989271164,
-        "overlayTotalMs": 6.800000011920929,
-        "totalWorkChangePercent": -50.72463721168363,
+        "nativeTotalMs": 14.200000017881393,
+        "overlayTotalMs": 7.0999999940395355,
+        "totalWorkChangePercent": -50.00000010493775,
         "nativeP95Ms": 0.30000001192092896,
         "overlayP95Ms": 0.10000002384185791,
         "nativeOver16_7": 0,
@@ -344,9 +356,9 @@
       {
         "name": "Python CRLF",
         "scenario": "free-wheel-deltas",
-        "nativeTotalMs": 14,
-        "overlayTotalMs": 7.400000065565109,
-        "totalWorkChangePercent": -47.14285667453494,
+        "nativeTotalMs": 14.699999988079071,
+        "overlayTotalMs": 7.4000000059604645,
+        "totalWorkChangePercent": -49.659863864207644,
         "nativeP95Ms": 0.30000001192092896,
         "overlayP95Ms": 0.10000002384185791,
         "nativeOver16_7": 0,
@@ -355,9 +367,9 @@
       {
         "name": "IPython CRLF",
         "scenario": "free-wheel-deltas",
-        "nativeTotalMs": 14.299999982118607,
-        "overlayTotalMs": 7.4000000059604645,
-        "totalWorkChangePercent": -48.25174814535823,
+        "nativeTotalMs": 14.09999993443489,
+        "overlayTotalMs": 7.400000035762787,
+        "totalWorkChangePercent": -47.51772999877415,
         "nativeP95Ms": 0.30000001192092896,
         "overlayP95Ms": 0.10000002384185791,
         "nativeOver16_7": 0,
@@ -373,56 +385,68 @@
       },
       {
         "name": "Python LF",
+        "scenario": "alt-wheel-sparse",
+        "baselineP95Ms": 0.5999999940395355,
+        "currentP95Ms": 0.699999988079071
+      },
+      {
+        "name": "IPython CRLF",
+        "scenario": "alt-wheel-sparse",
+        "baselineP95Ms": 0.5999999940395355,
+        "currentP95Ms": 0.699999988079071
+      },
+      {
+        "name": "Python LF",
         "scenario": "alt-wheel-spacing",
-        "baselineP95Ms": 3.300000011920929,
-        "currentP95Ms": 4.600000023841858
+        "baselineP95Ms": 3,
+        "currentP95Ms": 3.300000011920929
       }
     ],
     "evidence": {
       "originalArchiveSha256": "1a4769826c3a42a4648593518a2495fc9fdfdbe451fade702832e81907acdd5a",
-      "driverSha256": "f37e9c1dce66c621aa89d10397bbf568f0ccbc09d1ddd1dbeae7b71d7cd922f4",
-      "environmentAuditSpecSha256": "94004972defdb0c0864ba963eb36dd555248f24f3b0ee3969d251ef77010cf09",
-      "rawComparisonSha256": "fee81c1a95f7f10bcbc0170e74fb474f8882e9ee76f41c55ec433b42c3486206",
-      "sourceManifestsSha256": "bc4280c89dd61ed81654e3c58e954b9151067e04a22bc0f970be92d1cd48a6dc",
+      "driverSha256": "33b40def402230dba776cd98310777746ec147e2b27bac0481a11b8419e25f3d",
+      "environmentAuditSpecSha256": "4139798964831f9c3bc06fbcfaaadee1e163c55fcf75b68c2673aaca1eac6ea7",
+      "rawComparisonSha256": "9b8f7f97926af6ce47fcad6cacbb07cf0c880fd4a8080ef620a184b021060d2d",
+      "sourceManifestsSha256": "f29fa81b7ea6e5d6e2752ed7baa55e8e0a239980429117c019a70c8ce016d181",
       "rawRuns": [
         {
           "artifact": "1-current-overlay.json",
-          "sha256": "b2b67e893f3855c6327ebb5e2b3d4354bc74fa526184207a59f1bff0aa392d32",
+          "sha256": "e0c0dbd2f64a3baf187449dd245a56c354b8d13c9c8fa36120a8b264974db1f3",
           "label": "current-overlay",
           "round": 1,
-          "sourceFingerprint": "5268fc930b50d0726d8092f4c0a3d8c58c703f20dc6d8d54d8d8fd0cdeea21f4"
+          "sourceFingerprint": "ac4a50026db8df488908e929edc134018e454fd48f664b861d676dd919ada65b"
         },
         {
           "artifact": "1-original-native.json",
-          "sha256": "9495d81902c5475279e8235994f76511899f4715edf62ec0505ce2d294c6d570",
+          "sha256": "085f9962cbbc57c739b421886a059c117d7b3a9f90fb723158635292f3dd7212",
           "label": "original-native",
           "round": 1,
           "sourceFingerprint": "2f20bfe1168d1d525d10c64cff822b107434c8099c1486324b6046121af47454"
         },
         {
           "artifact": "2-current-overlay.json",
-          "sha256": "962e27bd5a6a108ddc135f6b35ba34dec5dcf281b20579589b5d56952e7f218b",
+          "sha256": "b322972e172fe6ecb63b698a149d52c375e90735e935607cde1d4eb0348a78b9",
           "label": "current-overlay",
           "round": 2,
-          "sourceFingerprint": "5268fc930b50d0726d8092f4c0a3d8c58c703f20dc6d8d54d8d8fd0cdeea21f4"
+          "sourceFingerprint": "ac4a50026db8df488908e929edc134018e454fd48f664b861d676dd919ada65b"
         },
         {
           "artifact": "2-original-native.json",
-          "sha256": "937fab5d06e53bfb6a3bcd82cda9bab328375e2692ab6a36851dd5c92a796264",
+          "sha256": "63d058b72814c53305390cd9b14ddd958304ecc4ecdf6e290cbe7615c8484239",
           "label": "original-native",
           "round": 2,
           "sourceFingerprint": "2f20bfe1168d1d525d10c64cff822b107434c8099c1486324b6046121af47454"
         },
         {
           "artifact": "3-current-overlay.json",
-          "sha256": "d18400d32865284048d52ede9b19182c16fe16a54d3a54512379f27b541827de",
+          "sha256": "11560a60496a0b8963232b0ee1d28c4413cc7435e54e67e0c749d8c1538162a9",
           "label": "current-overlay",
           "round": 3,
-          "sourceFingerprint": "5268fc930b50d0726d8092f4c0a3d8c58c703f20dc6d8d54d8d8fd0cdeea21f4"
+          "sourceFingerprint": "ac4a50026db8df488908e929edc134018e454fd48f664b861d676dd919ada65b"
         },
         {
           "artifact": "3-original-native.json",
-          "sha256": "e475b17ed92dfcaeb7398ffa51e514eb8bafb7fdeb3a0480682de4bfe091efa9",
+          "sha256": "e7eb64dc2bd58e5e59b09f8f49189d1d4457ec7861961ca0e34243bd35651005",
           "label": "original-native",
           "round": 3,
           "sourceFingerprint": "2f20bfe1168d1d525d10c64cff822b107434c8099c1486324b6046121af47454"
@@ -442,7 +466,7 @@
       "rawArtifactSha256": "42e400611ab38da880e2482060572f4c4e7e8f74da4195505b424a115f36c24b"
     },
     "current": {
-      "kind": "reviewed-overlay-runtime",
+      "kind": "later-intermediate-overlay-runtime",
       "sourceHashes": {
         "overlay-scrollbar": "00603f544a895871e05ddc4f237f069cdd389d98124fb24bef346899de8b2ea8",
         "scrollbar-manager": "4e5a91d4df082597c63f07d2ac73f322f706f390fa6fb14db97a7e0501d32f71"
@@ -453,7 +477,7 @@
     "runtime": {
       "electron": "45.0.0"
     },
-    "interpretation": "Operation counters and functional observations compare an intermediate overlay prototype with the reviewed runtime. They are not an original-native baseline or a timed generic speedup comparison.",
+    "interpretation": "Operation counters and functional observations compare two intermediate overlay runtime snapshots, identified by their source hashes. They do not describe the final three-group layout, an original-native baseline or a timed generic speedup comparison.",
     "baselineResults": [
       {
         "scenario": "scroll",
@@ -582,9 +606,21 @@
     ],
     "omittedSingleObservationTimingFields": ["scroll.dispatchMs", "token-discovery.discoveryMs"]
   },
-  "hardware": {
-    "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
-    "logicalProcessors": 20,
-    "architecture": "x64"
+  "earlierWheelComparisonContext": {
+    "supersededForFinalSource": true,
+    "currentRevision": "7b8422b7e2121c600b8f1cf4068c4abec38900f0",
+    "originalRevision": "f6fd84b6cf089f806bf8242332a1a3a740d1bddc",
+    "rawComparisonSha256": "fee81c1a95f7f10bcbc0170e74fb474f8882e9ee76f41c55ec433b42c3486206",
+    "medianAggregateRendererWorkMs": [
+      {
+        "label": "original-native",
+        "medianTotalRendererWorkMs": 4743.299999982119
+      },
+      {
+        "label": "current-overlay",
+        "medianTotalRendererWorkMs": 3754.699999690056
+      }
+    ],
+    "interpretation": "Earlier paired results measured an earlier implementation and dependency tree using standalone benchmark editors. The final primary-editor paired results above are the current comparison; timings from these runs are not pooled."
   }
 }
