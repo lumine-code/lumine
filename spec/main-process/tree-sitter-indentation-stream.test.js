@@ -98,6 +98,34 @@ test("twelve million uniform planned rows use compact pages instead of per-row M
 });
 
 for (const batchSize of [1, 7, 256]) {
+  test(`pasted rows without a controlling indentation query preserve whitespace across batch size ${batchSize}`, async () => {
+    const f = fixture(40);
+    try {
+      f.mode.rootLanguageLayer.queries = {};
+      f.mode.controllingLayerAtPoint = () => null;
+      const ranges = [
+        [2, 15],
+        [21, 39],
+      ];
+      const expected = ranges.flatMap(([start, end]) =>
+        Array.from({ length: end - start + 1 }, (_, index) => [start + index, null]),
+      );
+      assert.deepEqual(
+        await collect(f.resolver, ranges, batchSize, { isPastedText: true }),
+        expected,
+      );
+      assert.equal(f.calls, 0, "absence of an indentation query is a complete preservation plan");
+      assert.equal(f.resolver.lastIndentationScanStats.storedRows, 0);
+      assert.equal(
+        f.resolver.suggestedIndentForBufferRows(2, 15, 2, { isPastedText: true }),
+        null,
+        "the synchronous API retains its legacy preservation result",
+      );
+    } finally {
+      f.close();
+    }
+  });
+
   test(`streamed indentation matches the synchronous plan across batch size ${batchSize}`, async () => {
     const f = fixture();
     try {
@@ -140,6 +168,59 @@ for (const batchSize of [1, 7, 256]) {
     }
   });
 }
+
+test("an explicit preserve capture on the first pasted row preserves the entire block", async () => {
+  const f = fixture(20);
+  let calls = 0;
+  try {
+    f.resolver.suggestedIndentForBufferRow = (row, _tabLength, options) => {
+      calls++;
+      options.preservedRows.add(row);
+      return null;
+    };
+    assert.deepEqual(
+      await collect(f.resolver, [[2, 19]], 7, { isPastedText: true }),
+      Array.from({ length: 18 }, (_, index) => [index + 2, null]),
+    );
+    assert.equal(calls, 1, "a preserved pasted block does not need further syntax suggestions");
+    assert.equal(f.resolver.lastIndentationScanStats.storedRows, 0);
+  } finally {
+    f.close();
+  }
+});
+
+test("pasting still rejects an injected indentation layer whose syntax tree is unavailable", async () => {
+  const f = fixture(20);
+  try {
+    const injection = {
+      tree: null,
+      queries: { indentsQuery: {} },
+      getOrParseTree: () => null,
+    };
+    f.mode.rootLanguageLayer.queries = {};
+    f.mode.controllingLayerAtPoint = (_point, accepts) => (accepts(injection) ? injection : null);
+    await assert.rejects(collect(f.resolver, [[2, 19]], 7, { isPastedText: true }), {
+      code: "ERR_SYNTAX_QUERY_BUDGET",
+      reason: "indentation-unavailable",
+    });
+    assert.equal(f.calls, 0);
+  } finally {
+    f.close();
+  }
+});
+
+test("pasting still rejects a missing suggestion that was not explicitly preserved", async () => {
+  const f = fixture(20);
+  try {
+    f.resolver.suggestedIndentForBufferRow = () => undefined;
+    await assert.rejects(collect(f.resolver, [[2, 19]], 7, { isPastedText: true }), {
+      code: "ERR_SYNTAX_QUERY_BUDGET",
+      reason: "indentation-unavailable",
+    });
+  } finally {
+    f.close();
+  }
+});
 
 test("cancellation after a batch stops before resolving another row", async () => {
   const f = fixture(20),

@@ -955,7 +955,8 @@ class IndentResolver {
       previousComparison = 0;
 
     let { isPastedText = false } = options;
-    let indentDelta;
+    let indentDelta,
+      preservePastedIndentation = false;
 
     for (const row of rows) {
       options.checkCurrent?.();
@@ -1005,7 +1006,7 @@ class IndentResolver {
         this.buffer.clipPosition(new Point(comparisonRow, Infinity)),
         // This query isn't as precise as the one we end up making later, but
         // that's OK. This is just a first pass.
-        (layer) => !!layer.queries.indentsQuery && !!layer.tree,
+        (layer) => !!layer.queries.indentsQuery,
       );
       if (isPastedText) {
         // In this mode, we're not trying to auto-indent every line; instead,
@@ -1015,14 +1016,23 @@ class IndentResolver {
         // auto-indent of the first line increases its indent by one level,
         // all other lines should also be increased by one level — without even
         // consulting their own suggested indent levels.
+        if (preservePastedIndentation) {
+          yield [row, null];
+          continue;
+        }
         if (row === startRow) {
           // The only time we consult the indents query is for the first row,
           // so we're not going to insist that the _entire range_ fall under
           // the control of a layer with an indents query — just the row we
           // need.
           if (!controllingLayer) {
-            if (options.requireComplete) throw new QueryBudgetExceeded("indentation-unavailable");
-            return null;
+            // A grammar without indentation rules declines to adjust the
+            // pasted block. A complete stream must still cover every row;
+            // null preserves its whitespace without treating this as failure.
+            if (!options.requireComplete) return null;
+            preservePastedIndentation = true;
+            yield [row, null];
+            continue;
           }
           let tree = treeForLayer(controllingLayer);
           if (!tree) {
@@ -1040,8 +1050,15 @@ class IndentResolver {
             controllingLayer,
             tree,
             treeForLayer,
+            preservedRows,
           });
 
+          if (preservedRows.has(row)) {
+            if (!options.requireComplete) return null;
+            preservePastedIndentation = true;
+            yield [row, null];
+            continue;
+          }
           if (typeof firstLineIdealIndent !== "number" || !Number.isFinite(firstLineIdealIndent)) {
             // If we decline to suggest an indent level for the first line,
             // then there's no change to be made here. Keep the whole region
