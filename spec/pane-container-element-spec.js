@@ -245,19 +245,11 @@ describe("PaneContainerElement", function () {
     describe("when the pane is detached", () => {
       let element;
 
-      beforeEach((done) => {
+      beforeEach(() => {
         container.getActivePane().splitRight();
         element = getResizeElement(0);
 
-        document._originalAddEventListener = document.addEventListener;
-        spyOn(document, "addEventListener").and.callFake((...args) => {
-          document._originalAddEventListener(...args);
-
-          if (document.addEventListener.calls.count() == 2) {
-            done();
-          }
-        });
-
+        spyOn(document, "addEventListener").and.callThrough();
         spyOn(document, "removeEventListener").and.callThrough();
         spyOn(element, "resizeStopped").and.callThrough();
 
@@ -271,10 +263,14 @@ describe("PaneContainerElement", function () {
       });
 
       it("unsubscribes from mouse events", function () {
+        expect(document.addEventListener).toHaveBeenCalledWith("mousemove", element.resizePane);
+        expect(document.addEventListener).toHaveBeenCalledWith("mouseup", element.resizeStopped);
         expect(element.resizeStopped.calls.count()).toBe(0);
         container.destroy();
         expect(element.resizeStopped.calls.count()).toBe(1);
-        expect(document.removeEventListener.calls.count()).toBe(2);
+        expect(document.removeEventListener).toHaveBeenCalledWith("mousemove", element.resizePane);
+        expect(document.removeEventListener).toHaveBeenCalledWith("mouseup", element.resizeStopped);
+        expect(element.layoutDrag).toBeNull();
       });
     });
 
