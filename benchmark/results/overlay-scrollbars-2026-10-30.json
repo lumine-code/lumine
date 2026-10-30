@@ -1,0 +1,590 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-30T14:02:09.824Z",
+  "platform": "Windows",
+  "originalNativeWheelComparison": {
+    "baseline": {
+      "kind": "original-native-scrollbars",
+      "revision": "f6fd84b6cf089f806bf8242332a1a3a740d1bddc",
+      "sourceFingerprint": "2f20bfe1168d1d525d10c64cff822b107434c8099c1486324b6046121af47454",
+      "files": {
+        "benchmarkRaw": "3202bef60b41fe08b34d8da5a19b41519db870945091421de887ec71c4e05067",
+        "benchmarkNormalized": "3202bef60b41fe08b34d8da5a19b41519db870945091421de887ec71c4e05067",
+        "animatorRaw": "b0552b745464df689924761bc02a53460810fb999602fa08980f7d0dc66ba297",
+        "animatorNormalized": "b0552b745464df689924761bc02a53460810fb999602fa08980f7d0dc66ba297",
+        "editorComponent": "2ae5973040012618cbd85497ffee6ae80e6d2941ba8fbb3e5e8422dc6724a1be",
+        "nativeDummy": "ae8ce5fdaba04dd16522af0aa838bb0bdf850720a8efaa1e9538e985d789f543",
+        "overlayAdapter": null,
+        "overlayRuntime": null,
+        "packageLock": "f0de038ada398d5a3d5e9f51265653937f33efe77ccd6e0c27ee3e2990047678"
+      }
+    },
+    "current": {
+      "kind": "custom-overlay-scrollbars",
+      "revision": "7b8422b7e2121c600b8f1cf4068c4abec38900f0",
+      "cleanWorkingTree": true,
+      "sourceFingerprint": "5268fc930b50d0726d8092f4c0a3d8c58c703f20dc6d8d54d8d8fd0cdeea21f4",
+      "files": {
+        "benchmarkRaw": "3202bef60b41fe08b34d8da5a19b41519db870945091421de887ec71c4e05067",
+        "benchmarkNormalized": "3202bef60b41fe08b34d8da5a19b41519db870945091421de887ec71c4e05067",
+        "animatorRaw": "b0552b745464df689924761bc02a53460810fb999602fa08980f7d0dc66ba297",
+        "animatorNormalized": "b0552b745464df689924761bc02a53460810fb999602fa08980f7d0dc66ba297",
+        "editorComponent": "d94f4f0642cb7264b882c6df5c1fa7f95cb0d86673d4bb45488ad9017bf9ead1",
+        "nativeDummy": null,
+        "overlayAdapter": "76f95ccf89edd8a16eb113efcf2ebff3aba6c2453c389cb767e98b849a68bf82",
+        "overlayRuntime": "00603f544a895871e05ddc4f237f069cdd389d98124fb24bef346899de8b2ea8",
+        "packageLock": "f0de038ada398d5a3d5e9f51265653937f33efe77ccd6e0c27ee3e2990047678"
+      }
+    },
+    "design": {
+      "externalPairedRounds": 3,
+      "alternatingOrder": true,
+      "casesPerRound": 20,
+      "internalStartPositionSamplesPerCase": 3,
+      "unchangedBenchmarkSource": true,
+      "unchangedWheelAnimatorSource": true,
+      "unchangedDependencyLock": true,
+      "identicalInstalledDependencyTree": true,
+      "sourceAndInputIntegrityVerified": true
+    },
+    "runtime": {
+      "electron": "45.0.0",
+      "node": "24.22.0"
+    },
+    "environment": {
+      "font": {
+        "family": "Courier",
+        "size": 16,
+        "lineHeight": 1.5
+      },
+      "devicePixelRatio": 1,
+      "viewport": {
+        "width": 1024,
+        "height": 1402
+      },
+      "offscreen": true,
+      "headless": true,
+      "activeThemes": [],
+      "isolatedProfiles": true,
+      "normalPackagesDevSourcesUsed": false,
+      "packages": [
+        {
+          "name": "language-python",
+          "version": "1.0.0"
+        },
+        {
+          "name": "language-ipython",
+          "version": "1.0.0"
+        }
+      ]
+    },
+    "fixture": {
+      "lineCount": 12462,
+      "bytes": 659570,
+      "sha256": "edddc144a9eb079bc776adc20a0e70cfdce8cac78171b2ba4ca1323997a468e4",
+      "description": "Generated ctypes-like Python source, exactly matching the benchmark's original generator."
+    },
+    "scope": "Deterministic 120 Hz synchronous wheel handling and renderer work. Excludes compositor timing, operating-system input latency, real display frame pacing and generic application speed.",
+    "baselineObservations": [
+      {
+        "round": 1,
+        "totalRendererWorkMs": 4743.299999982119,
+        "workIntervalsOver16_7Ms": 0,
+        "workIntervalsOver50Ms": 0,
+        "maximumWorkIntervalMs": 16,
+        "maximumTargetError": 0
+      },
+      {
+        "round": 2,
+        "totalRendererWorkMs": 4813.400000303984,
+        "workIntervalsOver16_7Ms": 1,
+        "workIntervalsOver50Ms": 0,
+        "maximumWorkIntervalMs": 18.099999994039536,
+        "maximumTargetError": 0
+      },
+      {
+        "round": 3,
+        "totalRendererWorkMs": 4679.700000226498,
+        "workIntervalsOver16_7Ms": 0,
+        "workIntervalsOver50Ms": 0,
+        "maximumWorkIntervalMs": 15.5,
+        "maximumTargetError": 0
+      }
+    ],
+    "currentObservations": [
+      {
+        "round": 1,
+        "totalRendererWorkMs": 3850.9999996721745,
+        "workIntervalsOver16_7Ms": 0,
+        "workIntervalsOver50Ms": 0,
+        "maximumWorkIntervalMs": 16.400000005960464,
+        "maximumTargetError": 0
+      },
+      {
+        "round": 2,
+        "totalRendererWorkMs": 3754.699999690056,
+        "workIntervalsOver16_7Ms": 0,
+        "workIntervalsOver50Ms": 0,
+        "maximumWorkIntervalMs": 15.700000017881393,
+        "maximumTargetError": 0
+      },
+      {
+        "round": 3,
+        "totalRendererWorkMs": 3671.400000065565,
+        "workIntervalsOver16_7Ms": 0,
+        "workIntervalsOver50Ms": 0,
+        "maximumWorkIntervalMs": 15.700000017881393,
+        "maximumTargetError": 0
+      }
+    ],
+    "medianAggregateRendererWorkMs": {
+      "baseline": 4743.299999982119,
+      "current": 3754.699999690056,
+      "changePercent": -20.842029816705455
+    },
+    "caseMedians": [
+      {
+        "name": "Plain Text CRLF",
+        "scenario": "alt-wheel-burst",
+        "nativeTotalMs": 117.10000002384186,
+        "overlayTotalMs": 80.89999994635582,
+        "totalWorkChangePercent": -30.913748992413005,
+        "nativeP95Ms": 1.5,
+        "overlayP95Ms": 1.100000023841858,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Python LF",
+        "scenario": "alt-wheel-burst",
+        "nativeTotalMs": 402.90000000596046,
+        "overlayTotalMs": 336.8999999463558,
+        "totalWorkChangePercent": -16.381236053270854,
+        "nativeP95Ms": 10.800000011920929,
+        "overlayP95Ms": 9.599999994039536,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Python CRLF",
+        "scenario": "alt-wheel-burst",
+        "nativeTotalMs": 366.2999999821186,
+        "overlayTotalMs": 308.4999999701977,
+        "totalWorkChangePercent": -15.779415783440488,
+        "nativeP95Ms": 10.199999988079071,
+        "overlayP95Ms": 9.399999976158142,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "IPython CRLF",
+        "scenario": "alt-wheel-burst",
+        "nativeTotalMs": 432.6000000834465,
+        "overlayTotalMs": 339.2000000178814,
+        "totalWorkChangePercent": -21.590383737297437,
+        "nativeP95Ms": 12.5,
+        "overlayP95Ms": 10.599999994039536,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Plain Text CRLF",
+        "scenario": "alt-wheel-sparse",
+        "nativeTotalMs": 214.00000008940697,
+        "overlayTotalMs": 141.7000000178814,
+        "totalWorkChangePercent": -33.78504674828009,
+        "nativeP95Ms": 0.4000000059604645,
+        "overlayP95Ms": 0.5,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Python LF",
+        "scenario": "alt-wheel-sparse",
+        "nativeTotalMs": 479.1000000834465,
+        "overlayTotalMs": 380.5,
+        "totalWorkChangePercent": -20.58025465795721,
+        "nativeP95Ms": 0.5999999940395355,
+        "overlayP95Ms": 0.5999999940395355,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Python CRLF",
+        "scenario": "alt-wheel-sparse",
+        "nativeTotalMs": 493.09999999403954,
+        "overlayTotalMs": 379.7999998629093,
+        "totalWorkChangePercent": -22.977083782701225,
+        "nativeP95Ms": 0.6000000238418579,
+        "overlayP95Ms": 0.5999999940395355,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "IPython CRLF",
+        "scenario": "alt-wheel-sparse",
+        "nativeTotalMs": 460.40000009536743,
+        "overlayTotalMs": 372.2000000178814,
+        "totalWorkChangePercent": -19.157254574113004,
+        "nativeP95Ms": 0.5999999940395355,
+        "overlayP95Ms": 0.6000000238418579,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Plain Text CRLF",
+        "scenario": "free-wheel-spacing",
+        "nativeTotalMs": 38.30000001192093,
+        "overlayTotalMs": 24.500000059604645,
+        "totalWorkChangePercent": -36.03133145697392,
+        "nativeP95Ms": 0.29999998211860657,
+        "overlayP95Ms": 0.29999998211860657,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Python LF",
+        "scenario": "free-wheel-spacing",
+        "nativeTotalMs": 70.90000003576279,
+        "overlayTotalMs": 47.5,
+        "totalWorkChangePercent": -33.00423134550008,
+        "nativeP95Ms": 0.4000000059604645,
+        "overlayP95Ms": 0.30000001192092896,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Python CRLF",
+        "scenario": "free-wheel-spacing",
+        "nativeTotalMs": 79.7000000178814,
+        "overlayTotalMs": 48.500000059604645,
+        "totalWorkChangePercent": -39.146800440748756,
+        "nativeP95Ms": 0.4000000059604645,
+        "overlayP95Ms": 0.30000001192092896,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "IPython CRLF",
+        "scenario": "free-wheel-spacing",
+        "nativeTotalMs": 86.2999999821186,
+        "overlayTotalMs": 54.799999952316284,
+        "totalWorkChangePercent": -36.50057941637211,
+        "nativeP95Ms": 0.4000000059604645,
+        "overlayP95Ms": 0.30000001192092896,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Plain Text CRLF",
+        "scenario": "alt-wheel-spacing",
+        "nativeTotalMs": 174.39999997615814,
+        "overlayTotalMs": 107.60000002384186,
+        "totalWorkChangePercent": -38.3027522714727,
+        "nativeP95Ms": 0.699999988079071,
+        "overlayP95Ms": 0.5,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Python LF",
+        "scenario": "alt-wheel-spacing",
+        "nativeTotalMs": 414.1000000834465,
+        "overlayTotalMs": 378.6999999284744,
+        "totalWorkChangePercent": -8.548659779724343,
+        "nativeP95Ms": 3.300000011920929,
+        "overlayP95Ms": 4.600000023841858,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Python CRLF",
+        "scenario": "alt-wheel-spacing",
+        "nativeTotalMs": 414.4000000357628,
+        "overlayTotalMs": 331.4999999701977,
+        "totalWorkChangePercent": -20.004826268921526,
+        "nativeP95Ms": 3.199999988079071,
+        "overlayP95Ms": 2.800000011920929,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "IPython CRLF",
+        "scenario": "alt-wheel-spacing",
+        "nativeTotalMs": 438.19999998807907,
+        "overlayTotalMs": 344.10000002384186,
+        "totalWorkChangePercent": -21.474212680693093,
+        "nativeP95Ms": 4.5999999940395355,
+        "overlayP95Ms": 2.800000011920929,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Plain Text CRLF",
+        "scenario": "free-wheel-deltas",
+        "nativeTotalMs": 13.899999976158142,
+        "overlayTotalMs": 9.599999964237213,
+        "totalWorkChangePercent": -30.935251937384656,
+        "nativeP95Ms": 0.29999998211860657,
+        "overlayP95Ms": 0.10000002384185791,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Python LF",
+        "scenario": "free-wheel-deltas",
+        "nativeTotalMs": 13.79999989271164,
+        "overlayTotalMs": 6.800000011920929,
+        "totalWorkChangePercent": -50.72463721168363,
+        "nativeP95Ms": 0.30000001192092896,
+        "overlayP95Ms": 0.10000002384185791,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "Python CRLF",
+        "scenario": "free-wheel-deltas",
+        "nativeTotalMs": 14,
+        "overlayTotalMs": 7.400000065565109,
+        "totalWorkChangePercent": -47.14285667453494,
+        "nativeP95Ms": 0.30000001192092896,
+        "overlayP95Ms": 0.10000002384185791,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      },
+      {
+        "name": "IPython CRLF",
+        "scenario": "free-wheel-deltas",
+        "nativeTotalMs": 14.299999982118607,
+        "overlayTotalMs": 7.4000000059604645,
+        "totalWorkChangePercent": -48.25174814535823,
+        "nativeP95Ms": 0.30000001192092896,
+        "overlayP95Ms": 0.10000002384185791,
+        "nativeOver16_7": 0,
+        "overlayOver16_7": 0
+      }
+    ],
+    "p95Regressions": [
+      {
+        "name": "Plain Text CRLF",
+        "scenario": "alt-wheel-sparse",
+        "baselineP95Ms": 0.4000000059604645,
+        "currentP95Ms": 0.5
+      },
+      {
+        "name": "Python LF",
+        "scenario": "alt-wheel-spacing",
+        "baselineP95Ms": 3.300000011920929,
+        "currentP95Ms": 4.600000023841858
+      }
+    ],
+    "evidence": {
+      "originalArchiveSha256": "1a4769826c3a42a4648593518a2495fc9fdfdbe451fade702832e81907acdd5a",
+      "driverSha256": "f37e9c1dce66c621aa89d10397bbf568f0ccbc09d1ddd1dbeae7b71d7cd922f4",
+      "environmentAuditSpecSha256": "94004972defdb0c0864ba963eb36dd555248f24f3b0ee3969d251ef77010cf09",
+      "rawComparisonSha256": "fee81c1a95f7f10bcbc0170e74fb474f8882e9ee76f41c55ec433b42c3486206",
+      "sourceManifestsSha256": "bc4280c89dd61ed81654e3c58e954b9151067e04a22bc0f970be92d1cd48a6dc",
+      "rawRuns": [
+        {
+          "artifact": "1-current-overlay.json",
+          "sha256": "b2b67e893f3855c6327ebb5e2b3d4354bc74fa526184207a59f1bff0aa392d32",
+          "label": "current-overlay",
+          "round": 1,
+          "sourceFingerprint": "5268fc930b50d0726d8092f4c0a3d8c58c703f20dc6d8d54d8d8fd0cdeea21f4"
+        },
+        {
+          "artifact": "1-original-native.json",
+          "sha256": "9495d81902c5475279e8235994f76511899f4715edf62ec0505ce2d294c6d570",
+          "label": "original-native",
+          "round": 1,
+          "sourceFingerprint": "2f20bfe1168d1d525d10c64cff822b107434c8099c1486324b6046121af47454"
+        },
+        {
+          "artifact": "2-current-overlay.json",
+          "sha256": "962e27bd5a6a108ddc135f6b35ba34dec5dcf281b20579589b5d56952e7f218b",
+          "label": "current-overlay",
+          "round": 2,
+          "sourceFingerprint": "5268fc930b50d0726d8092f4c0a3d8c58c703f20dc6d8d54d8d8fd0cdeea21f4"
+        },
+        {
+          "artifact": "2-original-native.json",
+          "sha256": "937fab5d06e53bfb6a3bcd82cda9bab328375e2692ab6a36851dd5c92a796264",
+          "label": "original-native",
+          "round": 2,
+          "sourceFingerprint": "2f20bfe1168d1d525d10c64cff822b107434c8099c1486324b6046121af47454"
+        },
+        {
+          "artifact": "3-current-overlay.json",
+          "sha256": "d18400d32865284048d52ede9b19182c16fe16a54d3a54512379f27b541827de",
+          "label": "current-overlay",
+          "round": 3,
+          "sourceFingerprint": "5268fc930b50d0726d8092f4c0a3d8c58c703f20dc6d8d54d8d8fd0cdeea21f4"
+        },
+        {
+          "artifact": "3-original-native.json",
+          "sha256": "e475b17ed92dfcaeb7398ffa51e514eb8bafb7fdeb3a0480682de4bfe091efa9",
+          "label": "original-native",
+          "round": 3,
+          "sourceFingerprint": "2f20bfe1168d1d525d10c64cff822b107434c8099c1486324b6046121af47454"
+        }
+      ]
+    }
+  },
+  "intermediateOverlayRuntimeAudit": {
+    "baseline": {
+      "kind": "intermediate-overlay-prototype-snapshot",
+      "originalNativeBaseline": false,
+      "sourceHashes": {
+        "overlay-scrollbar": "a79bbbe8bcda500c91188c91b635f56e776b212909d2a298cdb2b8f41e4b43cb",
+        "scrollbar-manager": "3c561a3ca7213932e3c15387419237f3cdcb6d6b61f39e1096ebf932f0383bc4"
+      },
+      "rawArtifact": "overlay-scrollbars-baseline-final.json",
+      "rawArtifactSha256": "42e400611ab38da880e2482060572f4c4e7e8f74da4195505b424a115f36c24b"
+    },
+    "current": {
+      "kind": "reviewed-overlay-runtime",
+      "sourceHashes": {
+        "overlay-scrollbar": "00603f544a895871e05ddc4f237f069cdd389d98124fb24bef346899de8b2ea8",
+        "scrollbar-manager": "4e5a91d4df082597c63f07d2ac73f322f706f390fa6fb14db97a7e0501d32f71"
+      },
+      "rawArtifact": "overlay-scrollbars-current-final.json",
+      "rawArtifactSha256": "dcf1da6b8aee3838954dfe3d04d72d72a6df8860c8a36f5bee031416e7b66eb2"
+    },
+    "runtime": {
+      "electron": "45.0.0"
+    },
+    "interpretation": "Operation counters and functional observations compare an intermediate overlay prototype with the reviewed runtime. They are not an original-native baseline or a timed generic speedup comparison.",
+    "baselineResults": [
+      {
+        "scenario": "scroll",
+        "events": 1000,
+        "discoveryScans": 0,
+        "geometryReads": 0,
+        "markerPaints": 0,
+        "geometryNotifications": 0
+      },
+      {
+        "scenario": "cached-getters",
+        "calls": 1000,
+        "invalidations": 0,
+        "geometryReads": 0,
+        "geometryNotifications": 0
+      },
+      {
+        "scenario": "unchanged-invalidation",
+        "requests": 1000,
+        "geometryReads": 1,
+        "geometryNotifications": 0
+      },
+      {
+        "scenario": "token-discovery",
+        "tokens": 5000,
+        "tokenVisits": 5000,
+        "tokenStyles": 0
+      },
+      {
+        "scenario": "descendant-mutations",
+        "records": 100,
+        "observerRebinds": 100,
+        "geometryReads": 1
+      },
+      {
+        "scenario": "attribute-discovery",
+        "discovered": false,
+        "persistent": false
+      },
+      {
+        "scenario": "same-document-move",
+        "remounted": false,
+        "width": 400,
+        "height": 180
+      },
+      {
+        "scenario": "fixed-child-text",
+        "before": 400,
+        "after": 400,
+        "refreshed": false
+      },
+      {
+        "scenario": "same-document-controller-replacement",
+        "notified": false,
+        "geometryNotifications": 0,
+        "retiredEdgeReleased": false
+      },
+      {
+        "scenario": "smooth-authored-track-jump",
+        "immediateOffset": 0,
+        "wantedOffset": 9910
+      }
+    ],
+    "currentResults": [
+      {
+        "scenario": "scroll",
+        "events": 1000,
+        "discoveryScans": 0,
+        "geometryReads": 0,
+        "markerPaints": 0,
+        "geometryNotifications": 0
+      },
+      {
+        "scenario": "cached-getters",
+        "calls": 1000,
+        "invalidations": 0,
+        "geometryReads": 0,
+        "geometryNotifications": 0
+      },
+      {
+        "scenario": "unchanged-invalidation",
+        "requests": 1000,
+        "geometryReads": 1,
+        "geometryNotifications": 0
+      },
+      {
+        "scenario": "token-discovery",
+        "tokens": 5000,
+        "tokenVisits": 0,
+        "tokenStyles": 0
+      },
+      {
+        "scenario": "descendant-mutations",
+        "records": 100,
+        "observerRebinds": 0,
+        "geometryReads": 1
+      },
+      {
+        "scenario": "attribute-discovery",
+        "discovered": true,
+        "persistent": true
+      },
+      {
+        "scenario": "same-document-move",
+        "remounted": true,
+        "width": 400,
+        "height": 180
+      },
+      {
+        "scenario": "fixed-child-text",
+        "before": 400,
+        "after": 75508,
+        "refreshed": true
+      },
+      {
+        "scenario": "same-document-controller-replacement",
+        "notified": true,
+        "geometryNotifications": 1,
+        "retiredEdgeReleased": true
+      },
+      {
+        "scenario": "smooth-authored-track-jump",
+        "immediateOffset": 9910,
+        "wantedOffset": 9910
+      }
+    ],
+    "omittedSingleObservationTimingFields": ["scroll.dispatchMs", "token-discovery.discoveryMs"]
+  },
+  "hardware": {
+    "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
+    "logicalProcessors": 20,
+    "architecture": "x64"
+  }
+}
