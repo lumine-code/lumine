@@ -6,7 +6,7 @@ Use InputDialog for a single text value and the shared dialog form classes for f
 
 Create the prompt with `lumine.workspace.addInputDialog()`. Supply `headerElement` for a label above the mini editor, `infoMessage` for instructions and `contentElement` for a preview or explicit buttons. Report validation through `setStatus()` and pending work through `setLoadingState()`. The host owns focus, cancellation, modal flow and teardown; destroy the host when the prompt is no longer needed.
 
-Plain InputDialog models carry `dialog-form`, and their modal hosts carry `dialog-panel`. Forms and select lists inherit the same modal width and outer padding from the active theme. Do not introduce separate sizes for individual forms.
+Plain InputDialog models carry `dialog-form`, and their modal hosts carry `dialog-panel`. Forms and select lists inherit the same modal width from the active theme. Forms use the full `--ui-panel-padding` around their fields, rather than the denser padding used by pickers. Do not introduce separate sizes for individual forms.
 
 ## Several fields
 
@@ -45,4 +45,4 @@ Use `lumine.workspace.buildTextEditor({ mini: true })` for free text, register i
 </form>
 ```
 
-The shared CSS owns field gaps, heading size and action spacing. Keep package styles for content-specific previews and specialized controls. A long body scrolls within the available window height, and actions wrap when the window becomes narrow. The modal theme continues to own width, outer padding, surface, border, shadow and backdrop. Core preserves native Enter activation on buttons inside `dialog-form`, so a focused Cancel button cancels instead of submitting the primary action.
+The shared CSS owns form padding, field gaps, heading size and action spacing. Keep package styles for content-specific previews and specialized controls. A long body scrolls within the available window height, and actions wrap when the window becomes narrow. The modal theme continues to own width, surface, border, shadow and backdrop. Core preserves native Enter activation on buttons inside `dialog-form`, so a focused Cancel button cancels instead of submitting the primary action.

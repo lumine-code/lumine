@@ -1,6 +1,7 @@
 /* Shared form layout for modal prompts and local, modeless dialogs. The host
    owns positioning and the theme owns the surface; content owns neither. */
 lumine-panel.modal.dialog-panel {
+  padding: var(--ui-panel-padding);
   max-height: calc(100vh - var(--ui-spacing) * 10);
   overflow: visible;
 
@@ -105,6 +106,7 @@ lumine-panel.modal .dialog-form lumine-text-editor[mini],
   min-width: 0;
   margin: 0;
   font-size: var(--ui-input-font-size);
+  font-weight: normal;
 }
 
 .dialog-form.input-dialog > .message-line {

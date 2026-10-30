@@ -35,10 +35,10 @@ describe("shared dialog layout", () => {
     return element;
   }
 
-  it("inherits the same modal width and padding as a picker from the active theme", () => {
+  it("keeps the theme's picker width with full panel padding around form fields", () => {
     const element = panel('<div class="dialog-header">Prompt</div>');
     const style = getComputedStyle(element);
-    expect(style.paddingTop).toBe("6px");
+    expect(style.paddingTop).toBe("15px");
     const width = style.width;
 
     element.classList.remove("dialog-panel");

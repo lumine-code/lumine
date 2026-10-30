@@ -44,12 +44,19 @@ function promptForGitCredential(query = {}, { signal } = {}) {
     const input = model.getQueryEditor().getElement();
     input.classList.add("git-credential-dialog-input");
     input.setAttribute("aria-label", prompt);
-    if (masked) input.style.webkitTextSecurity = "disc";
     const element = model.getElement();
     element.classList.add("git-credential-dialog");
     element.setAttribute("role", "dialog");
     element.setAttribute("aria-label", prompt);
     const subscriptions = new CompositeDisposable();
+    if (masked) {
+      const editor = model.getQueryEditor();
+      const updateMask = () => {
+        input.style.webkitTextSecurity = editor.getBuffer().getLength() > 0 ? "disc" : "none";
+      };
+      subscriptions.add(editor.getBuffer().onDidChangeText(updateMask));
+      updateMask();
+    }
     let settled = false;
 
     const finish = (fn, value) => {

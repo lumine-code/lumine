@@ -80,7 +80,11 @@ describe("Git credential dialog", () => {
   it("masks the password mini editor and uses the shared form actions", async () => {
     const result = prompt();
     const input = panel.getElement().querySelector("lumine-text-editor[mini]");
+    expect(input.style.webkitTextSecurity).toBe("none");
+    input.getModel().setText("secret");
     expect(input.style.webkitTextSecurity).toBe("disc");
+    input.getModel().setText("");
+    expect(input.style.webkitTextSecurity).toBe("none");
     expect(input.getAttribute("aria-label")).toBe("Password:");
     expect(panel.getElement().classList.contains("dialog-panel")).toBe(true);
     expect(
