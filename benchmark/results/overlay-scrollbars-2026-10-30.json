@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-30T15:25:00.134Z",
+  "generatedAt": "2026-10-30T17:01:37.466Z",
   "platform": "Windows",
   "originalNativeWheelComparison": {
     "baseline": {
@@ -21,19 +21,19 @@
     },
     "current": {
       "kind": "custom-overlay-scrollbars",
-      "revision": "889ca0e40a6aca84875b3a60923e7d5c058bb8d2",
+      "revision": "b68ae7b3abf16af2ef3c0cb6357185643ee1a510",
       "cleanWorkingTree": true,
-      "sourceFingerprint": "ac4a50026db8df488908e929edc134018e454fd48f664b861d676dd919ada65b",
+      "sourceFingerprint": "152a10f01f3321d2e1c72e8740aba12c20716e2eff164140038f072e6fa795c6",
       "files": {
         "benchmarkRaw": "3202bef60b41fe08b34d8da5a19b41519db870945091421de887ec71c4e05067",
         "benchmarkNormalized": "3202bef60b41fe08b34d8da5a19b41519db870945091421de887ec71c4e05067",
         "animatorRaw": "b0552b745464df689924761bc02a53460810fb999602fa08980f7d0dc66ba297",
         "animatorNormalized": "b0552b745464df689924761bc02a53460810fb999602fa08980f7d0dc66ba297",
-        "editorComponent": "c4f0e9b43947b401047ecfc6819c7b4d432a2471e81b72d782cf9ed36cc4a022",
+        "editorComponent": "aaa50bc0eaf8051767b190931965bec3822496bffa1b61f1d7270316627be951",
         "nativeDummy": null,
         "overlayAdapter": "a5a330ee55ea60a3a97cf8509fda9baf7894cc444990088250fca0ba470d980c",
-        "overlayRuntime": "ed6f74ddafd38e4bd767afe2f7fd27a6c0f6e2e2d8b8f1b99a83913885623be5",
-        "packageLock": "cb24fac269b15a19b8ed5f16e2fce651058cb15fe2da076d68d88e572044c0e9"
+        "overlayRuntime": "4a55d75f3c2848845ca0376f0b7ba072782b6f04317d1c9da4b4c3c13c1d97f2",
+        "packageLock": "537e0283b3a554b346640a26eed4446e195c1ff44a83285bfa021e821a91e0d9"
       }
     },
     "design": {
@@ -48,16 +48,17 @@
       "sourceAndInputIntegrityVerified": true,
       "dependencyControl": "Both immutable original core and final current core resolve through the exact same current installed node_modules directory. Source lockfiles intentionally differ after fleet repins; the original source archive is not modified.",
       "sharedResolvedModules": {
-        "installedLockSha256": "7240020a330ed622b9ba41aa32d5546fe247d7397c7d9ff0277833243376bad2",
+        "installedLockSha256": "343f7dc72bc6388029b091c050ba39d507c44c7db2b147166ce165923d805d77",
         "packageCount": 662,
-        "resolvedPackageTableSha256": "b28202ce77f430ab145ecafa14ccde22101f43f23f95c0dfffe812c2f3568b96"
+        "resolvedPackageTableSha256": "d3ed80465200763ff731682e87f8b282e7567b7b8d7570ec1936160b964e419e"
       },
       "benchmarkMount": {
         "kind": "neutral-primary-item-views",
         "editorsPerRound": 20,
         "currentLayout": "overlay",
         "originalLayout": "original-native"
-      }
+      },
+      "isolatedDependencyTree": true
     },
     "runtime": {
       "electron": "45.0.0",
@@ -100,90 +101,90 @@
     "baselineObservations": [
       {
         "round": 1,
-        "totalRendererWorkMs": 4716.099999576807,
-        "workIntervalsOver16_7Ms": 1,
+        "totalRendererWorkMs": 5034.599999964237,
+        "workIntervalsOver16_7Ms": 0,
         "workIntervalsOver50Ms": 0,
-        "maximumWorkIntervalMs": 18.5,
+        "maximumWorkIntervalMs": 15,
         "maximumTargetError": 0
       },
       {
         "round": 2,
-        "totalRendererWorkMs": 4666.299999892712,
-        "workIntervalsOver16_7Ms": 0,
+        "totalRendererWorkMs": 4858.999999791384,
+        "workIntervalsOver16_7Ms": 1,
         "workIntervalsOver50Ms": 0,
-        "maximumWorkIntervalMs": 14.400000005960464,
+        "maximumWorkIntervalMs": 17.69999998807907,
         "maximumTargetError": 0
       },
       {
         "round": 3,
-        "totalRendererWorkMs": 4640.299999773502,
-        "workIntervalsOver16_7Ms": 0,
+        "totalRendererWorkMs": 4826.099999964237,
+        "workIntervalsOver16_7Ms": 1,
         "workIntervalsOver50Ms": 0,
-        "maximumWorkIntervalMs": 15.099999994039536,
+        "maximumWorkIntervalMs": 18.69999998807907,
         "maximumTargetError": 0
       }
     ],
     "currentObservations": [
       {
         "round": 1,
-        "totalRendererWorkMs": 3783.100000143051,
+        "totalRendererWorkMs": 3739.399999946356,
         "workIntervalsOver16_7Ms": 0,
         "workIntervalsOver50Ms": 0,
-        "maximumWorkIntervalMs": 15.099999994039536,
+        "maximumWorkIntervalMs": 14.099999994039536,
         "maximumTargetError": 0
       },
       {
         "round": 2,
-        "totalRendererWorkMs": 3799.7000003755093,
+        "totalRendererWorkMs": 3814.3000002503395,
         "workIntervalsOver16_7Ms": 0,
         "workIntervalsOver50Ms": 0,
-        "maximumWorkIntervalMs": 15.599999994039536,
+        "maximumWorkIntervalMs": 15.700000017881393,
         "maximumTargetError": 0
       },
       {
         "round": 3,
-        "totalRendererWorkMs": 4002.3000002503395,
-        "workIntervalsOver16_7Ms": 1,
+        "totalRendererWorkMs": 3780.1000003516674,
+        "workIntervalsOver16_7Ms": 0,
         "workIntervalsOver50Ms": 0,
-        "maximumWorkIntervalMs": 17.700000017881393,
+        "maximumWorkIntervalMs": 16.600000023841858,
         "maximumTargetError": 0
       }
     ],
     "medianAggregateRendererWorkMs": {
-      "baseline": 4666.299999892712,
-      "current": 3799.7000003755093,
-      "changePercent": -18.571459176159433
+      "baseline": 4858.999999791384,
+      "current": 3780.1000003516674,
+      "changePercent": -22.20415722342124
     },
     "caseMedians": [
       {
         "name": "Plain Text CRLF",
         "scenario": "alt-wheel-burst",
-        "nativeTotalMs": 115.79999995231628,
-        "overlayTotalMs": 82.59999996423721,
-        "totalWorkChangePercent": -28.67012089961144,
-        "nativeP95Ms": 1.4000000059604645,
-        "overlayP95Ms": 1.2000000178813934,
+        "nativeTotalMs": 125.5,
+        "overlayTotalMs": 84.30000001192093,
+        "totalWorkChangePercent": -32.828685249465394,
+        "nativeP95Ms": 1.5999999940395355,
+        "overlayP95Ms": 1.199999988079071,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Python LF",
         "scenario": "alt-wheel-burst",
-        "nativeTotalMs": 394.0000000298023,
-        "overlayTotalMs": 348.69999995827675,
-        "totalWorkChangePercent": -11.497461946218035,
-        "nativeP95Ms": 10.800000011920929,
-        "overlayP95Ms": 10,
+        "nativeTotalMs": 432.19999998807907,
+        "overlayTotalMs": 379.6999998986721,
+        "totalWorkChangePercent": -12.147154116347759,
+        "nativeP95Ms": 11.400000005960464,
+        "overlayP95Ms": 10.699999988079071,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Python CRLF",
         "scenario": "alt-wheel-burst",
-        "nativeTotalMs": 369.19999998807907,
-        "overlayTotalMs": 321.30000004172325,
-        "totalWorkChangePercent": -12.973997819041827,
-        "nativeP95Ms": 10.599999994039536,
+        "nativeTotalMs": 401.30000001192093,
+        "overlayTotalMs": 336.4000000357628,
+        "totalWorkChangePercent": -16.1724395649714,
+        "nativeP95Ms": 11,
         "overlayP95Ms": 9.699999988079071,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
@@ -191,64 +192,64 @@
       {
         "name": "IPython CRLF",
         "scenario": "alt-wheel-burst",
-        "nativeTotalMs": 420.09999999403954,
-        "overlayTotalMs": 354.30000001192093,
-        "totalWorkChangePercent": -15.662937391823895,
-        "nativeP95Ms": 11.699999988079071,
-        "overlayP95Ms": 11.399999976158142,
-        "nativeOver16_7": 0,
+        "nativeTotalMs": 425.0000000298023,
+        "overlayTotalMs": 340.40000000596046,
+        "totalWorkChangePercent": -19.905882357155157,
+        "nativeP95Ms": 11.900000005960464,
+        "overlayP95Ms": 10.899999976158142,
+        "nativeOver16_7": 1,
         "overlayOver16_7": 0
       },
       {
         "name": "Plain Text CRLF",
         "scenario": "alt-wheel-sparse",
-        "nativeTotalMs": 214.09999999403954,
-        "overlayTotalMs": 156.20000007748604,
-        "totalWorkChangePercent": -27.043437607737232,
+        "nativeTotalMs": 208.09999987483025,
+        "overlayTotalMs": 131.30000004172325,
+        "totalWorkChangePercent": -36.90533391605061,
         "nativeP95Ms": 0.4000000059604645,
-        "overlayP95Ms": 0.5,
+        "overlayP95Ms": 0.4000000059604645,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Python LF",
         "scenario": "alt-wheel-sparse",
-        "nativeTotalMs": 466.0999999642372,
-        "overlayTotalMs": 396.40000000596046,
-        "totalWorkChangePercent": -14.953872551732395,
-        "nativeP95Ms": 0.5999999940395355,
-        "overlayP95Ms": 0.699999988079071,
+        "nativeTotalMs": 495.2999999821186,
+        "overlayTotalMs": 377.90000000596046,
+        "totalWorkChangePercent": -23.70280637601384,
+        "nativeP95Ms": 0.5,
+        "overlayP95Ms": 0.5,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Python CRLF",
         "scenario": "alt-wheel-sparse",
-        "nativeTotalMs": 490.69999995827675,
-        "overlayTotalMs": 378.2000000178814,
-        "totalWorkChangePercent": -22.92643161808865,
-        "nativeP95Ms": 0.699999988079071,
-        "overlayP95Ms": 0.5999999940395355,
+        "nativeTotalMs": 495.0000000298023,
+        "overlayTotalMs": 365.49999994039536,
+        "totalWorkChangePercent": -26.161616178103074,
+        "nativeP95Ms": 0.5,
+        "overlayP95Ms": 0.5,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "IPython CRLF",
         "scenario": "alt-wheel-sparse",
-        "nativeTotalMs": 464.6999999284744,
-        "overlayTotalMs": 379.30000004172325,
-        "totalWorkChangePercent": -18.37744779425344,
-        "nativeP95Ms": 0.5999999940395355,
-        "overlayP95Ms": 0.699999988079071,
+        "nativeTotalMs": 467.40000000596046,
+        "overlayTotalMs": 375.6000000536442,
+        "totalWorkChangePercent": -19.640564816248528,
+        "nativeP95Ms": 0.5,
+        "overlayP95Ms": 0.5,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Plain Text CRLF",
         "scenario": "free-wheel-spacing",
-        "nativeTotalMs": 39.599999994039536,
-        "overlayTotalMs": 25.700000017881393,
-        "totalWorkChangePercent": -35.10101004608668,
+        "nativeTotalMs": 38.39999994635582,
+        "overlayTotalMs": 22.800000071525574,
+        "totalWorkChangePercent": -40.62499973078957,
         "nativeP95Ms": 0.29999998211860657,
         "overlayP95Ms": 0.29999998211860657,
         "nativeOver16_7": 0,
@@ -257,10 +258,10 @@
       {
         "name": "Python LF",
         "scenario": "free-wheel-spacing",
-        "nativeTotalMs": 71.30000001192093,
-        "overlayTotalMs": 46.39999994635582,
-        "totalWorkChangePercent": -34.922861236187906,
-        "nativeP95Ms": 0.30000001192092896,
+        "nativeTotalMs": 74.80000004172325,
+        "overlayTotalMs": 53.00000011920929,
+        "totalWorkChangePercent": -29.14438490689034,
+        "nativeP95Ms": 0.4000000059604645,
         "overlayP95Ms": 0.30000001192092896,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
@@ -268,75 +269,75 @@
       {
         "name": "Python CRLF",
         "scenario": "free-wheel-spacing",
-        "nativeTotalMs": 69.2999999821186,
-        "overlayTotalMs": 52.200000047683716,
-        "totalWorkChangePercent": -24.67532458708107,
-        "nativeP95Ms": 0.3999999761581421,
-        "overlayP95Ms": 0.30000001192092896,
+        "nativeTotalMs": 76.69999998807907,
+        "overlayTotalMs": 50.20000001788139,
+        "totalWorkChangePercent": -34.550195533658915,
+        "nativeP95Ms": 0.4000000059604645,
+        "overlayP95Ms": 0.4000000059604645,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "IPython CRLF",
         "scenario": "free-wheel-spacing",
-        "nativeTotalMs": 78.70000004768372,
-        "overlayTotalMs": 57.49999997019768,
-        "totalWorkChangePercent": -26.937738328641835,
-        "nativeP95Ms": 0.3999999761581421,
-        "overlayP95Ms": 0.4000000059604645,
+        "nativeTotalMs": 74.29999995231628,
+        "overlayTotalMs": 54.90000003576279,
+        "totalWorkChangePercent": -26.110363296102136,
+        "nativeP95Ms": 0.4000000059604645,
+        "overlayP95Ms": 0.3999999761581421,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Plain Text CRLF",
         "scenario": "alt-wheel-spacing",
-        "nativeTotalMs": 170.7999999821186,
-        "overlayTotalMs": 115.09999996423721,
-        "totalWorkChangePercent": -32.61124123168193,
+        "nativeTotalMs": 160.9000000655651,
+        "overlayTotalMs": 100.2000000178814,
+        "totalWorkChangePercent": -37.725295228681844,
         "nativeP95Ms": 0.5999999940395355,
-        "overlayP95Ms": 0.5,
+        "overlayP95Ms": 0.4000000059604645,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Python LF",
         "scenario": "alt-wheel-spacing",
-        "nativeTotalMs": 406.2000000178814,
-        "overlayTotalMs": 363.5000001192093,
-        "totalWorkChangePercent": -10.51206299773324,
-        "nativeP95Ms": 3,
-        "overlayP95Ms": 3.300000011920929,
+        "nativeTotalMs": 440.0999999344349,
+        "overlayTotalMs": 354.5999999344349,
+        "totalWorkChangePercent": -19.42740286587994,
+        "nativeP95Ms": 3.199999988079071,
+        "overlayP95Ms": 2.800000011920929,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Python CRLF",
         "scenario": "alt-wheel-spacing",
-        "nativeTotalMs": 411.19999998807907,
-        "overlayTotalMs": 340.80000001192093,
-        "totalWorkChangePercent": -17.12062256279161,
-        "nativeP95Ms": 2.9000000059604645,
-        "overlayP95Ms": 2.800000011920929,
+        "nativeTotalMs": 442.59999987483025,
+        "overlayTotalMs": 362.00000005960464,
+        "totalWorkChangePercent": -18.210573845011236,
+        "nativeP95Ms": 3.0999999940395355,
+        "overlayP95Ms": 3.0999999940395355,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "IPython CRLF",
         "scenario": "alt-wheel-spacing",
-        "nativeTotalMs": 415.7999999523163,
-        "overlayTotalMs": 348.6000000834465,
-        "totalWorkChangePercent": -16.16161613193272,
-        "nativeP95Ms": 3,
-        "overlayP95Ms": 2.9000000059604645,
+        "nativeTotalMs": 438.3000000715256,
+        "overlayTotalMs": 353.89999997615814,
+        "totalWorkChangePercent": -19.256217221445205,
+        "nativeP95Ms": 3.199999988079071,
+        "overlayP95Ms": 2.899999976158142,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       },
       {
         "name": "Plain Text CRLF",
         "scenario": "free-wheel-deltas",
-        "nativeTotalMs": 14.200000017881393,
-        "overlayTotalMs": 9.500000059604645,
-        "totalWorkChangePercent": -33.09859121379056,
+        "nativeTotalMs": 13,
+        "overlayTotalMs": 6.500000029802322,
+        "totalWorkChangePercent": -49.999999770751366,
         "nativeP95Ms": 0.29999998211860657,
         "overlayP95Ms": 0.10000002384185791,
         "nativeOver16_7": 0,
@@ -345,9 +346,9 @@
       {
         "name": "Python LF",
         "scenario": "free-wheel-deltas",
-        "nativeTotalMs": 14.200000017881393,
-        "overlayTotalMs": 7.0999999940395355,
-        "totalWorkChangePercent": -50.00000010493775,
+        "nativeTotalMs": 14.100000023841858,
+        "overlayTotalMs": 7.200000017881393,
+        "totalWorkChangePercent": -48.936170172292,
         "nativeP95Ms": 0.30000001192092896,
         "overlayP95Ms": 0.10000002384185791,
         "nativeOver16_7": 0,
@@ -356,10 +357,10 @@
       {
         "name": "Python CRLF",
         "scenario": "free-wheel-deltas",
-        "nativeTotalMs": 14.699999988079071,
-        "overlayTotalMs": 7.4000000059604645,
-        "totalWorkChangePercent": -49.659863864207644,
-        "nativeP95Ms": 0.30000001192092896,
+        "nativeTotalMs": 13.800000011920929,
+        "overlayTotalMs": 7.499999970197678,
+        "totalWorkChangePercent": -45.65217417594991,
+        "nativeP95Ms": 0.3999999761581421,
         "overlayP95Ms": 0.10000002384185791,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
@@ -367,91 +368,67 @@
       {
         "name": "IPython CRLF",
         "scenario": "free-wheel-deltas",
-        "nativeTotalMs": 14.09999993443489,
-        "overlayTotalMs": 7.400000035762787,
-        "totalWorkChangePercent": -47.51772999877415,
+        "nativeTotalMs": 14.199999928474426,
+        "overlayTotalMs": 7.9000000059604645,
+        "totalWorkChangePercent": -44.36619686089534,
         "nativeP95Ms": 0.30000001192092896,
         "overlayP95Ms": 0.10000002384185791,
         "nativeOver16_7": 0,
         "overlayOver16_7": 0
       }
     ],
-    "p95Regressions": [
-      {
-        "name": "Plain Text CRLF",
-        "scenario": "alt-wheel-sparse",
-        "baselineP95Ms": 0.4000000059604645,
-        "currentP95Ms": 0.5
-      },
-      {
-        "name": "Python LF",
-        "scenario": "alt-wheel-sparse",
-        "baselineP95Ms": 0.5999999940395355,
-        "currentP95Ms": 0.699999988079071
-      },
-      {
-        "name": "IPython CRLF",
-        "scenario": "alt-wheel-sparse",
-        "baselineP95Ms": 0.5999999940395355,
-        "currentP95Ms": 0.699999988079071
-      },
-      {
-        "name": "Python LF",
-        "scenario": "alt-wheel-spacing",
-        "baselineP95Ms": 3,
-        "currentP95Ms": 3.300000011920929
-      }
-    ],
+    "p95Regressions": [],
     "evidence": {
       "originalArchiveSha256": "1a4769826c3a42a4648593518a2495fc9fdfdbe451fade702832e81907acdd5a",
-      "driverSha256": "33b40def402230dba776cd98310777746ec147e2b27bac0481a11b8419e25f3d",
+      "driverSha256": "309a2e53481e8214a08fdad716f96511390f9aa20e252f9cb496fc0cfccbcdce",
       "environmentAuditSpecSha256": "4139798964831f9c3bc06fbcfaaadee1e163c55fcf75b68c2673aaca1eac6ea7",
-      "rawComparisonSha256": "9b8f7f97926af6ce47fcad6cacbb07cf0c880fd4a8080ef620a184b021060d2d",
-      "sourceManifestsSha256": "f29fa81b7ea6e5d6e2752ed7baa55e8e0a239980429117c019a70c8ce016d181",
+      "rawComparisonSha256": "6c03608ee29aacfbbb8a7d3d9d774c9b3688d278389e9fb326569ea15e6ad67b",
+      "sourceManifestsSha256": "d86c129d4065b241764f27d4c74f3ddee28ad5fcfb5dc46382cc4cdfab3f23bc",
       "rawRuns": [
         {
           "artifact": "1-current-overlay.json",
-          "sha256": "e0c0dbd2f64a3baf187449dd245a56c354b8d13c9c8fa36120a8b264974db1f3",
+          "sha256": "b933868e76773f6f533a17b58e9b498c339a2cceb4283a361f0128323edbeb64",
           "label": "current-overlay",
           "round": 1,
-          "sourceFingerprint": "ac4a50026db8df488908e929edc134018e454fd48f664b861d676dd919ada65b"
+          "sourceFingerprint": "152a10f01f3321d2e1c72e8740aba12c20716e2eff164140038f072e6fa795c6"
         },
         {
           "artifact": "1-original-native.json",
-          "sha256": "085f9962cbbc57c739b421886a059c117d7b3a9f90fb723158635292f3dd7212",
+          "sha256": "0df930c8b84a9dfa03592d5a640fa7c2a990f7d7cccf065b292d46c626fc5de2",
           "label": "original-native",
           "round": 1,
           "sourceFingerprint": "2f20bfe1168d1d525d10c64cff822b107434c8099c1486324b6046121af47454"
         },
         {
           "artifact": "2-current-overlay.json",
-          "sha256": "b322972e172fe6ecb63b698a149d52c375e90735e935607cde1d4eb0348a78b9",
+          "sha256": "d9c560163931748331d707e4e1d6fedf2d1ce438247ac18ca1d98a00f6c0c21f",
           "label": "current-overlay",
           "round": 2,
-          "sourceFingerprint": "ac4a50026db8df488908e929edc134018e454fd48f664b861d676dd919ada65b"
+          "sourceFingerprint": "152a10f01f3321d2e1c72e8740aba12c20716e2eff164140038f072e6fa795c6"
         },
         {
           "artifact": "2-original-native.json",
-          "sha256": "63d058b72814c53305390cd9b14ddd958304ecc4ecdf6e290cbe7615c8484239",
+          "sha256": "127802a17fd2c2bdce6cced7a11a422ed3359380d27e5ac3b11fccf60f375b9d",
           "label": "original-native",
           "round": 2,
           "sourceFingerprint": "2f20bfe1168d1d525d10c64cff822b107434c8099c1486324b6046121af47454"
         },
         {
           "artifact": "3-current-overlay.json",
-          "sha256": "11560a60496a0b8963232b0ee1d28c4413cc7435e54e67e0c749d8c1538162a9",
+          "sha256": "85279d3b9986730454304dea46075e84fc4d81b5fcdb4db223d2125bfff78812",
           "label": "current-overlay",
           "round": 3,
-          "sourceFingerprint": "ac4a50026db8df488908e929edc134018e454fd48f664b861d676dd919ada65b"
+          "sourceFingerprint": "152a10f01f3321d2e1c72e8740aba12c20716e2eff164140038f072e6fa795c6"
         },
         {
           "artifact": "3-original-native.json",
-          "sha256": "e7eb64dc2bd58e5e59b09f8f49189d1d4457ec7861961ca0e34243bd35651005",
+          "sha256": "ef6e309f072d59ccd947cd589163be2118fc81f64dcb1ae93e26c1de55f368e5",
           "label": "original-native",
           "round": 3,
           "sourceFingerprint": "2f20bfe1168d1d525d10c64cff822b107434c8099c1486324b6046121af47454"
         }
-      ]
+      ],
+      "isolatedDependencyVerificationSha256": "3075ead519fb4a35818f1a6c4949c6f4141708fb4ac5f7e47de42aa087296344"
     }
   },
   "intermediateOverlayRuntimeAudit": {
@@ -606,21 +583,84 @@
     ],
     "omittedSingleObservationTimingFields": ["scroll.dispatchMs", "token-discovery.discoveryMs"]
   },
-  "earlierWheelComparisonContext": {
-    "supersededForFinalSource": true,
-    "currentRevision": "7b8422b7e2121c600b8f1cf4068c4abec38900f0",
-    "originalRevision": "f6fd84b6cf089f806bf8242332a1a3a740d1bddc",
-    "rawComparisonSha256": "fee81c1a95f7f10bcbc0170e74fb474f8882e9ee76f41c55ec433b42c3486206",
-    "medianAggregateRendererWorkMs": [
-      {
-        "label": "original-native",
-        "medianTotalRendererWorkMs": 4743.299999982119
-      },
-      {
-        "label": "current-overlay",
-        "medianTotalRendererWorkMs": 3754.699999690056
-      }
-    ],
-    "interpretation": "Earlier paired results measured an earlier implementation and dependency tree using standalone benchmark editors. The final primary-editor paired results above are the current comparison; timings from these runs are not pooled."
-  }
+  "earlierWheelComparisons": [
+    {
+      "supersededForFinalSource": true,
+      "artifact": "2026-10-30T13-45-57-746Z/comparison.json",
+      "currentRevision": "7b8422b7e2121c600b8f1cf4068c4abec38900f0",
+      "originalRevision": "f6fd84b6cf089f806bf8242332a1a3a740d1bddc",
+      "mount": "standalone-editor",
+      "rawComparisonSha256": "fee81c1a95f7f10bcbc0170e74fb474f8882e9ee76f41c55ec433b42c3486206",
+      "medianAggregateRendererWorkMs": [
+        {
+          "label": "original-native",
+          "medianTotalRendererWorkMs": 4743.299999982119
+        },
+        {
+          "label": "current-overlay",
+          "medianTotalRendererWorkMs": 3754.699999690056
+        }
+      ],
+      "p95Regressions": [
+        {
+          "name": "Plain Text CRLF",
+          "scenario": "alt-wheel-sparse",
+          "baselineP95Ms": 0.4000000059604645,
+          "currentP95Ms": 0.5
+        },
+        {
+          "name": "Python LF",
+          "scenario": "alt-wheel-spacing",
+          "baselineP95Ms": 3.300000011920929,
+          "currentP95Ms": 4.600000023841858
+        }
+      ],
+      "interpretation": "Earlier paired results use their recorded source revision, placement and dependency tree. They remain historical context; their timings are not pooled with the final comparison."
+    },
+    {
+      "supersededForFinalSource": true,
+      "artifact": "final-overlay-2026-10-30T15-23-10-194Z/comparison.json",
+      "currentRevision": "889ca0e40a6aca84875b3a60923e7d5c058bb8d2",
+      "originalRevision": "f6fd84b6cf089f806bf8242332a1a3a740d1bddc",
+      "mount": "neutral-primary-item-views",
+      "rawComparisonSha256": "9b8f7f97926af6ce47fcad6cacbb07cf0c880fd4a8080ef620a184b021060d2d",
+      "medianAggregateRendererWorkMs": [
+        {
+          "label": "original-native",
+          "medianTotalRendererWorkMs": 4666.299999892712
+        },
+        {
+          "label": "current-overlay",
+          "medianTotalRendererWorkMs": 3799.7000003755093
+        }
+      ],
+      "p95Regressions": [
+        {
+          "name": "Plain Text CRLF",
+          "scenario": "alt-wheel-sparse",
+          "baselineP95Ms": 0.4000000059604645,
+          "currentP95Ms": 0.5
+        },
+        {
+          "name": "Python LF",
+          "scenario": "alt-wheel-sparse",
+          "baselineP95Ms": 0.5999999940395355,
+          "currentP95Ms": 0.699999988079071
+        },
+        {
+          "name": "IPython CRLF",
+          "scenario": "alt-wheel-sparse",
+          "baselineP95Ms": 0.5999999940395355,
+          "currentP95Ms": 0.699999988079071
+        },
+        {
+          "name": "Python LF",
+          "scenario": "alt-wheel-spacing",
+          "baselineP95Ms": 3,
+          "currentP95Ms": 3.300000011920929
+        }
+      ],
+      "interpretation": "Earlier paired results use their recorded source revision, placement and dependency tree. They remain historical context; their timings are not pooled with the final comparison."
+    }
+  ]
 }

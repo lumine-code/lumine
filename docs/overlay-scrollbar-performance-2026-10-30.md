@@ -4,20 +4,20 @@ The shared overlay rails replace native dummy scrollbars in the virtual editor a
 
 ## Original native comparison
 
-Three paired rounds alternate the original native implementation at `f6fd84b6cf089f806bf8242332a1a3a740d1bddc` and the final primary-overlay implementation at `889ca0e40a6aca84875b3a60923e7d5c058bb8d2`. Each fresh renderer uses Electron 45.0.0, the same physical installed dependency tree, identical Python/IPython grammars, an isolated profile and the unchanged deterministic 120 Hz wheel benchmark. The source lockfiles differ after fleet dependency updates; both variants deliberately resolve through the same current installation, whose 662-package resolution table and installed lockfile are hashed before and after measurement. The archived original source remains unmodified. The generated input contains 12,462 lines and 659,570 bytes. The benchmark and wheel animator are byte-identical in both source trees. All source, input and shared dependency integrity checks pass.
+Three paired rounds alternate the original native implementation at `f6fd84b6cf089f806bf8242332a1a3a740d1bddc` and the final primary-overlay implementation at `b68ae7b3abf16af2ef3c0cb6357185643ee1a510`. Each fresh renderer uses Electron 45.0.0, the same physical installed dependency tree, identical Python/IPython grammars, an isolated profile and the unchanged deterministic 120 Hz wheel benchmark. The source lockfiles differ after fleet dependency updates; both variants deliberately resolve through the same isolated installation, whose 662-package resolution table and installed lockfile are hashed before and after measurement. This installation is separate from the working workspace's dependencies, and the current source comes from a clean committed snapshot. A new extraction of the unchanged original archive uses that same isolated installation. The generated input contains 12,462 lines and 659,570 bytes. The benchmark and wheel animator are byte-identical in both source trees. All source, input and shared dependency integrity checks pass.
 
-The same neutral harness mounts every benchmark editor as a direct child of `.item-views` in both variants. The final editor reports `layout: "overlay"` for all twenty cases. This placement matters because a standalone editor now uses reserved gutters. The JSON retains the earlier comparison at `7b8422b7e2121c600b8f1cf4068c4abec38900f0` as superseded context; its timings are not pooled with the final run.
+The same neutral harness mounts every benchmark editor as a direct child of `.item-views` in both variants. The final editor reports `layout: "overlay"` for all twenty cases. This placement matters because a standalone editor now uses reserved gutters. The JSON retains the earlier comparisons at `7b8422b7e2121c600b8f1cf4068c4abec38900f0` and `889ca0e40a6aca84875b3a60923e7d5c058bb8d2` as superseded context; their timings are not pooled with the final run.
 
 The twenty cases cover plain text, Python and IPython, LF/CRLF, bursts, sparse input and slowing wheel input. The font is Courier 16 with line height 1.5 and device pixel ratio 1. No UI theme is active. These measurements cover synchronous wheel handling and renderer work in an offscreen window; they exclude compositor, display and physical input latency.
 
 | Metric                                             |    Native |   Overlay |
 | -------------------------------------------------- | --------: | --------: |
-| Median aggregate renderer work across three rounds | 4666.3 ms | 3799.7 ms |
+| Median aggregate renderer work across three rounds | 4859.0 ms | 3780.1 ms |
 | Maximum target-position error                      |         0 |         0 |
-| Work intervals above 16.7 ms across raw rounds     |         1 |         1 |
+| Work intervals above 16.7 ms across raw rounds     |         2 |         0 |
 | Work intervals above 50 ms                         |         0 |         0 |
 
-Median aggregate work decreases by 18.6% in this workload. Every case's median total work decreases, but P95 does not improve uniformly: sparse Alt-wheel input changes from 0.4 to 0.5 ms for plain text CRLF, and from 0.6 to 0.7 ms for Python LF and IPython CRLF. Python LF with spaced Alt-wheel input changes from 3.0 to 3.3 ms. Both variants have one raw work interval above 16.7 ms; their maximum intervals are 18.5 ms for native and 17.7 ms for overlay. The small sample and deterministic input do not establish a general latency improvement or a bound on every file and package combination.
+Median aggregate work decreases by 22.2% in this workload. Every case's median total work decreases, and no case's median P95 increases in this run. Native has two raw work intervals above 16.7 ms; overlay has none. Their maximum intervals are 18.7 ms for native and 16.6 ms for overlay. Earlier recorded comparisons included small P95 regressions, so the three-round sample and deterministic input do not establish a general latency improvement or a bound on every file and package combination.
 
 ## DOM and marker work budgets
 
