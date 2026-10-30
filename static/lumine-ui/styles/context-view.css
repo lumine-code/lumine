@@ -11,6 +11,14 @@ lumine-context-view.context-view {
   -webkit-user-select: none;
   user-select: none;
 
+  /* Popup surfaces, including separately portaled submenus, must carve out
+     native title-bar drag regions. Keep the viewport-sized host transparent
+     to window dragging outside those surfaces. */
+  > * {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+
   > .context-view-surface {
     position: fixed;
     pointer-events: auto;
