@@ -51,6 +51,7 @@ class TextEditorElement extends HTMLElement {
       "gutter-hidden",
       "readonly",
       "data-scrollbar-layout",
+      "data-scrollbar-kind",
       "data-scrollbar",
     ];
   }
@@ -59,6 +60,7 @@ class TextEditorElement extends HTMLElement {
     if (this.component) {
       switch (name) {
         case "data-scrollbar-layout":
+        case "data-scrollbar-kind":
         case "data-scrollbar":
           this.component.updateSync();
           break;

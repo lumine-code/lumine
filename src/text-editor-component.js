@@ -1210,7 +1210,7 @@ module.exports = class TextEditorComponent {
     const classes = this.refs.scrollContainer.classList;
     classes.toggle("is-overlay", overlay);
     classes.toggle("is-gutter", !overlay);
-    classes.toggle("is-document", overlay && presentation.primary && !dock);
+    classes.toggle("is-document", overlay && presentation.kind === "document");
     classes.toggle("is-dock", dock);
     classes.toggle("is-persistent", presentation.policy === "always");
     classes.toggle("is-hover", presentation.policy === "hover");
@@ -4333,6 +4333,7 @@ module.exports = class TextEditorComponent {
     this.scrollbarPresentation = next;
     if (
       previous?.layout === next.layout &&
+      previous.kind === next.kind &&
       previous.policy === next.policy &&
       previous.focusOwner === next.focusOwner &&
       previous.primary === next.primary &&

@@ -1,5 +1,5 @@
 describe("Editor overlay scrollbars", () => {
-  let editor, element, component;
+  let editor, element, component, itemViews;
 
   beforeEach(() => {
     jasmine.useRealClock();
@@ -7,7 +7,10 @@ describe("Editor overlay scrollbars", () => {
     editor.setText("long source line ".repeat(20) + "\n" + "row\n".repeat(100));
     element = editor.getElement();
     element.style.cssText = "width:640px;height:240px;--scrollbar-size-editor:12px";
-    jasmine.attachToDOM(element);
+    itemViews = document.createElement("div");
+    itemViews.className = "item-views";
+    itemViews.appendChild(element);
+    jasmine.attachToDOM(itemViews);
     element.setUpdatedSynchronously(true);
     component = element.component;
     editor.setSoftWrapped(false);
@@ -17,6 +20,7 @@ describe("Editor overlay scrollbars", () => {
   afterEach(() => {
     editor.destroy();
     element.remove();
+    itemViews.remove();
   });
 
   function pointer(rail, type, x, y) {

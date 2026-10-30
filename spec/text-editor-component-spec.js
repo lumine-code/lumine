@@ -180,6 +180,33 @@ describe("TextEditorComponent", () => {
         );
       });
 
+      it("uses the semantic kind for center panel visibility and the document separator", () => {
+        const { component, element } = buildComponent({ attach: false, width: 100, height: 100 });
+        const itemViews = primaryItem(element);
+        const classes = component.refs.scrollContainer.classList;
+        expect(classes.contains("is-document")).toBe(true);
+        expect(classes.contains("is-persistent")).toBe(true);
+        element.dataset.scrollbarKind = "panel";
+        expect(component.getScrollbarLayout()).toBe("overlay");
+        expect(classes.contains("is-document")).toBe(false);
+        expect(classes.contains("is-hover")).toBe(true);
+        expect(classes.contains("is-persistent")).toBe(false);
+        element.dataset.scrollbarKind = "document";
+        expect(classes.contains("is-document")).toBe(true);
+        expect(classes.contains("is-persistent")).toBe(true);
+        itemViews.dataset.scrollbarKind = "panel";
+        delete element.dataset.scrollbarKind;
+        expect(classes.contains("is-document")).toBe(false);
+        expect(classes.contains("is-hover")).toBe(true);
+        const port = document.createElement("div");
+        port.style.overflow = "auto";
+        itemViews.insertBefore(port, element);
+        port.moveBefore(element, null);
+        expect(component.getScrollbarLayout()).toBe("gutter");
+        expect(classes.contains("is-document")).toBe(false);
+        expect(classes.contains("is-persistent")).toBe(true);
+      });
+
       it("keeps an embedded editor in a panel scrollport in its own reserved gutter", () => {
         const { component, element } = buildComponent({ attach: false, width: 100, height: 100 });
         const panel = document.createElement("div");
