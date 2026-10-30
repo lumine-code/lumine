@@ -5,6 +5,7 @@ const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
 const vm = require("node:vm");
+const { execFileSync } = require("node:child_process");
 const { assertNeutralDirectory, assertPublicText } = require("./demo-privacy");
 const {
   inside,
@@ -15,6 +16,7 @@ const {
   readmeWithImages,
   accept,
   seedSecrets,
+  sourceRevisions,
 } = require("./demo");
 
 function temporary(t) {
@@ -28,6 +30,52 @@ const recipe = () => ({
   scenes: [{ id: "first", file: "demo.png", caption: "A real view.", run() {}, ready() {} }],
 });
 const image = { file: "demo.png", label: "A real view." };
+
+test("source snapshots preserve order and re-read tracked and untracked changes", async (t) => {
+  const root = temporary(t);
+  const repositories = ["first", "second"].map((name) => {
+    const directory = path.join(root, name);
+    fs.mkdirSync(directory);
+    const git = (...args) =>
+      execFileSync("git", args, { cwd: directory, windowsHide: true, stdio: "pipe" });
+    git("-c", "init.templateDir=", "init", "--initial-branch=master");
+    fs.writeFileSync(path.join(directory, "source.txt"), "original");
+    git("add", "source.txt");
+    git(
+      "-c",
+      "user.name=Lumine Demo",
+      "-c",
+      "user.email=demo@example.invalid",
+      "-c",
+      "commit.gpgSign=false",
+      "commit",
+      "-m",
+      "Prepare source fixture",
+    );
+    return directory;
+  });
+  const entries = [
+    ["second", repositories[1]],
+    ["first", repositories[0]],
+  ];
+  const before = await sourceRevisions(entries);
+  assert.deepEqual(Object.keys(before), ["second", "first"]);
+  assert.equal(before.first.dirty, false);
+  assert.equal(before.second.dirty, false);
+  fs.writeFileSync(path.join(repositories[0], "source.txt"), "tracked change");
+  fs.writeFileSync(path.join(repositories[1], "new.txt"), "untracked change");
+  const after = await sourceRevisions(entries);
+  for (const name of ["first", "second"]) {
+    assert.equal(after[name].revision, before[name].revision);
+    assert.equal(after[name].dirty, true);
+    assert.notEqual(after[name].workingTreeHash, before[name].workingTreeHash);
+  }
+  assert.deepEqual(await sourceRevisions(entries), after);
+  fs.writeFileSync(path.join(repositories[1], "new.txt"), "changed untracked contents");
+  const changed = await sourceRevisions(entries);
+  assert.notEqual(changed.second.workingTreeHash, after.second.workingTreeHash);
+  assert.deepEqual(changed.first, after.first);
+});
 
 test("capture paths stay outside private roots, including junction aliases", (t) => {
   const root = temporary(t);

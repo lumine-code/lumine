@@ -126,6 +126,22 @@ async function revision(directory) {
   };
 }
 
+async function sourceRevisions(entries) {
+  entries = [...entries];
+  const snapshots = new Array(entries.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(8, entries.length) }, async () => {
+      while (next < entries.length) {
+        const index = next++;
+        const [name, directory] = entries[index];
+        snapshots[index] = [name, await revision(directory)];
+      }
+    }),
+  );
+  return Object.fromEntries(snapshots);
+}
+
 function pngSize(file) {
   const buffer = fs.readFileSync(file);
   if (
@@ -367,8 +383,8 @@ async function capture(repository, options = {}) {
     ["-c", "commit.gpgSign=false", "commit", "--allow-empty", "-m", "Prepare demo fixtures"],
     gitOptions,
   );
-  const sources = { editor: await revision(ROOT), package: await revision(repo) };
-  for (const [name, location] of packages) sources[name] = await revision(location);
+  const sourceEntries = [["editor", ROOT], ["package", repo], ...packages];
+  const sources = await sourceRevisions(sourceEntries);
   const run = {
     version: 1,
     status: "capturing",
@@ -446,8 +462,7 @@ async function capture(repository, options = {}) {
       );
       run.images.push({ file: scene.file, label: scene.caption, ...pngSize(output) });
     }
-    const after = { editor: await revision(ROOT), package: await revision(repo) };
-    for (const [name, location] of packages) after[name] = await revision(location);
+    const after = await sourceRevisions(sourceEntries);
     if (JSON.stringify(after) !== JSON.stringify(sources))
       throw new Error("Sources changed during capture; run again after the edits finish");
     run.status = "complete";
@@ -519,6 +534,7 @@ module.exports = {
   readmeWithImages,
   accept,
   capture,
+  sourceRevisions,
 };
 if (require.main === module)
   main(process.argv.slice(2)).catch((error) => {
