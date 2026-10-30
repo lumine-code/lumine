@@ -561,12 +561,25 @@ function createScrollbarRuntime() {
     }
 
     routeWheel(event) {
-      if (this.destroyed || !this.geometry || event.defaultPrevented) return;
+      const element = this.element;
+      const document = element.ownerDocument;
+      const window = document.defaultView;
+      if (
+        this.destroyed ||
+        !this.geometry ||
+        event.defaultPrevented ||
+        !element.isConnected ||
+        document !== this.manager.document ||
+        !window
+      )
+        return;
       // The chrome is a sibling of its scrollport. Forward its wheel through
       // the authored content path before emulating the uncancelled native
-      // default; ancestor editors and custom hosts must see it exactly once.
+      // default; owned and ancestor bubble handlers see it exactly once.
+      // Common ancestor capture observers have already seen the portal event;
+      // cancellation there prevents replay, while uncancelled observers can
+      // also see the forwarded event (whose isTrusted is false).
       event.stopPropagation();
-      const window = this.element.ownerDocument.defaultView;
       const forwarded = new window.WheelEvent("wheel", {
         bubbles: true,
         cancelable: true,
@@ -589,10 +602,11 @@ function createScrollbarRuntime() {
       Object.defineProperty(forwarded, "timeStamp", { value: event.timeStamp });
       if ("momentum" in event)
         Object.defineProperty(forwarded, "momentum", { value: event.momentum });
-      if (!this.element.dispatchEvent(forwarded)) {
+      if (!element.dispatchEvent(forwarded)) {
         event.preventDefault();
         return;
       }
+      if (this.destroyed || !element.isConnected || element.ownerDocument !== document) return;
       // Pinch/zoom remains the browser's default when no authored handler
       // claims it; it is not a request to change a scroll offset.
       if (event.ctrlKey) return;

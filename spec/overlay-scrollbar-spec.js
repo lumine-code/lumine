@@ -179,6 +179,36 @@ describe("Shared overlay scrollbars", () => {
     expect(element.scrollTop).toBe(15);
   });
 
+  it("respects ancestor capture ownership before forwarding a rail wheel", () => {
+    const { fixture, element, controller } = scrollport();
+    const owner = jasmine.createSpy("owned wheel");
+    const capture = jasmine.createSpy("capture host").and.callFake((event) => {
+      element.scrollTop += 15;
+      event.preventDefault();
+    });
+    element.addEventListener("wheel", owner);
+    fixture.addEventListener("wheel", capture, { capture: true });
+    wheel(controller.vertical.thumb);
+    expect(capture).toHaveBeenCalledTimes(1);
+    expect(owner).not.toHaveBeenCalled();
+    expect(element.scrollTop).toBe(15);
+  });
+
+  it("ignores a rail whose owner was adopted into an inert document before cleanup", () => {
+    const { element, controller } = scrollport();
+    const retiredDocument = document.implementation.createHTMLDocument("");
+    retiredDocument.body.appendChild(element);
+    expect(() => wheel(controller.vertical.thumb)).not.toThrow();
+    expect(element.scrollTop).toBe(0);
+  });
+
+  it("does not apply a native default after an authored handler retires its controller", () => {
+    const { element, controller } = scrollport();
+    element.addEventListener("wheel", () => controller.destroy());
+    wheel(controller.vertical.thumb);
+    expect(element.scrollTop).toBe(0);
+  });
+
   it("preserves a nested scrollport's propagation stop before an ancestor editor", () => {
     const { fixture, element, controller } = scrollport();
     const ancestor = jasmine.createSpy("ancestor editor");
