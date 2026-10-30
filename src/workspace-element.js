@@ -1,40 +1,10 @@
 "use strict";
 
-const ipcHelpers = require("./ipc-helpers");
 const { ipcRenderer } = require("electron");
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const _ = require("@lumine-code/underscore-plus");
-
-// Measures how Chromium renders scrollbars in this window: an off-screen
-// scrollable probe reserves no width for overlay scrollbars and a nonzero
-// width for always-visible ones. The probe lives outside `lumine-workspace` so
-// the theme's `.scrollbars-visible-* ::-webkit-scrollbar` rules can't affect
-// the measurement.
-function measureScrollbarStyle() {
-  const probe = document.createElement("div");
-  probe.style.cssText =
-    "position: absolute; top: -9999px; width: 50px; height: 50px; overflow: scroll;";
-  document.body.appendChild(probe);
-  const style = probe.offsetWidth - probe.clientWidth === 0 ? "overlay" : "legacy";
-  probe.remove();
-  return style;
-}
-
-// Reports the current scrollbar style, then subscribes to a handler so it can
-// be notified of further changes. Returns a `Disposable`.
-function observeScrollbarStyle(callback) {
-  // We want to act like `lumine.config.observe`: set up a change handler, but
-  // immediately invoke the callback with the current value as well. Change
-  // notifications come from the main process, which watches the macOS
-  // system setting.
-  callback(measureScrollbarStyle());
-  let result = ipcHelpers.on(ipcRenderer, "did-change-scrollbar-style", (_, style) =>
-    callback(style),
-  );
-  return result;
-}
 
 class WorkspaceElement extends HTMLElement {
   connectedCallback() {
@@ -61,31 +31,6 @@ class WorkspaceElement extends HTMLElement {
     this.horizontalAxis.appendChild(this.verticalAxis);
 
     this.appendChild(this.horizontalAxis);
-  }
-
-  observeScrollbarStyle() {
-    this.subscriptions.add(
-      // On macOS, this will update the styles for all `WorkspaceElement`
-      // scrollbars when the user changes the “Show scroll bars…” setting in
-      // System Settings.
-      //
-      // This event isn't emitted by the main process on other platforms, so
-      // it won't do anything on Windows or Linux.
-      observeScrollbarStyle((style) => {
-        switch (style) {
-          case "legacy":
-            this.classList.remove("scrollbars-visible-when-scrolling");
-            this.classList.add("scrollbars-visible-always");
-            break;
-          case "overlay":
-            this.classList.remove("scrollbars-visible-always");
-            this.classList.add("scrollbars-visible-when-scrolling");
-            break;
-          default:
-            console.warn("Unrecognized value for scrollbar style:", style);
-        }
-      }),
-    );
   }
 
   observeTextEditorFontConfig() {
@@ -279,7 +224,6 @@ class WorkspaceElement extends HTMLElement {
       ),
     );
     this.initializeContent();
-    this.observeScrollbarStyle();
     this.observeTextEditorFontConfig();
 
     this.paneContainer = this.model.getCenter().paneContainer.getElement();
@@ -339,7 +283,6 @@ class WorkspaceElement extends HTMLElement {
         this.removeEventListener("wheel", this.handleCtrlWheel, { capture: true }),
       ),
     );
-    this.observeScrollbarStyle();
     this.observeTextEditorFontConfig();
     return this;
   }

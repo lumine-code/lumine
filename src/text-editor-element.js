@@ -168,6 +168,19 @@ class TextEditorElement extends HTMLElement {
     return this.emitter.on("did-change-scroll-top", callback);
   }
 
+  /**
+   * @public
+   * @status extended
+   *
+   * Observe changes to logical scroll extents, viewport size or row geometry.
+   * Ordinary scroll-position changes do not emit this event.
+   * @param {Function} callback - Receives the changed geometry snapshot.
+   * @returns {Disposable} Subscription to geometry changes.
+   */
+  onDidChangeScrollGeometry(callback) {
+    return this.emitter.on("did-change-scroll-geometry", callback);
+  }
+
   onDidStartScrollAnimation(callback) {
     return this.emitter.on("did-start-scroll-animation", callback);
   }

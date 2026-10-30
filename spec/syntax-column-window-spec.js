@@ -28,14 +28,14 @@ describe("Viewport column syntax", () => {
         c.updateSync();
         if (wrapped) {
           const screenRow = editor.screenPositionForBufferPosition([0, 200000]).row;
-          c.didScrollDummyScrollbar({
+          c.didScrollScrollbar({
             orientation: "vertical",
             position: screenRow * c.getLineHeight(),
           });
           await mode.refresh();
           c.scrollPresentation.flush();
         } else {
-          c.didScrollDummyScrollbar({
+          c.didScrollScrollbar({
             orientation: "horizontal",
             position: 200000 * c.getBaseCharacterWidth(),
           });

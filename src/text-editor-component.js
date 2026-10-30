@@ -8,7 +8,8 @@ const { originForOffset, physicalExtent } = require("./scroll-coordinate-space")
 const { idleDisposals } = require("./idle-disposal-queue");
 const { isPairedCharacter, hasRtlText } = require("./text-utils");
 const NodePool = require("./node-pool");
-const DummyScrollbarComponent = require("./dummy-scrollbar-component");
+const EditorScrollbarComponent = require("./editor-scrollbar-component");
+const { scrollbarSize } = require("./overlay-scrollbar");
 const GutterContainerComponent = require("./gutter-container-component");
 const CursorsAndInputComponent = require("./cursors-and-input-component");
 const LinesTileComponent = require("./lines-tile-component");
@@ -128,7 +129,9 @@ module.exports = class TextEditorComponent {
     this.didCompositionEnd = this.didCompositionEnd.bind(this);
 
     this.updatedSynchronously = this.props.updatedSynchronously;
-    this.didScrollDummyScrollbar = this.didScrollDummyScrollbar.bind(this);
+    this.didScrollScrollbar = this.didScrollScrollbar.bind(this);
+    this.didDragScrollbar = this.didDragScrollbar.bind(this);
+    this.scrollbarTakeover = new Set();
     this.didResizeOverlay = this.didResizeOverlay.bind(this);
     this.didMouseDownOnContent = this.didMouseDownOnContent.bind(this);
     this.didMouseWheel = this.didMouseWheel.bind(this);
@@ -137,6 +140,7 @@ module.exports = class TextEditorComponent {
       this.props.cursorBlinkResumeDelay || CURSOR_BLINK_RESUME_DELAY,
     );
     this.lineTopIndex = new LineTopIndex();
+    this.rowGeometryVersion = 0;
     this.lineNodesPool = new NodePool();
     this.updateScheduled = false;
     this.suppressUpdates = false;
@@ -181,7 +185,6 @@ module.exports = class TextEditorComponent {
     this.bindBlockDecorationLifetime();
     this.lineComponentsByScreenLineId = new Map();
     this.overlayComponents = new Set();
-    this.shouldRenderDummyScrollbars = true;
     this.remeasureScrollbars = false;
     this.pendingAutoscroll = null;
     this.scrollTopPending = false;
@@ -509,7 +512,8 @@ module.exports = class TextEditorComponent {
     this.updateScrollContainerElement();
     this.updateContentElement();
     this.updateLineTilesElement();
-    this.syncDummyScrollbars();
+    this.syncScrollbars();
+    this.emitScrollGeometryChange();
     return true;
   }
 
@@ -775,6 +779,10 @@ module.exports = class TextEditorComponent {
 
   updateSyncBeforeMeasuringContent(updateMode = UPDATE_MODE_NORMAL) {
     this.measuredContent = false;
+    if (this.remeasureScrollbars) {
+      this.measureScrollbarDimensions();
+      this.remeasureScrollbars = false;
+    }
     this.derivedDimensionsCache = {};
     this.updateModelSoftWrapColumn();
     if (this.pendingAutoscroll) {
@@ -832,10 +840,8 @@ module.exports = class TextEditorComponent {
     this.queryGuttersToRender();
     this.queryDecorationsToRender();
     this.queryExtraScreenLinesToRender();
-    this.shouldRenderDummyScrollbars = !this.remeasureScrollbars;
     this.renderSync(updateMode);
     this.updateClassList();
-    this.shouldRenderDummyScrollbars = true;
     this.didMeasureVisibleBlockDecoration = false;
   }
 
@@ -885,24 +891,32 @@ module.exports = class TextEditorComponent {
     this.currentFrameLineNumberGutterProps = null;
     this.scrollTopPending = false;
     this.scrollLeftPending = false;
-    if (this.remeasureScrollbars) {
-      // Flush stored scroll positions to the vertical and the horizontal
-      // scrollbars. This is because they have just been destroyed and recreated
-      // as a result of their remeasurement, but we could not assign the scroll
-      // top while they were initialized because they were not attached to the
-      // DOM yet.
-      this.refs.verticalScrollbar.flushScrollPosition();
-      this.refs.horizontalScrollbar.flushScrollPosition();
-
-      this.measureScrollbarDimensions();
-      this.remeasureScrollbars = false;
-      this.renderSync(updateMode);
-    }
 
     this.mountedTileStartRow = this.getRenderedStartRow();
     this.mountedTileEndRow = this.getRenderedEndRow();
     this.derivedDimensionsCache = {};
+    this.emitScrollGeometryChange();
     if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
+  }
+
+  emitScrollGeometryChange() {
+    if (!this.hasInitialMeasurements) return;
+    const geometry = {
+      viewportWidth: this.getScrollContainerClientWidth(),
+      viewportHeight: this.getScrollContainerClientHeight(),
+      scrollWidth: this.getScrollWidth(),
+      scrollHeight: this.getScrollHeight(),
+      verticalSize: this.getVerticalScrollbarWidth(),
+      horizontalSize: this.getHorizontalScrollbarHeight(),
+      rowGeometryVersion: this.getRowGeometryVersion(),
+    };
+    if (
+      this.lastScrollGeometry &&
+      Object.keys(geometry).every((key) => geometry[key] === this.lastScrollGeometry[key])
+    )
+      return;
+    this.lastScrollGeometry = Object.freeze(geometry);
+    this.element.emitter.emit("did-change-scroll-geometry", this.lastScrollGeometry);
   }
 
   // Builds the static DOM shell once, at construction. All dynamic
@@ -934,8 +948,7 @@ module.exports = class TextEditorComponent {
     let style = clientContainer.style;
     style.position = "relative";
     style.contain = "strict";
-    // The client box clips both text and gutters; only the dummy scrollbars
-    // may scroll natively. Revealing the focused input must not move this box
+    // The client box clips both text and gutters. Revealing the focused input must not move this box
     // independently of the editor's transform-based scroll position.
     style.overflow = "clip";
     style.backgroundColor = "inherit";
@@ -1029,7 +1042,7 @@ module.exports = class TextEditorComponent {
   renderSync(updateMode = UPDATE_MODE_NORMAL) {
     this.renderOriginTop = originForOffset(this.getScrollTop());
     this.renderOriginLeft = originForOffset(this.getScrollLeft());
-    this.syncDummyScrollbars(true);
+    this.syncScrollbars(true);
     this.updateRootElement();
     this.updateClientContainerElement();
     this.syncGutterContainer(updateMode);
@@ -1040,7 +1053,7 @@ module.exports = class TextEditorComponent {
     this.syncLineTiles();
     this.refs.cursorsAndInput.update(this.buildCursorsAndInputProps());
     this.updateBlockDecorationMeasurementArea();
-    this.syncDummyScrollbars();
+    this.syncScrollbars();
     this.syncOverlayDecorations();
   }
 
@@ -1185,7 +1198,7 @@ module.exports = class TextEditorComponent {
         width = this.getScrollContainerWidth() + "px";
       } else {
         // Pin to the live right edge instead of a measured pixel width so the
-        // dummy scrollbars stay attached while the editor is resized;
+        // overlay scrollbars stay attached while the editor is resized;
         // measurements only catch up on the next scheduled update.
         right = "0px";
       }
@@ -1479,15 +1492,13 @@ module.exports = class TextEditorComponent {
     }
   }
 
-  // Mounts, updates, or unmounts the dummy scrollbar pair and their corner.
-  // During scrollbar remeasurement the pair is destroyed and recreated (the
-  // same protocol the previous virtual-DOM diff performed via a null render),
-  // and updateSyncAfterMeasuringContent flushes scroll positions afterwards
-  // because they cannot be assigned before the elements are attached.
-  syncDummyScrollbars(positionsOnly = false) {
-    if (this.shouldRenderDummyScrollbars && !this.props.model.isMini()) {
+  // The rail pair is a view of logical editor state, never a native scroll
+  // container. Text and decorations can paint underneath it without changing
+  // the viewport dimensions; wrapping uses its own stable text-safe inset.
+  syncScrollbars(positionsOnly = false) {
+    if (!this.props.model.isMini()) {
       let scrollHeight, scrollTop, horizontalScrollbarHeight;
-      let scrollWidth, scrollLeft, verticalScrollbarWidth, forceScrollbarVisible;
+      let scrollWidth, scrollLeft, verticalScrollbarWidth;
       let canScrollHorizontally, canScrollVertically;
 
       if (this.hasInitialMeasurements) {
@@ -1499,32 +1510,33 @@ module.exports = class TextEditorComponent {
         canScrollVertically = this.canScrollVertically();
         horizontalScrollbarHeight = canScrollHorizontally ? this.getHorizontalScrollbarHeight() : 0;
         verticalScrollbarWidth = this.getVerticalScrollbarWidth();
-        forceScrollbarVisible = this.remeasureScrollbars;
-      } else {
-        forceScrollbarVisible = true;
       }
 
       const verticalScrollbarProps = {
+        document: this.document,
         orientation: "vertical",
         viewportExtent: this.getScrollContainerClientHeight(),
-        didScroll: this.didScrollDummyScrollbar,
-        didMouseDown: this.didMouseDownOnContent,
+        trackExtent: this.getScrollContainerHeight(),
+        didScroll: this.didScrollScrollbar,
+        didDragChange: this.didDragScrollbar,
         canScroll: canScrollVertically,
         scrollHeight,
         scrollTop,
         horizontalScrollbarHeight,
-        forceScrollbarVisible,
+        verticalScrollbarWidth: this.getVerticalScrollbarWidth(),
       };
       const horizontalScrollbarProps = {
+        document: this.document,
         orientation: "horizontal",
         viewportExtent: this.getScrollContainerClientWidth(),
-        didScroll: this.didScrollDummyScrollbar,
-        didMouseDown: this.didMouseDownOnContent,
+        trackExtent: this.getScrollContainerWidth(),
+        didScroll: this.didScrollScrollbar,
+        didDragChange: this.didDragScrollbar,
         canScroll: canScrollHorizontally,
         scrollWidth,
         scrollLeft,
         verticalScrollbarWidth,
-        forceScrollbarVisible,
+        horizontalScrollbarHeight: this.getHorizontalScrollbarHeight(),
       };
 
       if (positionsOnly) {
@@ -1537,19 +1549,17 @@ module.exports = class TextEditorComponent {
         this.refs.verticalScrollbar.update(verticalScrollbarProps);
         this.refs.horizontalScrollbar.update(horizontalScrollbarProps);
       } else {
-        const verticalScrollbar = new DummyScrollbarComponent(verticalScrollbarProps);
-        const horizontalScrollbar = new DummyScrollbarComponent(horizontalScrollbarProps);
+        const verticalScrollbar = new EditorScrollbarComponent(verticalScrollbarProps);
+        const horizontalScrollbar = new EditorScrollbarComponent(horizontalScrollbarProps);
 
-        // Force a "corner" to render where the two scrollbars meet at the lower right
+        // The corner covers the intersection of the two overlay rails.
         const scrollbarCorner = this.document.createElement("div");
         scrollbarCorner.className = "scrollbar-corner";
         const style = scrollbarCorner.style;
         style.position = "absolute";
-        style.height = "20px";
-        style.width = "20px";
         style.bottom = 0;
         style.right = 0;
-        style.overflow = "scroll";
+        style.pointerEvents = "none";
 
         this.refs.verticalScrollbar = verticalScrollbar;
         this.refs.horizontalScrollbar = horizontalScrollbar;
@@ -1561,6 +1571,8 @@ module.exports = class TextEditorComponent {
 
       this.refs.scrollbarCorner.style.visibility =
         canScrollHorizontally && canScrollVertically ? "" : "hidden";
+      this.refs.scrollbarCorner.style.width = this.getVerticalScrollbarWidth() + "px";
+      this.refs.scrollbarCorner.style.height = this.getHorizontalScrollbarHeight() + "px";
     } else if (!positionsOnly && this.refs.verticalScrollbar) {
       this.refs.verticalScrollbar.destroy();
       this.refs.horizontalScrollbar.destroy();
@@ -3230,17 +3242,45 @@ module.exports = class TextEditorComponent {
     }
   }
 
-  didScrollDummyScrollbar({ orientation, position }) {
+  didDragScrollbar({ orientation, dragging }) {
+    if (!dragging) return;
+    this.scrollAnimator.cancel();
+    this.scrollbarTakeover.add(orientation);
+    this.settlingScrollAnchor = null;
+  }
+
+  didScrollScrollbar({ orientation, position, jump = false }) {
+    // Takeover is explicit: async syntax publication may accept this request
+    // before setScrollTop/Left runs, so their cancellation guard is too late.
+    this.scrollAnimator.cancel();
+    const takeover = this.scrollbarTakeover.delete(orientation);
+    const replace = jump || takeover;
     if (
       orientation === "vertical" &&
       this.scrollPresentation &&
       position !== this.getRequestedScrollTop()
     )
       this.settlingScrollAnchor = null;
-    if (orientation === "vertical" && this.scrollPresentation?.request(position)) {
+    const presentation =
+      orientation === "vertical" ? this.scrollPresentation : this.horizontalScrollPresentation;
+    if (
+      replace &&
+      (orientation === "vertical" ||
+        this.renderedScreenLines?.some((line) => line.startScreenColumn != null)) &&
+      presentation?.jump(position)
+    ) {
+      this.syncScrollbars();
       return;
     }
-    if (orientation === "horizontal" && this.requestHorizontalScrollPresentation(position)) return;
+    if (!replace && orientation === "vertical" && this.scrollPresentation?.request(position)) {
+      return;
+    }
+    if (
+      !replace &&
+      orientation === "horizontal" &&
+      this.requestHorizontalScrollPresentation(position)
+    )
+      return;
     let scrollPositionChanged = false;
     if (orientation === "vertical") {
       scrollPositionChanged = this.setScrollTop(position);
@@ -3253,7 +3293,7 @@ module.exports = class TextEditorComponent {
     }
     if (scrollPositionChanged) {
       // Begin asynchronous preparation from the input event, before the next
-      // frame builds its lines. Cached destinations paint in this native scroll
+      // frame builds its lines. Cached destinations paint in this input
       // event; missing colors use the bounded asynchronous preparation path.
       if (this.props.model.getBuffer().getLanguageMode().asynchronousSyntax) {
         this.beginScrollHighlighting();
@@ -4000,7 +4040,7 @@ module.exports = class TextEditorComponent {
     margin,
     reversed,
   ) {
-    const travel = this.getScrollContainerClientHeight() - 2 * margin - (rangeBottom - rangeTop);
+    const travel = this.getContentViewportHeight() - 2 * margin - (rangeBottom - rangeTop);
     const offsetForPercentage = (percentage) => margin + travel * (percentage / 100);
     const topOffset = offsetForPercentage(afterLeavingTop);
     const bottomOffset = offsetForPercentage(afterLeavingBottom);
@@ -4042,10 +4082,11 @@ module.exports = class TextEditorComponent {
       gutterContainerWidth;
     const desiredScrollLeft = Math.max(0, left - horizontalScrollMargin - gutterContainerWidth);
     const desiredScrollRight = Math.min(this.getScrollWidth(), right + horizontalScrollMargin);
+    const safeWidth = this.getContentViewportWidth();
 
     if (!options || options.reversed !== false) {
-      if (desiredScrollRight > this.getScrollRight()) {
-        this.setScrollRight(desiredScrollRight);
+      if (desiredScrollRight > this.getScrollLeft() + safeWidth) {
+        this.setScrollLeft(desiredScrollRight - safeWidth);
       }
       if (desiredScrollLeft < this.getScrollLeft()) {
         this.setScrollLeft(desiredScrollLeft);
@@ -4054,15 +4095,15 @@ module.exports = class TextEditorComponent {
       if (desiredScrollLeft < this.getScrollLeft()) {
         this.setScrollLeft(desiredScrollLeft);
       }
-      if (desiredScrollRight > this.getScrollRight()) {
-        this.setScrollRight(desiredScrollRight);
+      if (desiredScrollRight > this.getScrollLeft() + safeWidth) {
+        this.setScrollLeft(desiredScrollRight - safeWidth);
       }
     }
   }
 
   getVerticalAutoscrollMargin() {
     const maxMarginInLines = Math.floor(
-      (this.getScrollContainerClientHeight() / this.getLineHeight() - 1) / 2,
+      (this.getContentViewportHeight() / this.getLineHeight() - 1) / 2,
     );
     const marginInLines = Math.min(this.props.model.verticalScrollMargin, maxMarginInLines);
     return marginInLines * this.getLineHeight();
@@ -4070,7 +4111,7 @@ module.exports = class TextEditorComponent {
 
   getHorizontalAutoscrollMargin() {
     const maxMarginInBaseCharacters = Math.floor(
-      (this.getScrollContainerClientWidth() / this.getBaseCharacterWidth() - 1) / 2,
+      (this.getContentViewportWidth() / this.getBaseCharacterWidth() - 1) / 2,
     );
     const marginInBaseCharacters = Math.min(
       this.props.model.horizontalScrollMargin,
@@ -4236,10 +4277,9 @@ module.exports = class TextEditorComponent {
       this.measurements.verticalScrollbarWidth = 0;
       this.measurements.horizontalScrollbarHeight = 0;
     } else {
-      this.measurements.verticalScrollbarWidth =
-        this.refs.verticalScrollbar.getRealScrollbarWidth();
-      this.measurements.horizontalScrollbarHeight =
-        this.refs.horizontalScrollbar.getRealScrollbarHeight();
+      const thickness = scrollbarSize(this.element, true);
+      this.measurements.verticalScrollbarWidth = thickness;
+      this.measurements.horizontalScrollbarHeight = thickness;
     }
   }
 
@@ -4457,7 +4497,7 @@ module.exports = class TextEditorComponent {
   }
 
   getRowGeometryVersion() {
-    return this.lineTopIndex.geometryVersion;
+    return this.lineTopIndex.geometryVersion + this.rowGeometryVersion;
   }
 
   pixelLeftForRowAndColumn(row, column) {
@@ -4883,6 +4923,7 @@ module.exports = class TextEditorComponent {
   }
 
   didChangeDisplayLayer(changes) {
+    if (changes.some((change) => change.origin !== "highlight")) this.rowGeometryVersion++;
     this.scrollPresentation?.update();
     this.horizontalScrollPresentation?.update();
     if (changes.length && changes.every((change) => change.origin === "highlight")) {
@@ -5463,24 +5504,22 @@ module.exports = class TextEditorComponent {
   }
 
   getScrollContainerClientWidth() {
-    if (this.props.model.getAutoWidth()) {
-      // The container is sized to the content, plus the vertical scrollbar
-      // only when one shows — either way the content's share is the scroll
-      // width itself. Resolve that share directly so this getter cannot form a
-      // cycle with getScrollWidth when soft wrap is enabled.
-      return this.getAutoSizedContentWidth();
-    }
-    return this.getScrollContainerWidth() - this.getVerticalScrollbarWidth();
+    return this.getScrollContainerWidth();
   }
 
   getScrollContainerClientHeight() {
-    if (this.props.model.getAutoHeight()) {
-      // Same shape as getScrollContainerClientWidth: content height, whether
-      // or not a horizontal scrollbar happens to be shown below it.
-      return this.getAutoSizedContentHeight();
-    }
-    const scrollbarHeight = this.canScrollHorizontally() ? this.getHorizontalScrollbarHeight() : 0;
-    return this.getScrollContainerHeight() - scrollbarHeight;
+    return this.getScrollContainerHeight();
+  }
+
+  getContentViewportWidth() {
+    if (this.props.model.getAutoWidth()) return this.getAutoSizedContentWidth();
+    return Math.max(0, this.getScrollContainerClientWidth() - this.getVerticalScrollbarWidth());
+  }
+
+  getContentViewportHeight() {
+    if (this.props.model.getAutoHeight()) return this.getAutoSizedContentHeight();
+    const inset = this.canScrollHorizontally() ? this.getHorizontalScrollbarHeight() : 0;
+    return Math.max(0, this.getScrollContainerClientHeight() - inset);
   }
 
   canScrollVertically() {
@@ -5497,7 +5536,7 @@ module.exports = class TextEditorComponent {
     const { model } = this.props;
     if ((model.isMini() || model.getAutoWidth()) && !model.usesBoundedAutoSize()) return false;
     if (model.isSoftWrapped()) return false;
-    return this.getContentWidth() > this.getScrollContainerClientWidth();
+    return this.getContentWidth() > this.getContentViewportWidth();
   }
 
   getAutoSizedContentHeight() {
@@ -5523,18 +5562,23 @@ module.exports = class TextEditorComponent {
   }
 
   getScrollHeight() {
+    const endInset = this.canScrollHorizontally() ? this.getHorizontalScrollbarHeight() : 0;
     let scrollHeight;
     if (this.props.model.getScrollPastEnd()) {
       scrollHeight =
         this.getContentHeight() +
         Math.max(
           3 * this.getLineHeight(),
-          this.getScrollContainerClientHeight() - 3 * this.getLineHeight(),
-        );
+          this.getContentViewportHeight() - 3 * this.getLineHeight(),
+        ) +
+        endInset;
     } else if (this.props.model.getAutoHeight()) {
-      scrollHeight = this.getContentHeight();
+      scrollHeight = this.getContentHeight() + endInset;
     } else {
-      scrollHeight = Math.max(this.getContentHeight(), this.getScrollContainerClientHeight());
+      scrollHeight = Math.max(
+        this.getContentHeight() + endInset,
+        this.getScrollContainerClientHeight(),
+      );
     }
     if (this.preservedScrollTop > 0 && !this.props.model.getAutoHeight()) {
       // getMaxScrollTop rounds to whole pixels; its limit must not round below
@@ -5554,11 +5598,15 @@ module.exports = class TextEditorComponent {
     // defined by the rendered content itself. Give it precedence over soft
     // wrap and keep the two width getters independent.
     if (model.getAutoWidth()) {
-      return this.getContentWidth();
+      const inset = this.canScrollVertically() ? this.getVerticalScrollbarWidth() : 0;
+      return this.getContentWidth() + inset;
     } else if (model.isSoftWrapped()) {
       return this.getScrollContainerClientWidth();
     } else {
-      return Math.max(this.getContentWidth(), this.getScrollContainerClientWidth());
+      return Math.max(
+        this.getContentWidth() + this.getVerticalScrollbarWidth(),
+        this.getScrollContainerClientWidth(),
+      );
     }
   }
 
@@ -5571,7 +5619,7 @@ module.exports = class TextEditorComponent {
   }
 
   getScrollContainerClientWidthInBaseCharacters() {
-    return Math.floor(this.getScrollContainerClientWidth() / this.getBaseCharacterWidth());
+    return Math.floor(this.getContentViewportWidth() / this.getBaseCharacterWidth());
   }
 
   getGutterContainerWidth() {
@@ -5748,7 +5796,6 @@ module.exports = class TextEditorComponent {
       idleDisposals.didInteract();
       // A scroll that doesn't originate from the animator's own frame means
       // something else took over the viewport; stop the glide where it is.
-      // Programmatic dummy-scrollbar echoes are filtered before reaching here.
       if (
         this.scrollAnimator &&
         this.scrollAnimator.isAnimating() &&
@@ -5793,7 +5840,6 @@ module.exports = class TextEditorComponent {
       idleDisposals.didInteract();
       // A scroll that doesn't originate from the animator's own frame means
       // something else took over the viewport; stop the glide where it is.
-      // Programmatic dummy-scrollbar echoes are filtered before reaching here.
       if (
         this.scrollAnimator &&
         this.scrollAnimator.isAnimating() &&

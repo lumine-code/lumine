@@ -2640,7 +2640,7 @@ class StubWindow extends EventEmitter {
       this.closed = true;
       // A real BrowserWindow emits "closed" when it closes. Emit it here too so
       // LumineApplication#addWindow's teardown runs and disposes per-window
-      // subscriptions (e.g. the macOS scrollbar-style listener) rather than
+      // subscriptions (e.g. the system accent-color listener) rather than
       // leaking them onto the module-level emitter across tests.
       this.browserWindow.emit("closed");
       resolveClosePromise();
@@ -2672,7 +2672,7 @@ class StubWindow extends EventEmitter {
     this.browserWindow.webContents = new EventEmitter();
     this.browserWindow.webContents.mainFrame = { isDestroyed: () => false };
     this.browserWindow.webContents.send = sinon.spy();
-    // Broadcast handlers such as the scrollbar-style listener identify a window
+    // Broadcast handlers such as the accent-color listener identify a window
     // by its `webContents` and then relay through `sendToRenderer`, so a stub
     // window needs both or those handlers throw when they fire against it.
     this.sendToRenderer = sinon.spy();

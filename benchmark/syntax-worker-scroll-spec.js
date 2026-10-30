@@ -162,9 +162,9 @@ describe("Fast scroll syntax coverage", () => {
             clickCount: 1,
             modifiers: held ? ["leftButtonDown"] : [],
           });
-        const nativeStart = {
+        const thumbStart = {
           rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-          top: element.component.refs.verticalScrollbar.element.scrollTop,
+          top: element.component.refs.verticalScrollbar.props.scrollTop,
           logicalTop: element.component.getScrollTop(),
           maximum: element.component.getMaxScrollTop(),
         };
@@ -314,17 +314,22 @@ describe("Fast scroll syntax coverage", () => {
                           canScroll: true,
                         });
                       } else if (c.gesture === "thumb") {
-                        // Exercise the native-scroll event path used by a dragged
-                        // scrollbar thumb; no smooth-wheel animation is involved.
-                        const scrollbar = element.component.refs.verticalScrollbar.element;
+                        // Enter through the same logical callback as the custom
+                        // thumb; the trusted variant also covers pointer geometry.
+                        const component = element.component;
+                        if (i === 0)
+                          component.didDragScrollbar({ orientation: "vertical", dragging: true });
+                        const position = component.getRequestedScrollTop();
                         const delta = (c.delta ?? 100) * direction;
                         if (
-                          scrollbar.scrollTop + delta * bounce < 0 ||
-                          scrollbar.scrollTop + delta * bounce > element.component.getMaxScrollTop()
+                          position + delta * bounce < 0 ||
+                          position + delta * bounce > component.getMaxScrollTop()
                         )
                           bounce *= -1;
-                        scrollbar.scrollTop += delta * bounce;
-                        scrollbar.dispatchEvent(new Event("scroll"));
+                        component.didScrollScrollbar({
+                          orientation: "vertical",
+                          position: position + delta * bounce,
+                        });
                       } else
                         element.dispatchEvent(
                           new WheelEvent("wheel", {
@@ -366,7 +371,7 @@ describe("Fast scroll syntax coverage", () => {
           wheels,
           requests,
           chunks,
-          nativeStart,
+          thumbStart,
           paintDecisions,
         });
         paintDecisions = null;

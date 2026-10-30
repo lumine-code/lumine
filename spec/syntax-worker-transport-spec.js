@@ -96,10 +96,12 @@ describe("Syntax worker transport", () => {
     expect(mode.cache.evictColdSnapshots).toHaveBeenCalledTimes(1);
   });
 
-  it("paints cached native thumb destinations immediately and defers missing colors", () => {
+  it("paints cached custom thumb destinations immediately and defers missing colors", () => {
     const Component = require("../src/text-editor-component");
     let ready = true;
     const component = {
+      scrollAnimator: { cancel: jasmine.createSpy("cancel") },
+      scrollbarTakeover: new Set(),
       props: {
         model: {
           getBuffer: () => ({ getLanguageMode: () => ({ asynchronousSyntax: true }) }),
@@ -115,7 +117,7 @@ describe("Syntax worker transport", () => {
       scheduleUpdate: jasmine.createSpy("schedule"),
     };
     const scroll = () =>
-      Component.prototype.didScrollDummyScrollbar.call(component, {
+      Component.prototype.didScrollScrollbar.call(component, {
         orientation: "vertical",
         position: 2000,
       });
@@ -376,7 +378,7 @@ describe("Syntax worker transport", () => {
     expect(component.scrollHighlightingRequested).toBeFalse();
   });
 
-  it("prepares native thumb positions before their frame without dropping subsequent input", () => {
+  it("prepares custom thumb positions before their frame without dropping subsequent input", () => {
     const Component = require("../src/text-editor-component");
     const calls = [];
     const displayLayer = {
@@ -386,6 +388,8 @@ describe("Syntax worker transport", () => {
       },
     };
     const component = {
+      scrollAnimator: { cancel: jasmine.createSpy("cancel") },
+      scrollbarTakeover: new Set(),
       props: {
         model: {
           displayLayer,
@@ -412,7 +416,7 @@ describe("Syntax worker transport", () => {
       updateSync: jasmine.createSpy("updateSync"),
     };
     for (const position of [100, 200, 300])
-      Component.prototype.didScrollDummyScrollbar.call(component, {
+      Component.prototype.didScrollScrollbar.call(component, {
         orientation: "vertical",
         position,
       });

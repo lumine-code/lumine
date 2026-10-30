@@ -222,6 +222,46 @@ test("returning to the displayed viewport cancels obsolete scroll work", () => {
   assert.equal(f.queue.requestedTop, null);
 });
 
+for (const horizontal of [false, true]) {
+  test(`a direct ${horizontal ? "horizontal" : "vertical"} jump discards old destinations without settling its waiter early`, async () => {
+    const f = fixture({ horizontal });
+    f.queue.request(100);
+    f.ready(100);
+    const obsoleteFrame = [...f.frames.values()][0];
+    let settled = false;
+    const done = f.queue.whenSettled().then(() => (settled = true));
+    f.queue.jump(800);
+    expectOnlyJumpTarget();
+    obsoleteFrame();
+    f.frame();
+    await Promise.resolve();
+    assert.equal(settled, false);
+    assert.deepEqual(f.commits, []);
+    f.ready(800);
+    f.frame();
+    await done;
+    assert.deepEqual(f.commits, [800]);
+    assert.equal(f.leases.size, 0);
+
+    function expectOnlyJumpTarget() {
+      assert.equal(f.queue.requestedTop, 800);
+      assert.equal(f.queue.pendingTop, 800);
+      assert.equal(f.queue.readyTop, null);
+      assert.equal(f.frames.size, 0);
+    }
+  });
+
+  test(`a cached ${horizontal ? "horizontal" : "vertical"} jump commits directly without a scheduled travel frame`, () => {
+    const f = fixture({ horizontal });
+    f.queue.request(100);
+    f.ready(800);
+    f.queue.jump(800);
+    assert.deepEqual(f.commits, [800]);
+    assert.equal(f.frames.size, 0);
+    assert.equal(f.queue.requestedTop, null);
+  });
+}
+
 test("clamping a pending destination to the displayed viewport completes its waiter", async () => {
   const f = fixture();
   f.queue.request(100);

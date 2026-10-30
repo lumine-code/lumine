@@ -1,6 +1,5 @@
 const LumineWindow = require("./lumine-window");
 const LumineProtocolHandler = require("./lumine-protocol-handler");
-const { onDidChangeScrollbarStyle } = require("./scrollbar-style");
 const { getAccentColor, onDidChangeAccentColor } = require("./accent-color");
 const StorageFolder = require("./storage-folder");
 const Config = require("./config");
@@ -1218,9 +1217,6 @@ module.exports = class LumineApplication extends EventEmitter {
     if (!window.isSpec) {
       const focusHandler = () => this.windowStack.touch(window);
       const blurHandler = () => this.saveCurrentWindowOptions(false);
-      const scrollbarStyleChangeDisposable = onDidChangeScrollbarStyle((newValue) => {
-        window.sendToRenderer("did-change-scrollbar-style", newValue);
-      });
       const accentColorChangeDisposable = onDidChangeAccentColor((newValue) => {
         window.sendToRenderer("did-change-accent-color", newValue);
       });
@@ -1230,7 +1226,6 @@ module.exports = class LumineApplication extends EventEmitter {
         this.windowStack.removeWindow(window);
         window.browserWindow.removeListener("focus", focusHandler);
         window.browserWindow.removeListener("blur", blurHandler);
-        scrollbarStyleChangeDisposable.dispose();
         accentColorChangeDisposable.dispose();
       });
       window.browserWindow.webContents.once("did-finish-load", blurHandler);

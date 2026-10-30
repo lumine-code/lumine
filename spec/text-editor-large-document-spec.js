@@ -1,6 +1,6 @@
 const TextEditor = require("../src/text-editor");
 const TextBuffer = require("../src/text-buffer");
-const { MAX_DOM_EXTENT, MAX_SCROLLBAR_EXTENT } = require("../src/scroll-coordinate-space");
+const { MAX_DOM_EXTENT } = require("../src/scroll-coordinate-space");
 
 describe("Large document viewport", () => {
   let editor;
@@ -48,11 +48,12 @@ describe("Large document viewport", () => {
     expect(visible(component.refs.cursorsAndInput.refs.hiddenInput)).toBe(true);
     const scrollbar = component.refs.verticalScrollbar;
     scrollbar.flushScrollPosition();
-    expect(scrollbar.element.scrollHeight).toBeLessThanOrEqual(MAX_SCROLLBAR_EXTENT);
-    expect(scrollbar.element.scrollTop).toBeCloseTo(
-      scrollbar.element.scrollHeight - scrollbar.element.clientHeight,
-      0,
-    );
+    const rail = scrollbar.element.getBoundingClientRect();
+    const thumb = scrollbar.element.querySelector(".scrollbar-thumb").getBoundingClientRect();
+    expect(rail.height).toBeLessThanOrEqual(viewport.height);
+    expect(scrollbar.props.scrollTop).toBe(component.getMaxScrollTop());
+    expect(thumb.bottom).toBeCloseTo(rail.bottom, 0);
+    expect(scrollbar.element.scrollTop).toBe(0);
 
     const line = element.querySelector(`.line[data-screen-row="${rows - 1}"]`);
     const rect = line.getBoundingClientRect();

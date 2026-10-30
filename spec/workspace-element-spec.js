@@ -722,30 +722,6 @@ describe("WorkspaceElement", () => {
     }
   });
 
-  describe("the scrollbar visibility class", () => {
-    it("has a class based on the style of the scrollbar", () => {
-      const workspaceElement = lumine.workspace.getElement();
-      jasmine.attachToDOM(workspaceElement);
-
-      // The initial value is measured from how this window actually renders
-      // scrollbars, so it's platform-dependent — but it's always one of the
-      // two known styles.
-      expect(
-        workspaceElement.classList.contains("scrollbars-visible-always") ||
-          workspaceElement.classList.contains("scrollbars-visible-when-scrolling"),
-      ).toBe(true);
-
-      // Style changes are pushed from the main process over IPC.
-      ipcRenderer.emit("did-change-scrollbar-style", {}, "legacy");
-      expect(workspaceElement).toHaveClass("scrollbars-visible-always");
-      expect(workspaceElement).not.toHaveClass("scrollbars-visible-when-scrolling");
-
-      ipcRenderer.emit("did-change-scrollbar-style", {}, "overlay");
-      expect(workspaceElement).toHaveClass("scrollbars-visible-when-scrolling");
-      expect(workspaceElement).not.toHaveClass("scrollbars-visible-always");
-    });
-  });
-
   describe("editor font styling", () => {
     let editor, editorElement, workspaceElement;
     let originalPixelRatio = window.devicePixelRatio;

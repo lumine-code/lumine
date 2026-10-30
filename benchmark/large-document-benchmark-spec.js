@@ -2,7 +2,7 @@
 // adapter; published timings should come from run-large-document-benchmark.js.
 const { createHash } = require("node:crypto");
 const TextBuffer = require("../src/text-buffer");
-const { MAX_DOM_EXTENT, MAX_SCROLLBAR_EXTENT } = require("../src/scroll-coordinate-space");
+const { MAX_DOM_EXTENT } = require("../src/scroll-coordinate-space");
 
 const SPARSE_TOKEN = "__LUMINE_LARGE_DOCUMENT_BENCHMARK__";
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -135,8 +135,10 @@ function inspectViewport(editor, component) {
     logicalWidth: component.getScrollWidth(),
     physicalHeight: content.height,
     physicalWidth: content.width,
-    nativeVerticalExtent: component.refs.verticalScrollbar?.element.scrollHeight ?? 0,
-    nativeHorizontalExtent: component.refs.horizontalScrollbar?.element.scrollWidth ?? 0,
+    verticalTrackExtent:
+      component.refs.verticalScrollbar?.element.getBoundingClientRect().height ?? 0,
+    horizontalTrackExtent:
+      component.refs.horizontalScrollbar?.element.getBoundingClientRect().width ?? 0,
     renderedWindowColumns: component.renderedScreenLines.map((line) => line.lineText.length),
   };
   invariant(result.visibleGlyphLines > 0 && result.visibleGutterRows > 0, "EMPTY_VIEWPORT");
@@ -149,9 +151,9 @@ function inspectViewport(editor, component) {
     "UNBOUNDED_DOM_EXTENT",
   );
   invariant(
-    result.nativeVerticalExtent <= MAX_SCROLLBAR_EXTENT + 1 &&
-      result.nativeHorizontalExtent <= MAX_SCROLLBAR_EXTENT + 1,
-    "UNBOUNDED_NATIVE_SCROLLBAR",
+    result.verticalTrackExtent <= viewport.height + 1 &&
+      result.horizontalTrackExtent <= viewport.width + 1,
+    "UNBOUNDED_SCROLLBAR_TRACK",
   );
   return result;
 }

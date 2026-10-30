@@ -1,6 +1,6 @@
 const TextEditor = require("../src/text-editor");
 const TextBuffer = require("../src/text-buffer");
-const { MAX_DOM_EXTENT, MAX_SCROLLBAR_EXTENT } = require("../src/scroll-coordinate-space");
+const { MAX_DOM_EXTENT } = require("../src/scroll-coordinate-space");
 
 describe("TextEditor horizontal windows", () => {
   let editor;
@@ -41,10 +41,11 @@ describe("TextEditor horizontal windows", () => {
     expect(component.refs.content.getBoundingClientRect().width).toBeLessThanOrEqual(
       MAX_DOM_EXTENT,
     );
-    expect(component.refs.horizontalScrollbar.element.scrollWidth).toBeLessThanOrEqual(
-      MAX_SCROLLBAR_EXTENT,
-    );
     const viewport = component.refs.scrollContainer.getBoundingClientRect();
+    expect(
+      component.refs.horizontalScrollbar.element.getBoundingClientRect().width,
+    ).toBeLessThanOrEqual(viewport.width);
+    expect(component.refs.horizontalScrollbar.element.scrollLeft).toBe(0);
     const cursor = element.querySelector(".cursor").getBoundingClientRect();
     const input = component.refs.cursorsAndInput.refs.hiddenInput.getBoundingClientRect();
     expect(cursor.left).toBeGreaterThanOrEqual(viewport.left);

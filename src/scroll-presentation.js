@@ -42,6 +42,16 @@ class ScrollPresentation {
     return true;
   }
 
+  // Direct scrollbar input replaces an older wheel or drag destination. Keep
+  // existing waiters attached to the new request, and never publish a prepared
+  // intermediate viewport after the user has explicitly chosen another one.
+  jump(top) {
+    this.cancel({ settle: false });
+    const accepted = this.request(top);
+    if (!accepted) this.cancel();
+    return accepted;
+  }
+
   position() {
     return this.horizontal ? this.component.getScrollLeft() : this.component.getScrollTop();
   }
@@ -167,7 +177,7 @@ class ScrollPresentation {
     return committed;
   }
 
-  cancel() {
+  cancel({ settle = true } = {}) {
     this.version++;
     if (this.frame) this.frame.window.cancelAnimationFrame(this.frame.handle);
     this.frame = null;
@@ -175,8 +185,10 @@ class ScrollPresentation {
     this.release(this.readyOwner);
     this.requestedTop = this.pendingTop = this.readyTop = null;
     this.mode = null;
-    this.resolveSettled?.();
-    this.resolveSettled = this.settledPromise = null;
+    if (settle) {
+      this.resolveSettled?.();
+      this.resolveSettled = this.settledPromise = null;
+    }
   }
 
   whenSettled() {
