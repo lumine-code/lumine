@@ -2,11 +2,13 @@
 
 Core owns scrollbar geometry, pointer input and visibility. Existing DOM scrollports keep their wheel, keyboard and programmatic scrolling; virtual editors provide logical coordinates through an adapter. Scrollbar chrome never wraps or reparents authored content.
 
-Presentation follows the scroll surface's role:
+Presentation follows the scroll surface's semantic role:
 
-- A workspace-center primary document uses persistent overlay tracks, with `--scrollbar-border-color` marking the vertical separator. Its editor text wraps before a stable scrollbar inset; cursor reveal and horizontal end padding use the same inset.
-- A dock's primary panel uses overlay tracks that fade in on hover or keyboard focus and remain visible during dragging. Their appearance does not change the content viewport, and they have no document separator.
-- Nested surfaces, including inline REPL results, embedded editors, modal lists and isolated output frames, reserve the old scrollbar space and keep overflowing axes visible. DOM scrollports reserve space only for overflowing axes. Fixed-width virtual editors keep their stable vertical text inset even when the rail is hidden; auto-width editors add that space only when vertical scrolling is possible. Tracks without overflow stay hidden.
+- A primary `document` uses persistent overlay tracks, with `--scrollbar-border-color` marking the vertical separator. Its editor text wraps before a stable scrollbar inset; cursor reveal and horizontal end padding use the same inset.
+- A primary `panel` uses overlay tracks that fade in on hover or keyboard focus and remain visible during dragging. Their appearance does not change the content viewport, and they have no document separator. This applies to utility views such as Settings even when opened in the center.
+- `inline` surfaces, including inline REPL results, embedded editors, modal lists and isolated output frames, reserve the old scrollbar space and keep overflowing axes visible. DOM scrollports reserve space only for overflowing axes. Fixed-width virtual editors keep their stable vertical text inset even when the rail is hidden; auto-width editors add that space only when vertical scrolling is possible. Tracks without overflow stay hidden.
+
+Without an explicit role, a center pane's primary scrollport defaults to `document`, a dock's primary scrollport defaults to `panel`, and nested surfaces default to `inline`. Packages can declare `kind: "document" | "panel" | "inline"` when attaching a scrollport, or set `data-scrollbar-kind` on the element. A pane item's root may provide the same attribute as a hint for its primary scrollports. An ancestor's role hint never applies to nested scrollports: a panel's embedded editors, result lists and other inner content retain their inline defaults unless marked explicitly.
 
 Track clicks immediately center the thumb at the clicked point and cancel previous scrolling destinations. Thumb movement has no positional animation.
 
@@ -16,7 +18,7 @@ Existing `overflow: auto` and `overflow: scroll` containers are discovered when 
 
 Views with sticky content may pass a numeric `zIndex` when attaching their primary scrollport. This keeps the rail above the view's header layer without shortening the track or changing the content viewport.
 
-Packages may explicitly register a scrollport with `lumine.scrollbars.attach(element, options)`. The `layout: "overlay" | "gutter"` option controls content reservation; `policy: "auto" | "always" | "hover"` controls visibility independently. Auto selects always-visible chrome for gutter layouts and center documents, and transient chrome for dock overlays. Other options are `edge: "left" | "right"`, `focusOwner`, and `horizontal`/`vertical` booleans that enable or disable each axis. The returned controller provides `refresh()` and `dispose()`; an inert document without a physical window returns null.
+Packages may explicitly register a scrollport with `lumine.scrollbars.attach(element, options)`. Its `kind` selects the role described above. The `layout: "overlay" | "gutter"` option overrides content reservation; `policy: "auto" | "always" | "hover"` controls visibility independently. Auto selects always-visible chrome for gutter layouts and document overlays, and transient chrome for panel overlays. Other options are `edge: "left" | "right"`, `focusOwner`, and `horizontal`/`vertical` booleans that enable or disable each axis. The returned controller provides `refresh()` and `dispose()`; an inert document without a physical window returns null.
 
 Use `data-scrollbar-layout="overlay"` on a primary scrollport, or `data-scrollbar-layout="gutter"` on a nested surface or enclosing subtree. Gutter layout is inherited from an ancestor; overlay layout applies only to the marked element, so nested content keeps its reserved gutter. Explicit attachment options and the element's own layout attribute take precedence over an ancestor. `data-scrollbar="auto"`, `data-scrollbar="always"` and `data-scrollbar="hover"` select visibility without an API call. The `data-scrollbar="none"` attribute excludes a surface and its descendants; use it for renderer-owned chrome or deliberately hidden horizontal controls. RTL containers put the vertical track on the left.
 

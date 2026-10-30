@@ -38,16 +38,30 @@ function createScrollbarRuntime() {
         if (ancestor === item) break;
       }
     }
-    const layout = explicitLayout || (inheritedGutter || !primary ? "gutter" : "overlay");
+    const requestedKind =
+      options.kind ||
+      element.dataset.scrollbarKind ||
+      (primary
+        ? element.parentElement?.closest("[data-scrollbar-kind]")?.dataset.scrollbarKind
+        : null);
+    const kind = ["document", "panel", "inline"].includes(requestedKind)
+      ? requestedKind
+      : primary
+        ? element.closest("lumine-dock")
+          ? "panel"
+          : "document"
+        : "inline";
+    const layout = explicitLayout || (inheritedGutter || kind === "inline" ? "gutter" : "overlay");
     const requestedPolicy = options.policy || element.dataset.scrollbar;
     const policy =
       requestedPolicy && requestedPolicy !== "auto"
         ? requestedPolicy
-        : layout === "gutter" || !element.closest("lumine-dock")
-          ? "always"
-          : "hover";
+        : layout === "overlay" && kind === "panel"
+          ? "hover"
+          : "always";
     return {
       layout,
+      kind,
       policy,
       primary,
       focusOwner:
@@ -376,7 +390,7 @@ function createScrollbarRuntime() {
       return {
         parent,
         layout: presentation.layout,
-        documentTrack: !gutter && presentation.primary && !element.closest("lumine-dock"),
+        documentTrack: !gutter && presentation.kind === "document",
         layerWidth,
         layerHeight,
         followSibling,
@@ -626,6 +640,7 @@ function createScrollbarRuntime() {
           "style",
           "data-scrollbar",
           "data-scrollbar-layout",
+          "data-scrollbar-kind",
           "hidden",
           "open",
         ],

@@ -203,6 +203,28 @@ describe("Shared overlay scrollbars", () => {
     expect(controller.horizontal.element.contains(target)).toBeTrue();
   });
 
+  it("uses a utility panel preset in the center without leaking it into nested ports", () => {
+    const { fixture, element, content, controller } = scrollport();
+    fixture.className = "item-views";
+    fixture.dataset.scrollbarKind = "panel";
+    expect(scrollbarPresentation(element).kind).toBe("panel");
+    expect(scrollbarPresentation(element).layout).toBe("overlay");
+    expect(scrollbarPresentation(element).policy).toBe("hover");
+    controller.write(controller.read());
+    expect(controller.layer.classList.contains("is-document")).toBeFalse();
+    expect(controller.layer.classList.contains("is-persistent")).toBeFalse();
+    const nested = document.createElement("div");
+    nested.style.cssText = "width:100px;height:40px;overflow:auto";
+    content.appendChild(nested);
+    expect(scrollbarPresentation(nested).kind).toBe("inline");
+    expect(scrollbarPresentation(nested).layout).toBe("gutter");
+    expect(scrollbarPresentation(nested).policy).toBe("always");
+    element.dataset.scrollbarKind = "document";
+    controller.write(controller.read());
+    expect(controller.layer.classList.contains("is-document")).toBeTrue();
+    expect(controller.layer.classList.contains("is-persistent")).toBeTrue();
+  });
+
   it("reveals a panel for keyboard focus without changing viewport dimensions", () => {
     const { element, content, controller } = scrollport({ policy: "auto" });
     const input = document.createElement("input");

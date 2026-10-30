@@ -61,7 +61,7 @@ module.exports = class ScrollbarManager {
    *
    * Attach shared scrollbar chrome without wrapping or reparenting the scrollport.
    * @param {HTMLElement} element - Existing DOM scrollport.
-   * @param {Object} [options] - layout (overlay or gutter), policy (auto, always or hover), edge (left or right), focusOwner, zIndex and horizontal/vertical axis overrides. Defaults use overlays for primary pane scrollports and reserved, always-visible gutters for nested surfaces.
+   * @param {Object} [options] - kind (document, panel or inline), layout (overlay or gutter), policy (auto, always or hover), edge (left or right), focusOwner, zIndex and horizontal/vertical axis overrides. Kind selects semantic defaults: persistent document overlays with a separator, transient panel overlays, or reserved always-visible inline gutters. Location supplies the default kind; explicit options or data-scrollbar-kind can select a utility panel even in the center.
    * @returns {Object|null} A controller with refresh() and dispose(), or null for an inert document.
    * @category DOM Surfaces
    */
