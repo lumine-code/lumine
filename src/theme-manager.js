@@ -51,6 +51,7 @@ const BASE_STYLESHEETS = [
   "lumine-ui/styles/panels.css",
   "lumine-ui/styles/select-box.css",
   "lumine-ui/styles/select-list.css",
+  "lumine-ui/styles/dialogs.css",
   "lumine-ui/styles/site-colors.css",
   "lumine-ui/styles/text.css",
   "lumine-ui/styles/tooltip.css",

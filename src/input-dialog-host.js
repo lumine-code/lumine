@@ -112,7 +112,7 @@ class InputDialogHost {
       crumb: this.options.crumb,
       restoreFocus: this.options.restoreFocus,
       priority: this.options.priority,
-      className: this.options.className,
+      className: this.panelClassName(),
     });
     this.panel = panel;
     this.panelDisposables = new CompositeDisposable(
@@ -137,6 +137,11 @@ class InputDialogHost {
       panel.show();
     }
     return panel;
+  }
+
+  /** @private Prompts share the modal shell and use the common form layout. */
+  panelClassName() {
+    return ["dialog-panel", this.options.className].filter(Boolean).join(" ");
   }
 
   /** @category Visibility */

@@ -264,6 +264,7 @@ describe("InputDialog", () => {
       view = createInputDialog({});
       const element = view.getElement();
       expect(element.classList.contains("input-dialog")).toBe(true);
+      expect(element.classList.contains("dialog-form")).toBe(true);
       expect(element.classList.contains("select-list")).toBe(false);
       expect(view.getQueryEditor()).toBeDefined();
       expect(element.querySelector("ol")).toBeNull();

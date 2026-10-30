@@ -1,0 +1,116 @@
+/* Shared form layout for modal prompts and local, modeless dialogs. The host
+   owns positioning and the theme owns the surface; content owns neither. */
+lumine-panel.modal.dialog-panel {
+  max-height: calc(100vh - var(--ui-spacing) * 10);
+  overflow: visible;
+
+  .dialog-form {
+    max-height: calc(100vh - var(--ui-spacing) * 10 - var(--ui-panel-padding) * 2);
+    overflow: auto;
+  }
+}
+
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-spacing);
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  color: var(--text-color);
+
+  .dialog-header,
+  .dialog-title,
+  .dialog-label {
+    display: block;
+    margin: 0;
+    padding: 0;
+    color: var(--text-color-highlight);
+    line-height: 1.5;
+    font-weight: 600;
+  }
+
+  .dialog-title {
+    font-size: 1.15em;
+  }
+
+  .dialog-body,
+  .dialog-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-spacing);
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .dialog-body {
+    overflow: auto;
+  }
+
+  .dialog-field {
+    flex: none;
+    gap: calc(var(--ui-spacing) / 2);
+  }
+
+  .dialog-label {
+    font-size: inherit;
+  }
+
+  .dialog-description,
+  .dialog-status {
+    margin: 0;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+  }
+
+  .dialog-description {
+    color: var(--text-color-subtle);
+  }
+
+  .dialog-status:empty {
+    display: none;
+  }
+
+  .dialog-footer,
+  .dialog-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: var(--ui-spacing);
+    margin: 0;
+    padding: 0;
+  }
+
+  .dialog-footer > .dialog-status {
+    flex: 1 1 12em;
+  }
+
+  .dialog-actions > .btn {
+    margin: 0;
+  }
+
+  [hidden] {
+    display: none;
+  }
+}
+
+/* Keep theme rules for the modal's query from adding a second set of gaps or
+   a picker-specific font size to form fields. */
+lumine-panel.modal .dialog-form lumine-text-editor[mini],
+.dialog-form lumine-text-editor[mini] {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--ui-input-font-size);
+}
+
+.dialog-form.input-dialog > .message-line {
+  margin: 0;
+}
+
+.dialog-form.input-dialog > label.icon {
+  margin: 0;
+}

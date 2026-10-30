@@ -188,7 +188,7 @@ class InputDialog {
    * @returns {string[]} Class names for the root element
    */
   rootClasses() {
-    return ["input-dialog"];
+    return ["input-dialog", "dialog-form"];
   }
 
   /** @category DOM Access */

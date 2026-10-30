@@ -477,7 +477,7 @@ class SelectList extends InputDialog {
   // message line among them — matching nothing inside a list. A rule meant for
   // dialogs and not lists is written `.input-dialog:not(.select-list)`.
   rootClasses() {
-    return [...super.rootClasses(), "select-list"];
+    return ["input-dialog", "select-list"];
   }
 
   didInitializeElement() {

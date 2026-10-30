@@ -179,6 +179,11 @@
     "escape": "tool-panel:unfocus"
   },
   // Allow standard input fields to work correctly
+  ".dialog-form button": {
+    // A focused Cancel or secondary action owns Enter just as it owns Space.
+    // Do not turn its native click into the form's primary core:confirm.
+    "enter": "native!"
+  },
   "body .native-key-bindings": {
     "tab": "core:focus-next",
     "shift-tab": "core:focus-previous",

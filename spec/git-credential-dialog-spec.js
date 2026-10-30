@@ -28,7 +28,7 @@ describe("Git credential dialog", () => {
     const cancelled = expectAsync(result).toBeRejectedWithError(
       "Git credential prompt was cancelled",
     );
-    const input = panel.getElement().querySelector("input");
+    const input = panel.getElement().querySelector("lumine-text-editor[mini]");
 
     lumine.commands.dispatch(input, "core:cancel");
 
@@ -63,16 +63,49 @@ describe("Git credential dialog", () => {
 
   it("returns credentials once and removes its command listeners", async () => {
     const result = prompt();
-    const input = panel.getElement().querySelector("input");
-    input.value = "secret";
+    const input = panel.getElement().querySelector("lumine-text-editor[mini]");
+    const editor = input.getModel();
+    editor.setText("secret");
 
     lumine.commands.dispatch(input, "core:confirm");
 
     await expectAsync(result).toBeResolvedTo({ password: "secret" });
     expect(panel.destroyed).toBe(true);
+    expect(editor.isDestroyed()).toBe(true);
     expect(lumine.commands.findCommands({ target: input }).map(({ name }) => name)).not.toContain(
       "core:cancel",
     );
+  });
+
+  it("masks the password mini editor and uses the shared form actions", async () => {
+    const result = prompt();
+    const input = panel.getElement().querySelector("lumine-text-editor[mini]");
+    expect(input.style.webkitTextSecurity).toBe("disc");
+    expect(input.getAttribute("aria-label")).toBe("Password:");
+    expect(panel.getElement().classList.contains("dialog-panel")).toBe(true);
+    expect(
+      [...panel.getElement().querySelectorAll(".dialog-actions button")].map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["Cancel", "OK"]);
+
+    const cancelled = expectAsync(result).toBeRejectedWithError(
+      "Git credential prompt was cancelled",
+    );
+    panel.getElement().querySelector(".dialog-actions .btn:not(.btn-primary)").click();
+    await cancelled;
+  });
+
+  it("leaves usernames visible and confirms through the primary button", async () => {
+    const result = promptForGitCredential({ prompt: "Username:" });
+    panel = lumine.workspace.getModalPanels().find((candidate) => candidate.isVisible());
+    const input = panel.getElement().querySelector("lumine-text-editor[mini]");
+    expect(input.style.webkitTextSecurity).toBe("");
+    input.getModel().setText("maintainer");
+
+    panel.getElement().querySelector(".btn-primary").click();
+
+    await expectAsync(result).toBeResolvedTo({ password: "maintainer" });
   });
 
   it("closes the prompt when the Git operation is aborted", async () => {

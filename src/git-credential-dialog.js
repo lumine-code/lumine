@@ -18,40 +18,37 @@ function promptForGitCredential(query = {}, { signal } = {}) {
   const masked = /password|passphrase|secret|token/i.test(prompt);
 
   return new Promise((resolve, reject) => {
-    const element = document.createElement("div");
-    element.classList.add("git-credential-dialog");
-    element.setAttribute("tabindex", "-1");
-    element.style.padding = "10px";
-    element.style.minWidth = "22em";
-
+    const window = workspace.getFocusedWindow() ?? workspace.getMainWindow();
+    const document = window.getDocument();
     const message = document.createElement("div");
-    message.classList.add("git-credential-dialog-prompt");
+    message.classList.add("dialog-header", "git-credential-dialog-prompt");
     message.textContent = prompt;
-    message.style.marginBottom = "8px";
-
-    const input = document.createElement("input");
-    input.type = masked ? "password" : "text";
-    input.classList.add("git-credential-dialog-input", "native-key-bindings");
-    input.style.width = "100%";
-    input.style.boxSizing = "border-box";
-    input.style.marginBottom = "10px";
 
     const buttons = document.createElement("div");
-    buttons.classList.add("git-credential-dialog-buttons");
-    buttons.style.display = "flex";
-    buttons.style.justifyContent = "flex-end";
-    buttons.style.gap = "8px";
+    buttons.classList.add("dialog-actions", "git-credential-dialog-buttons");
     const okButton = document.createElement("button");
+    okButton.type = "button";
     okButton.classList.add("btn", "btn-primary");
     okButton.textContent = "OK";
     const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
     cancelButton.classList.add("btn");
     cancelButton.textContent = "Cancel";
     buttons.append(cancelButton, okButton);
 
-    element.append(message, input, buttons);
-
-    const panel = workspace.addModalPanel({ item: element });
+    const host = workspace.addInputDialog(
+      { headerElement: message, contentElement: buttons },
+      { className: "git-credential-dialog", window },
+    );
+    const model = host.getModel();
+    const input = model.getQueryEditor().getElement();
+    input.classList.add("git-credential-dialog-input");
+    input.setAttribute("aria-label", prompt);
+    if (masked) input.style.webkitTextSecurity = "disc";
+    const element = model.getElement();
+    element.classList.add("git-credential-dialog");
+    element.setAttribute("role", "dialog");
+    element.setAttribute("aria-label", prompt);
     const subscriptions = new CompositeDisposable();
     let settled = false;
 
@@ -60,44 +57,27 @@ function promptForGitCredential(query = {}, { signal } = {}) {
       settled = true;
       signal?.removeEventListener("abort", abort);
       subscriptions.dispose();
-      panel.destroy();
-      fn(value);
+      // Do not retain a credential in the host's last-query snapshot or the
+      // mini editor while asynchronous teardown completes.
+      model.setQuery("");
+      void Promise.resolve()
+        .then(() => host.destroy())
+        .then(() => fn(value), reject);
     };
-    const accept = () => finish(resolve, { password: input.value });
+    const accept = ({ query }) => finish(resolve, { password: query });
     const cancel = () => finish(reject, new Error("Git credential prompt was cancelled"));
     const abort = () => finish(reject, signal.reason);
     signal?.addEventListener("abort", abort, { once: true });
 
     subscriptions.add(
-      globalThis.lumine.commands.add(element, {
-        "core:confirm": (event) => {
-          event.stopPropagation();
-          accept();
-        },
-        "core:cancel": (event) => {
-          event.stopPropagation();
-          cancel();
-        },
-      }),
-      panel.onDidDestroy(cancel),
-      panel.onDidChangeVisible((visible) => {
-        if (!visible) cancel();
-      }),
+      model.onDidConfirm(accept),
+      host.onDidHide(cancel),
+      host.onDidDestroy(cancel),
     );
 
-    okButton.addEventListener("click", accept);
-    cancelButton.addEventListener("click", cancel);
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        accept();
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        cancel();
-      }
-    });
-
-    input.focus();
+    okButton.addEventListener("click", () => model.confirm());
+    cancelButton.addEventListener("click", () => host.cancel());
+    void host.show().catch((error) => finish(reject, error));
   });
 }
 
