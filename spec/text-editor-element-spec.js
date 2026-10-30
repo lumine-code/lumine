@@ -333,22 +333,23 @@ describe("TextEditorElement", () => {
     }));
 
   describe("::setUpdatedSynchronously", () => {
-    it("controls whether the text editor is updated synchronously", () => {
-      spyOn(window, "requestAnimationFrame").and.callFake((fn) => fn());
-
+    it("controls whether the text editor is updated synchronously", async () => {
       const element = buildTextEditorElement();
+      const component = element.getComponent();
+      const update = spyOn(component, "updateSync").and.callThrough();
 
       expect(element.isUpdatedSynchronously()).toBe(false);
 
       element.getModel().setText("hello");
-      expect(window.requestAnimationFrame).toHaveBeenCalled();
-
+      expect(update).not.toHaveBeenCalled();
+      await component.getNextUpdatePromise();
+      expect(update).toHaveBeenCalled();
       expect(element.textContent).toContain("hello");
 
-      window.requestAnimationFrame.calls.reset();
+      update.calls.reset();
       element.setUpdatedSynchronously(true);
       element.getModel().setText("goodbye");
-      expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+      expect(update).toHaveBeenCalled();
       expect(element.textContent).toContain("goodbye");
     });
   });

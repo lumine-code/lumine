@@ -372,7 +372,7 @@ module.exports = class TextEditorComponent {
     // first resize after it expands may arrive while the editor remains
     // outside the viewport, before IntersectionObserver ever calls didShow.
     if (!this.hasInitialMeasurements) this.measureDimensions();
-    this.updateScrollbarPresentation();
+    const scrollbarPresentationChanged = this.updateScrollbarPresentation();
 
     if (this.waitForScrollHighlighting()) {
       this.updateScheduled = false;
@@ -392,7 +392,7 @@ module.exports = class TextEditorComponent {
 
     const onlyBlinkingCursors = this.nextUpdateOnlyBlinksCursors;
     this.nextUpdateOnlyBlinksCursors = null;
-    if (useScheduler && onlyBlinkingCursors) {
+    if (useScheduler && onlyBlinkingCursors && !scrollbarPresentationChanged) {
       this.refs.cursorsAndInput.updateCursorBlinkSync(this.cursorsBlinkedOff);
       if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
       this.updateScheduled = false;

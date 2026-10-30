@@ -220,6 +220,12 @@ describe("TextEditorComponent", () => {
         element.dataset.scrollbar = "hover";
         expect(component.refs.scrollContainer.classList.contains("is-persistent")).toBe(false);
         expect(component.refs.scrollContainer.classList.contains("is-hover")).toBe(true);
+        element.classList.add("disable-animations");
+        element.focus();
+        expect(element.contains(document.activeElement)).toBe(true);
+        const horizontalRail = component.refs.horizontalScrollbar.element;
+        expect(getComputedStyle(horizontalRail).opacity).toBe("1");
+        expect(getComputedStyle(horizontalRail).pointerEvents).toBe("auto");
         element.dataset.scrollbar = "always";
         expect(component.refs.scrollContainer.classList.contains("is-persistent")).toBe(true);
       });
@@ -241,6 +247,24 @@ describe("TextEditorComponent", () => {
         itemViews.moveBefore(element, popup);
         expect(component.getScrollbarLayout()).toBe("overlay");
         expect(geometries.at(-1).layout).toBe("overlay");
+        subscription.dispose();
+      });
+
+      it("publishes an inherited layout change when the next update only blinks cursors", async () => {
+        const { component, element } = buildComponent({ attach: false, width: 100, height: 100 });
+        const itemViews = primaryItem(element);
+        const geometries = [];
+        const subscription = element.onDidChangeScrollGeometry((geometry) =>
+          geometries.push(geometry),
+        );
+        expect(component.getScrollbarLayout()).toBe("overlay");
+        itemViews.dataset.scrollbarLayout = "gutter";
+        component.scheduleUpdate(true);
+        await component.getNextUpdatePromise();
+        expect(component.getScrollbarLayout()).toBe("gutter");
+        expect(component.refs.scrollContainer.classList.contains("is-gutter")).toBe(true);
+        expect(component.refs.contentViewport.style.right).toBe("10px");
+        expect(geometries.at(-1).layout).toBe("gutter");
         subscription.dispose();
       });
 
