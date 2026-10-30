@@ -256,7 +256,17 @@ function createScrollbarRuntime() {
       const rect = element.getBoundingClientRect();
       // Mount in the existing containing block: never wrap/reparent authored
       // content or change which ancestor positions a package's own overlays.
-      const parent = element.offsetParent || element.ownerDocument.body;
+      let parent = element.offsetParent;
+      if (!parent) {
+        for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+          if (window.getComputedStyle(ancestor).position !== "static") {
+            parent = ancestor;
+            break;
+          }
+        }
+      }
+      parent ||= element.ownerDocument.body;
+      const followSibling = style.position === "fixed" && element.parentElement === parent;
       const parentRect = parent.getBoundingClientRect();
       let clipTop = 0,
         clipRight = 0,
@@ -300,6 +310,8 @@ function createScrollbarRuntime() {
         : element.scrollLeft;
       return {
         parent,
+        followSibling,
+        stacking: followSibling ? style.zIndex : "10",
         left:
           rect.left + element.clientLeft - parentRect.left - parent.clientLeft + parent.scrollLeft,
         top: rect.top + element.clientTop - parentRect.top - parent.clientTop + parent.scrollTop,
@@ -326,7 +338,11 @@ function createScrollbarRuntime() {
       if (this.destroyed || !snapshot) return;
       const old = this.geometry;
       this.geometry = snapshot;
-      if (this.layer.parentElement !== snapshot.parent) snapshot.parent.appendChild(this.layer);
+      if (snapshot.followSibling) {
+        if (this.element.nextSibling !== this.layer)
+          snapshot.parent.insertBefore(this.layer, this.element.nextSibling);
+      } else if (this.layer.parentElement !== snapshot.parent)
+        snapshot.parent.appendChild(this.layer);
       const style = this.layer.style;
       for (const [key, value] of Object.entries({
         left: `${snapshot.left}px`,
@@ -335,6 +351,7 @@ function createScrollbarRuntime() {
         height: `${snapshot.viewportHeight}px`,
         clipPath: snapshot.clip,
         display: snapshot.visible ? "" : "none",
+        zIndex: snapshot.stacking,
       }))
         if (style[key] !== value) style[key] = value;
       this.layer.classList.toggle("is-persistent", snapshot.persistent);

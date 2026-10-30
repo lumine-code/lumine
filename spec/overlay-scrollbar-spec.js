@@ -162,6 +162,60 @@ describe("Shared overlay scrollbars", () => {
     expect(controller.horizontal.metrics.position).toBe(300);
   });
 
+  it("keeps fixed popup tracks in their own stacking context and actual hit region", () => {
+    const { fixture, element, controller } = scrollport();
+    fixture.style.zIndex = "99999";
+    fixture.style.position = "fixed";
+    element.style.cssText =
+      "position:fixed;left:40px;top:40px;width:200px;height:100px;overflow:auto";
+    controller.write(controller.read());
+    controller.layer.classList.add("is-revealed");
+    expect(controller.layer.parentElement).toBe(fixture);
+    expect(element.nextSibling).toBe(controller.layer);
+    const rect = controller.vertical.element.getBoundingClientRect();
+    const target = document.elementFromPoint(rect.left + 5, rect.top + 60);
+    expect(controller.vertical.element.contains(target)).toBeTrue();
+  });
+
+  it("scrolls an actual popup track without dismissing the popup or choosing an option", async () => {
+    const select = lumine.menu.createSelectBox({
+      items: Array.from({ length: 100 }, (_, index) => String(index)),
+      value: "0",
+    });
+    document.body.appendChild(select.element);
+    fixtures.push(select.element);
+    components.push({ destroy: () => select.destroy() });
+    await select.open();
+    const list = select.listElement;
+    list.style.maxHeight = "120px";
+    const controller = lumine.scrollbars.attach(list);
+    components.push(controller);
+    controller.write(controller.read());
+    controller.layer.classList.add("is-revealed");
+    const rect = controller.vertical.element.getBoundingClientRect();
+    const x = rect.left + rect.width / 2,
+      y = rect.top + rect.height * 0.75;
+    const target = document.elementFromPoint(x, y);
+    expect(controller.vertical.element.contains(target)).toBeTrue();
+    target.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        buttons: 1,
+        pointerId: 1,
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    target.dispatchEvent(
+      new MouseEvent("mousedown", { button: 0, buttons: 1, clientX: x, clientY: y, bubbles: true }),
+    );
+    expect(list.isConnected).toBeTrue();
+    expect(list.scrollTop).toBeGreaterThan(0);
+    expect(select.value).toBe("0");
+  });
+
   it("keeps marker geometry independent of the active editor", () => {
     const { element } = scrollport();
     const geometry = lumine.scrollbars.getGeometry(element);
