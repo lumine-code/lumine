@@ -1,5 +1,5 @@
 {
-  "capturedOn": "2026-10-29",
+  "capturedOn": "2026-10-30",
   "context": "Authentic captures of Lumine in normal mode on Windows, using the One light theme and default editor font settings. System window borders are excluded, corners are rounded, and dock reveal controls are hidden before capture.",
   "scenes": [
     {
@@ -9,22 +9,67 @@
       "description": "Python editing with syntax highlighting and the project tree.",
       "light": "01-light.png",
       "dark": "01-dark.png",
-      "capturedOn": "2026-10-29",
-      "sourceRevision": "b569c426733b65e6e7ea16b00430f701a289996e",
+      "capturedOn": "2026-10-30",
+      "sourceRevision": "760329498d85e1294191a073d8a34a1706f4d14b",
       "packageSourceRevisions": {
-        "breadcrumbs": "14305f25b09f59f0afd3559eaea32cc2674fca71",
-        "about": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
+        "breadcrumbs": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
+        "about": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
+        "background-tips": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
+        "command-palette": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
+        "deprecation-cop": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
+        "dev-live-reload": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
+        "encoding-selector": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
+        "git-diff": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
+        "go-to-line": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
+        "grammar-selector": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
+        "incompatible-packages": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
+        "keybinding-resolver": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
+        "language-c": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
+        "language-css": "6b7b89e632119fc602f0757081c4f078d06328d0",
+        "language-csv": "7abdc6f06aeab61da125ffac2d3880acd864296f",
+        "language-diff": "7c413668916cb14cb46e91fe465c2457218bbcc5",
         "language-gfm": "e2eca2b15d854161c670e5b8815ad48e636957b7",
+        "language-git": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
+        "language-html": "a7e620a517668d8e46a39fbced344bbb304e12a7",
+        "language-hyperlink": "03ec30fd38ee531aa41a90130d8eece322ba0963",
+        "language-ipython": "aa582a52b51fa32240d36412abcca60fd0629583",
+        "language-javascript": "bf635d04bbf9cf42239552df5455644c59b64b06",
+        "language-json": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
+        "language-log": "326ef9201581d76efba5d05a160c6ecc654e294d",
+        "language-powershell": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
         "language-python": "413b30e96e3bb63714958c3e3edeca338b0551aa",
-        "markdown-preview": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
-        "metadata": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
-        "settings-view": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+        "language-regex": "3b69da21fc49671442998bc95a0050672694c9d7",
+        "language-shellscript": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
+        "language-source": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
+        "language-sql": "e54209763701ec8cbc6f4eb508de9069d743af0e",
+        "language-text": "d64e4a2f0dd6f177148513f927fddec588d37669",
+        "language-todo": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
+        "language-toml": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
+        "language-typescript": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
+        "language-xml": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
+        "language-yaml": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
+        "launcher": "052dc2786b548598028164567929a7818995fa74",
+        "line-ending": "b18de17984092836aa30930fc760a6d35f06785d",
+        "lumine-updater": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
+        "markdown-preview": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
+        "metadata": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
+        "notifications": "b3f6288191f15153e2c53b33152abe45f5b657bc",
+        "one-theme": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+        "search-panel": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
+        "settings-view": "89d1f6e16befae710f2467c011299edc5b259092",
+        "snippets": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
+        "status-bar": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
+        "styleguide": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
         "symbol": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
         "symbol-tree-sitter": "368c44732334783ea790afbcc88a59b66936f289",
-        "title-bar": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
-        "tree-view": "968cf8e9ddd41efecb09474c0a108d476f7ae33e"
+        "tabs": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
+        "timecop": "91a82e0e7c0994768be61ccb109ada274332976e",
+        "title-bar": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
+        "tree-view": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
+        "whitespace": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
+        "window-title": "55c79de0ce72a58afbc7484f32f4d685e902f22d"
       },
-      "themeSourceRevision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
+      "themeSourceRevision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
       "capture": {
         "runner": "script/demo.js",
         "recipe": "capture/recipe.txt",
@@ -42,34 +87,97 @@
           "fontSize": 14,
           "themes": ["one-day-syntax", "one-day-ui"]
         },
-        "viewport": {
-          "width": 1440,
-          "height": 900
-        },
+        "viewport": { "width": 1440, "height": 900 },
         "cornerRadius": 10,
-        "privacy": {
-          "version": 1,
-          "location": "neutral",
-          "textChecked": true
-        },
+        "privacy": { "version": 1, "location": "neutral", "textChecked": true },
         "sources": {
           "editor": {
-            "revision": "b569c426733b65e6e7ea16b00430f701a289996e",
+            "revision": "760329498d85e1294191a073d8a34a1706f4d14b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "package": {
-            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
           },
           "breadcrumbs": {
-            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
           },
           "about": {
-            "revision": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
+            "revision": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "background-tips": {
+            "revision": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "command-palette": {
+            "revision": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "deprecation-cop": {
+            "revision": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "dev-live-reload": {
+            "revision": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "encoding-selector": {
+            "revision": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "git-diff": {
+            "revision": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "go-to-line": {
+            "revision": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "grammar-selector": {
+            "revision": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "incompatible-packages": {
+            "revision": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "keybinding-resolver": {
+            "revision": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-c": {
+            "revision": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-css": {
+            "revision": "6b7b89e632119fc602f0757081c4f078d06328d0",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-csv": {
+            "revision": "7abdc6f06aeab61da125ffac2d3880acd864296f",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-diff": {
+            "revision": "7c413668916cb14cb46e91fe465c2457218bbcc5",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -78,28 +186,158 @@
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
+          "language-git": {
+            "revision": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-html": {
+            "revision": "a7e620a517668d8e46a39fbced344bbb304e12a7",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-hyperlink": {
+            "revision": "03ec30fd38ee531aa41a90130d8eece322ba0963",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-ipython": {
+            "revision": "aa582a52b51fa32240d36412abcca60fd0629583",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-javascript": {
+            "revision": "bf635d04bbf9cf42239552df5455644c59b64b06",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-json": {
+            "revision": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-log": {
+            "revision": "326ef9201581d76efba5d05a160c6ecc654e294d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-powershell": {
+            "revision": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
           "language-python": {
             "revision": "413b30e96e3bb63714958c3e3edeca338b0551aa",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
+          "language-regex": {
+            "revision": "3b69da21fc49671442998bc95a0050672694c9d7",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-shellscript": {
+            "revision": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-source": {
+            "revision": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-sql": {
+            "revision": "e54209763701ec8cbc6f4eb508de9069d743af0e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-text": {
+            "revision": "d64e4a2f0dd6f177148513f927fddec588d37669",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-todo": {
+            "revision": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-toml": {
+            "revision": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-typescript": {
+            "revision": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-xml": {
+            "revision": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-yaml": {
+            "revision": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "launcher": {
+            "revision": "052dc2786b548598028164567929a7818995fa74",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "line-ending": {
+            "revision": "b18de17984092836aa30930fc760a6d35f06785d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "lumine-updater": {
+            "revision": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
           "markdown-preview": {
-            "revision": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
+            "revision": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "metadata": {
-            "revision": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
+            "revision": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "notifications": {
+            "revision": "b3f6288191f15153e2c53b33152abe45f5b657bc",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
+            "revision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "search-panel": {
+            "revision": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+            "revision": "89d1f6e16befae710f2467c011299edc5b259092",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "snippets": {
+            "revision": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "status-bar": {
+            "revision": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "styleguide": {
+            "revision": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -113,13 +351,33 @@
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
+          "tabs": {
+            "revision": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "timecop": {
+            "revision": "91a82e0e7c0994768be61ccb109ada274332976e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
           "title-bar": {
-            "revision": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
+            "revision": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "968cf8e9ddd41efecb09474c0a108d476f7ae33e",
+            "revision": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "whitespace": {
+            "revision": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "window-title": {
+            "revision": "55c79de0ce72a58afbc7484f32f4d685e902f22d",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -154,7 +412,7 @@
             "sha256": "2a36953daadd1ae53070d0ff7ceab4624395fdb957104aa6e8ec92d785cadf1d"
           }
         ],
-        "sha256": "68173264bd486c02372e269bda6b71aec001d7359c83e9d4fbe238135cf3f5cd"
+        "sha256": "0a554c9a98c474b72810779130ab302fd44afb9a5afbf5eafce3f1906fb655f7"
       }
     },
     {
@@ -164,22 +422,67 @@
       "description": "A live Markdown preview beside its source in a split pane.",
       "light": "02-light.png",
       "dark": "02-dark.png",
-      "capturedOn": "2026-10-29",
+      "capturedOn": "2026-10-30",
       "packageSourceRevisions": {
-        "breadcrumbs": "14305f25b09f59f0afd3559eaea32cc2674fca71",
-        "about": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
+        "breadcrumbs": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
+        "about": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
+        "background-tips": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
+        "command-palette": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
+        "deprecation-cop": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
+        "dev-live-reload": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
+        "encoding-selector": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
+        "git-diff": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
+        "go-to-line": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
+        "grammar-selector": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
+        "incompatible-packages": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
+        "keybinding-resolver": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
+        "language-c": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
+        "language-css": "6b7b89e632119fc602f0757081c4f078d06328d0",
+        "language-csv": "7abdc6f06aeab61da125ffac2d3880acd864296f",
+        "language-diff": "7c413668916cb14cb46e91fe465c2457218bbcc5",
         "language-gfm": "e2eca2b15d854161c670e5b8815ad48e636957b7",
+        "language-git": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
+        "language-html": "a7e620a517668d8e46a39fbced344bbb304e12a7",
+        "language-hyperlink": "03ec30fd38ee531aa41a90130d8eece322ba0963",
+        "language-ipython": "aa582a52b51fa32240d36412abcca60fd0629583",
+        "language-javascript": "bf635d04bbf9cf42239552df5455644c59b64b06",
+        "language-json": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
+        "language-log": "326ef9201581d76efba5d05a160c6ecc654e294d",
+        "language-powershell": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
         "language-python": "413b30e96e3bb63714958c3e3edeca338b0551aa",
-        "markdown-preview": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
-        "metadata": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
-        "settings-view": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+        "language-regex": "3b69da21fc49671442998bc95a0050672694c9d7",
+        "language-shellscript": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
+        "language-source": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
+        "language-sql": "e54209763701ec8cbc6f4eb508de9069d743af0e",
+        "language-text": "d64e4a2f0dd6f177148513f927fddec588d37669",
+        "language-todo": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
+        "language-toml": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
+        "language-typescript": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
+        "language-xml": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
+        "language-yaml": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
+        "launcher": "052dc2786b548598028164567929a7818995fa74",
+        "line-ending": "b18de17984092836aa30930fc760a6d35f06785d",
+        "lumine-updater": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
+        "markdown-preview": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
+        "metadata": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
+        "notifications": "b3f6288191f15153e2c53b33152abe45f5b657bc",
+        "one-theme": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+        "search-panel": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
+        "settings-view": "89d1f6e16befae710f2467c011299edc5b259092",
+        "snippets": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
+        "status-bar": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
+        "styleguide": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
         "symbol": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
         "symbol-tree-sitter": "368c44732334783ea790afbcc88a59b66936f289",
-        "title-bar": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
-        "tree-view": "968cf8e9ddd41efecb09474c0a108d476f7ae33e"
+        "tabs": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
+        "timecop": "91a82e0e7c0994768be61ccb109ada274332976e",
+        "title-bar": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
+        "tree-view": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
+        "whitespace": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
+        "window-title": "55c79de0ce72a58afbc7484f32f4d685e902f22d"
       },
-      "themeSourceRevision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
-      "sourceRevision": "b569c426733b65e6e7ea16b00430f701a289996e",
+      "themeSourceRevision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+      "sourceRevision": "760329498d85e1294191a073d8a34a1706f4d14b",
       "capture": {
         "runner": "script/demo.js",
         "recipe": "capture/recipe.txt",
@@ -197,34 +500,97 @@
           "fontSize": 14,
           "themes": ["one-day-syntax", "one-day-ui"]
         },
-        "viewport": {
-          "width": 1440,
-          "height": 900
-        },
+        "viewport": { "width": 1440, "height": 900 },
         "cornerRadius": 10,
-        "privacy": {
-          "version": 1,
-          "location": "neutral",
-          "textChecked": true
-        },
+        "privacy": { "version": 1, "location": "neutral", "textChecked": true },
         "sources": {
           "editor": {
-            "revision": "b569c426733b65e6e7ea16b00430f701a289996e",
+            "revision": "760329498d85e1294191a073d8a34a1706f4d14b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "package": {
-            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
           },
           "breadcrumbs": {
-            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
           },
           "about": {
-            "revision": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
+            "revision": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "background-tips": {
+            "revision": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "command-palette": {
+            "revision": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "deprecation-cop": {
+            "revision": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "dev-live-reload": {
+            "revision": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "encoding-selector": {
+            "revision": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "git-diff": {
+            "revision": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "go-to-line": {
+            "revision": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "grammar-selector": {
+            "revision": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "incompatible-packages": {
+            "revision": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "keybinding-resolver": {
+            "revision": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-c": {
+            "revision": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-css": {
+            "revision": "6b7b89e632119fc602f0757081c4f078d06328d0",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-csv": {
+            "revision": "7abdc6f06aeab61da125ffac2d3880acd864296f",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-diff": {
+            "revision": "7c413668916cb14cb46e91fe465c2457218bbcc5",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -233,28 +599,158 @@
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
+          "language-git": {
+            "revision": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-html": {
+            "revision": "a7e620a517668d8e46a39fbced344bbb304e12a7",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-hyperlink": {
+            "revision": "03ec30fd38ee531aa41a90130d8eece322ba0963",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-ipython": {
+            "revision": "aa582a52b51fa32240d36412abcca60fd0629583",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-javascript": {
+            "revision": "bf635d04bbf9cf42239552df5455644c59b64b06",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-json": {
+            "revision": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-log": {
+            "revision": "326ef9201581d76efba5d05a160c6ecc654e294d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-powershell": {
+            "revision": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
           "language-python": {
             "revision": "413b30e96e3bb63714958c3e3edeca338b0551aa",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
+          "language-regex": {
+            "revision": "3b69da21fc49671442998bc95a0050672694c9d7",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-shellscript": {
+            "revision": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-source": {
+            "revision": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-sql": {
+            "revision": "e54209763701ec8cbc6f4eb508de9069d743af0e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-text": {
+            "revision": "d64e4a2f0dd6f177148513f927fddec588d37669",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-todo": {
+            "revision": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-toml": {
+            "revision": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-typescript": {
+            "revision": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-xml": {
+            "revision": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-yaml": {
+            "revision": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "launcher": {
+            "revision": "052dc2786b548598028164567929a7818995fa74",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "line-ending": {
+            "revision": "b18de17984092836aa30930fc760a6d35f06785d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "lumine-updater": {
+            "revision": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
           "markdown-preview": {
-            "revision": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
+            "revision": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "metadata": {
-            "revision": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
+            "revision": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "notifications": {
+            "revision": "b3f6288191f15153e2c53b33152abe45f5b657bc",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
+            "revision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "search-panel": {
+            "revision": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+            "revision": "89d1f6e16befae710f2467c011299edc5b259092",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "snippets": {
+            "revision": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "status-bar": {
+            "revision": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "styleguide": {
+            "revision": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -268,13 +764,33 @@
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
+          "tabs": {
+            "revision": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "timecop": {
+            "revision": "91a82e0e7c0994768be61ccb109ada274332976e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
           "title-bar": {
-            "revision": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
+            "revision": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "968cf8e9ddd41efecb09474c0a108d476f7ae33e",
+            "revision": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "whitespace": {
+            "revision": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "window-title": {
+            "revision": "55c79de0ce72a58afbc7484f32f4d685e902f22d",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -309,7 +825,7 @@
             "sha256": "2a36953daadd1ae53070d0ff7ceab4624395fdb957104aa6e8ec92d785cadf1d"
           }
         ],
-        "sha256": "c4b398299de4227f36a811fc88e0106481220791af4983d75cafe8cb04f95fd7"
+        "sha256": "f7382ab7e9a68904c09a4e1acac49b8e1a8d7da52b7f4586d01bdb62066c6782"
       }
     },
     {
@@ -319,21 +835,66 @@
       "description": "Manage installed and bundled packages from the editor.",
       "light": "03-light.png",
       "dark": "03-dark.png",
-      "themeSourceRevision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
-      "capturedOn": "2026-10-29",
-      "sourceRevision": "b569c426733b65e6e7ea16b00430f701a289996e",
+      "themeSourceRevision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+      "capturedOn": "2026-10-30",
+      "sourceRevision": "760329498d85e1294191a073d8a34a1706f4d14b",
       "packageSourceRevisions": {
-        "breadcrumbs": "14305f25b09f59f0afd3559eaea32cc2674fca71",
-        "about": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
+        "breadcrumbs": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
+        "about": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
+        "background-tips": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
+        "command-palette": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
+        "deprecation-cop": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
+        "dev-live-reload": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
+        "encoding-selector": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
+        "git-diff": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
+        "go-to-line": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
+        "grammar-selector": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
+        "incompatible-packages": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
+        "keybinding-resolver": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
+        "language-c": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
+        "language-css": "6b7b89e632119fc602f0757081c4f078d06328d0",
+        "language-csv": "7abdc6f06aeab61da125ffac2d3880acd864296f",
+        "language-diff": "7c413668916cb14cb46e91fe465c2457218bbcc5",
         "language-gfm": "e2eca2b15d854161c670e5b8815ad48e636957b7",
+        "language-git": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
+        "language-html": "a7e620a517668d8e46a39fbced344bbb304e12a7",
+        "language-hyperlink": "03ec30fd38ee531aa41a90130d8eece322ba0963",
+        "language-ipython": "aa582a52b51fa32240d36412abcca60fd0629583",
+        "language-javascript": "bf635d04bbf9cf42239552df5455644c59b64b06",
+        "language-json": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
+        "language-log": "326ef9201581d76efba5d05a160c6ecc654e294d",
+        "language-powershell": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
         "language-python": "413b30e96e3bb63714958c3e3edeca338b0551aa",
-        "markdown-preview": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
-        "metadata": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
-        "settings-view": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+        "language-regex": "3b69da21fc49671442998bc95a0050672694c9d7",
+        "language-shellscript": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
+        "language-source": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
+        "language-sql": "e54209763701ec8cbc6f4eb508de9069d743af0e",
+        "language-text": "d64e4a2f0dd6f177148513f927fddec588d37669",
+        "language-todo": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
+        "language-toml": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
+        "language-typescript": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
+        "language-xml": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
+        "language-yaml": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
+        "launcher": "052dc2786b548598028164567929a7818995fa74",
+        "line-ending": "b18de17984092836aa30930fc760a6d35f06785d",
+        "lumine-updater": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
+        "markdown-preview": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
+        "metadata": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
+        "notifications": "b3f6288191f15153e2c53b33152abe45f5b657bc",
+        "one-theme": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+        "search-panel": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
+        "settings-view": "89d1f6e16befae710f2467c011299edc5b259092",
+        "snippets": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
+        "status-bar": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
+        "styleguide": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
         "symbol": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
         "symbol-tree-sitter": "368c44732334783ea790afbcc88a59b66936f289",
-        "title-bar": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
-        "tree-view": "968cf8e9ddd41efecb09474c0a108d476f7ae33e"
+        "tabs": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
+        "timecop": "91a82e0e7c0994768be61ccb109ada274332976e",
+        "title-bar": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
+        "tree-view": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
+        "whitespace": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
+        "window-title": "55c79de0ce72a58afbc7484f32f4d685e902f22d"
       },
       "capture": {
         "runner": "script/demo.js",
@@ -352,34 +913,97 @@
           "fontSize": 14,
           "themes": ["one-day-syntax", "one-day-ui"]
         },
-        "viewport": {
-          "width": 1440,
-          "height": 900
-        },
+        "viewport": { "width": 1440, "height": 900 },
         "cornerRadius": 10,
-        "privacy": {
-          "version": 1,
-          "location": "neutral",
-          "textChecked": true
-        },
+        "privacy": { "version": 1, "location": "neutral", "textChecked": true },
         "sources": {
           "editor": {
-            "revision": "b569c426733b65e6e7ea16b00430f701a289996e",
+            "revision": "760329498d85e1294191a073d8a34a1706f4d14b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "package": {
-            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
           },
           "breadcrumbs": {
-            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
           },
           "about": {
-            "revision": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
+            "revision": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "background-tips": {
+            "revision": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "command-palette": {
+            "revision": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "deprecation-cop": {
+            "revision": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "dev-live-reload": {
+            "revision": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "encoding-selector": {
+            "revision": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "git-diff": {
+            "revision": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "go-to-line": {
+            "revision": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "grammar-selector": {
+            "revision": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "incompatible-packages": {
+            "revision": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "keybinding-resolver": {
+            "revision": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-c": {
+            "revision": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-css": {
+            "revision": "6b7b89e632119fc602f0757081c4f078d06328d0",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-csv": {
+            "revision": "7abdc6f06aeab61da125ffac2d3880acd864296f",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-diff": {
+            "revision": "7c413668916cb14cb46e91fe465c2457218bbcc5",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -388,28 +1012,158 @@
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
+          "language-git": {
+            "revision": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-html": {
+            "revision": "a7e620a517668d8e46a39fbced344bbb304e12a7",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-hyperlink": {
+            "revision": "03ec30fd38ee531aa41a90130d8eece322ba0963",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-ipython": {
+            "revision": "aa582a52b51fa32240d36412abcca60fd0629583",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-javascript": {
+            "revision": "bf635d04bbf9cf42239552df5455644c59b64b06",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-json": {
+            "revision": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-log": {
+            "revision": "326ef9201581d76efba5d05a160c6ecc654e294d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-powershell": {
+            "revision": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
           "language-python": {
             "revision": "413b30e96e3bb63714958c3e3edeca338b0551aa",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
+          "language-regex": {
+            "revision": "3b69da21fc49671442998bc95a0050672694c9d7",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-shellscript": {
+            "revision": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-source": {
+            "revision": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-sql": {
+            "revision": "e54209763701ec8cbc6f4eb508de9069d743af0e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-text": {
+            "revision": "d64e4a2f0dd6f177148513f927fddec588d37669",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-todo": {
+            "revision": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-toml": {
+            "revision": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-typescript": {
+            "revision": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-xml": {
+            "revision": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-yaml": {
+            "revision": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "launcher": {
+            "revision": "052dc2786b548598028164567929a7818995fa74",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "line-ending": {
+            "revision": "b18de17984092836aa30930fc760a6d35f06785d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "lumine-updater": {
+            "revision": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
           "markdown-preview": {
-            "revision": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
+            "revision": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "metadata": {
-            "revision": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
+            "revision": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "notifications": {
+            "revision": "b3f6288191f15153e2c53b33152abe45f5b657bc",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
+            "revision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "search-panel": {
+            "revision": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+            "revision": "89d1f6e16befae710f2467c011299edc5b259092",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "snippets": {
+            "revision": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "status-bar": {
+            "revision": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "styleguide": {
+            "revision": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -423,13 +1177,33 @@
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
+          "tabs": {
+            "revision": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "timecop": {
+            "revision": "91a82e0e7c0994768be61ccb109ada274332976e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
           "title-bar": {
-            "revision": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
+            "revision": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "968cf8e9ddd41efecb09474c0a108d476f7ae33e",
+            "revision": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "whitespace": {
+            "revision": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "window-title": {
+            "revision": "55c79de0ce72a58afbc7484f32f4d685e902f22d",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -464,7 +1238,7 @@
             "sha256": "2a36953daadd1ae53070d0ff7ceab4624395fdb957104aa6e8ec92d785cadf1d"
           }
         ],
-        "sha256": "17ee71db6a253066572194622e3013167d622f0b38cae989a0e30e9aef90afa8"
+        "sha256": "d06aaaf4b5344b2c51ca52a084454ce7e3da25cd6ce4c9858c86b22b39ed3e75"
       }
     },
     {
@@ -474,21 +1248,66 @@
       "description": "Versions, documentation and updates in the redesigned About pane.",
       "light": "04-light.png",
       "dark": "04-dark.png",
-      "capturedOn": "2026-10-29",
-      "sourceRevision": "b569c426733b65e6e7ea16b00430f701a289996e",
-      "themeSourceRevision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
+      "capturedOn": "2026-10-30",
+      "sourceRevision": "760329498d85e1294191a073d8a34a1706f4d14b",
+      "themeSourceRevision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
       "packageSourceRevisions": {
-        "breadcrumbs": "14305f25b09f59f0afd3559eaea32cc2674fca71",
-        "about": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
+        "breadcrumbs": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
+        "about": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
+        "background-tips": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
+        "command-palette": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
+        "deprecation-cop": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
+        "dev-live-reload": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
+        "encoding-selector": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
+        "git-diff": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
+        "go-to-line": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
+        "grammar-selector": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
+        "incompatible-packages": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
+        "keybinding-resolver": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
+        "language-c": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
+        "language-css": "6b7b89e632119fc602f0757081c4f078d06328d0",
+        "language-csv": "7abdc6f06aeab61da125ffac2d3880acd864296f",
+        "language-diff": "7c413668916cb14cb46e91fe465c2457218bbcc5",
         "language-gfm": "e2eca2b15d854161c670e5b8815ad48e636957b7",
+        "language-git": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
+        "language-html": "a7e620a517668d8e46a39fbced344bbb304e12a7",
+        "language-hyperlink": "03ec30fd38ee531aa41a90130d8eece322ba0963",
+        "language-ipython": "aa582a52b51fa32240d36412abcca60fd0629583",
+        "language-javascript": "bf635d04bbf9cf42239552df5455644c59b64b06",
+        "language-json": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
+        "language-log": "326ef9201581d76efba5d05a160c6ecc654e294d",
+        "language-powershell": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
         "language-python": "413b30e96e3bb63714958c3e3edeca338b0551aa",
-        "markdown-preview": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
-        "metadata": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
-        "settings-view": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+        "language-regex": "3b69da21fc49671442998bc95a0050672694c9d7",
+        "language-shellscript": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
+        "language-source": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
+        "language-sql": "e54209763701ec8cbc6f4eb508de9069d743af0e",
+        "language-text": "d64e4a2f0dd6f177148513f927fddec588d37669",
+        "language-todo": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
+        "language-toml": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
+        "language-typescript": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
+        "language-xml": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
+        "language-yaml": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
+        "launcher": "052dc2786b548598028164567929a7818995fa74",
+        "line-ending": "b18de17984092836aa30930fc760a6d35f06785d",
+        "lumine-updater": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
+        "markdown-preview": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
+        "metadata": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
+        "notifications": "b3f6288191f15153e2c53b33152abe45f5b657bc",
+        "one-theme": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+        "search-panel": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
+        "settings-view": "89d1f6e16befae710f2467c011299edc5b259092",
+        "snippets": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
+        "status-bar": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
+        "styleguide": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
         "symbol": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
         "symbol-tree-sitter": "368c44732334783ea790afbcc88a59b66936f289",
-        "title-bar": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
-        "tree-view": "968cf8e9ddd41efecb09474c0a108d476f7ae33e"
+        "tabs": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
+        "timecop": "91a82e0e7c0994768be61ccb109ada274332976e",
+        "title-bar": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
+        "tree-view": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
+        "whitespace": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
+        "window-title": "55c79de0ce72a58afbc7484f32f4d685e902f22d"
       },
       "capture": {
         "runner": "script/demo.js",
@@ -507,34 +1326,97 @@
           "fontSize": 14,
           "themes": ["one-day-syntax", "one-day-ui"]
         },
-        "viewport": {
-          "width": 1440,
-          "height": 900
-        },
+        "viewport": { "width": 1440, "height": 900 },
         "cornerRadius": 10,
-        "privacy": {
-          "version": 1,
-          "location": "neutral",
-          "textChecked": true
-        },
+        "privacy": { "version": 1, "location": "neutral", "textChecked": true },
         "sources": {
           "editor": {
-            "revision": "b569c426733b65e6e7ea16b00430f701a289996e",
+            "revision": "760329498d85e1294191a073d8a34a1706f4d14b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "package": {
-            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
           },
           "breadcrumbs": {
-            "revision": "14305f25b09f59f0afd3559eaea32cc2674fca71",
+            "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
+            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
           },
           "about": {
-            "revision": "dbd1a2958414d14b9ee83e0503bc14e19cb514d1",
+            "revision": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "background-tips": {
+            "revision": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "command-palette": {
+            "revision": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "deprecation-cop": {
+            "revision": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "dev-live-reload": {
+            "revision": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "encoding-selector": {
+            "revision": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "git-diff": {
+            "revision": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "go-to-line": {
+            "revision": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "grammar-selector": {
+            "revision": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "incompatible-packages": {
+            "revision": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "keybinding-resolver": {
+            "revision": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-c": {
+            "revision": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-css": {
+            "revision": "6b7b89e632119fc602f0757081c4f078d06328d0",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-csv": {
+            "revision": "7abdc6f06aeab61da125ffac2d3880acd864296f",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-diff": {
+            "revision": "7c413668916cb14cb46e91fe465c2457218bbcc5",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -543,28 +1425,158 @@
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
+          "language-git": {
+            "revision": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-html": {
+            "revision": "a7e620a517668d8e46a39fbced344bbb304e12a7",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-hyperlink": {
+            "revision": "03ec30fd38ee531aa41a90130d8eece322ba0963",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-ipython": {
+            "revision": "aa582a52b51fa32240d36412abcca60fd0629583",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-javascript": {
+            "revision": "bf635d04bbf9cf42239552df5455644c59b64b06",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-json": {
+            "revision": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-log": {
+            "revision": "326ef9201581d76efba5d05a160c6ecc654e294d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-powershell": {
+            "revision": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
           "language-python": {
             "revision": "413b30e96e3bb63714958c3e3edeca338b0551aa",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
+          "language-regex": {
+            "revision": "3b69da21fc49671442998bc95a0050672694c9d7",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-shellscript": {
+            "revision": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-source": {
+            "revision": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-sql": {
+            "revision": "e54209763701ec8cbc6f4eb508de9069d743af0e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-text": {
+            "revision": "d64e4a2f0dd6f177148513f927fddec588d37669",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-todo": {
+            "revision": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-toml": {
+            "revision": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-typescript": {
+            "revision": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-xml": {
+            "revision": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "language-yaml": {
+            "revision": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "launcher": {
+            "revision": "052dc2786b548598028164567929a7818995fa74",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "line-ending": {
+            "revision": "b18de17984092836aa30930fc760a6d35f06785d",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "lumine-updater": {
+            "revision": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
           "markdown-preview": {
-            "revision": "cc29c1fb646c8f6152a4fb1e6d38f028546fb0e5",
+            "revision": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "metadata": {
-            "revision": "d3f23e1ba5d27d3ac2a21aa174d436901189f00a",
+            "revision": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "notifications": {
+            "revision": "b3f6288191f15153e2c53b33152abe45f5b657bc",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "543b6786cc6eed20334c381eb322fc06e00a67b0",
+            "revision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "search-panel": {
+            "revision": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "31f16ce8fc6b47860a15237ff46b3fb377d2f789",
+            "revision": "89d1f6e16befae710f2467c011299edc5b259092",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "snippets": {
+            "revision": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "status-bar": {
+            "revision": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "styleguide": {
+            "revision": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -578,13 +1590,33 @@
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
+          "tabs": {
+            "revision": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "timecop": {
+            "revision": "91a82e0e7c0994768be61ccb109ada274332976e",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
           "title-bar": {
-            "revision": "57bdf094c3b073f6519d7b6a8e0cba912b9d2a10",
+            "revision": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "968cf8e9ddd41efecb09474c0a108d476f7ae33e",
+            "revision": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "whitespace": {
+            "revision": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
+            "dirty": false,
+            "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "window-title": {
+            "revision": "55c79de0ce72a58afbc7484f32f4d685e902f22d",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -619,7 +1651,7 @@
             "sha256": "2a36953daadd1ae53070d0ff7ceab4624395fdb957104aa6e8ec92d785cadf1d"
           }
         ],
-        "sha256": "bab907b6c70a01d3fadd975aa0d69b3ff87d01abc2a52c2d092514a7cb2d1155"
+        "sha256": "c0609ebe0ad5ba8befada84917e362c3847620d396e92d6dbfc905f6fc0f9ca2"
       }
     }
   ],
