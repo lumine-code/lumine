@@ -11,6 +11,10 @@ describe("shared CSS variable semantics", () => {
         --text-color-highlight: rgb(20, 30, 40);
         --text-color-selected: rgb(30, 40, 50);
         --background-color-selected: rgb(200, 210, 220);
+        --background-color-highlight: rgb(230, 235, 240);
+        --choice-control-background-color: rgb(250, 250, 250);
+        --choice-control-selected-background-color: rgb(25, 65, 120);
+        --choice-control-mark-color: rgb(255, 255, 255);
         --badge-background-color: rgb(210, 220, 230);
         --text-color-error: rgb(40, 50, 60);
         --background-color-error: rgb(220, 230, 240);
@@ -51,17 +55,34 @@ describe("shared CSS variable semantics", () => {
     }
   });
 
-  it("keeps selection foregrounds paired in navigation, lists and select boxes", () => {
+  it("keeps selection foregrounds paired and marks dropdown values independently of navigation", () => {
     fixture.innerHTML =
       '<ul class="nav nav-pills"><li class="active"><a href="#">Navigation</a></li></ul>' +
       '<ul class="list-tree"><li class="selected">Tree</li></ul>' +
       '<div class="select-list"><ol class="list-group"><li class="selected two-lines"><span class="primary-line">Primary</span><span class="secondary-line">Secondary</span></li></ol></div>' +
-      '<div class="context-view-surface select-box-list"><div class="select-box-option" aria-selected="true">Option</div></div>';
+      '<div class="context-view-surface select-box-list" role="listbox"><div class="select-box-option" role="option" aria-selected="true"><span class="choice-control choice-control-radio select-box-option-indicator" aria-hidden="true" data-checked="true"></span><span class="select-box-option-label">Current value</span></div><div class="select-box-option active" role="option" aria-selected="false"><span class="choice-control choice-control-radio select-box-option-indicator" aria-hidden="true" data-checked="false"></span><span class="select-box-option-label">Navigated option</span></div></div>';
     for (const item of fixture.querySelectorAll(
-      ".nav-pills a, .list-tree .selected, .select-list .primary-line, .select-box-option",
+      ".nav-pills a, .list-tree .selected, .select-list .primary-line",
     )) {
       expect(getComputedStyle(item).color).toBe("rgb(30, 40, 50)");
     }
+    // Only the modeled active row supplies navigation feedback in this fixture.
+    fixture.querySelector(".select-box-list").style.pointerEvents = "none";
+    const current = fixture.querySelector('.select-box-option[aria-selected="true"]');
+    const navigated = fixture.querySelector(".select-box-option.active");
+    const currentIndicator = current.querySelector(".choice-control");
+    const navigatedIndicator = navigated.querySelector(".choice-control");
+    expect(getComputedStyle(current).color).toBe("rgb(10, 20, 30)");
+    expect(getComputedStyle(navigated).color).toBe("rgb(10, 20, 30)");
+    expect(getComputedStyle(current).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    expect(getComputedStyle(navigated).backgroundColor).toBe("rgb(230, 235, 240)");
+    expect(getComputedStyle(currentIndicator).backgroundColor).toBe("rgb(25, 65, 120)");
+    expect(getComputedStyle(currentIndicator, "::before").backgroundColor).toBe(
+      "rgb(255, 255, 255)",
+    );
+    expect(getComputedStyle(currentIndicator, "::before").opacity).toBe("1");
+    expect(getComputedStyle(navigatedIndicator).backgroundColor).toBe("rgb(250, 250, 250)");
+    expect(getComputedStyle(navigatedIndicator, "::before").opacity).toBe("0");
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = 1;
     const context = canvas.getContext("2d");
