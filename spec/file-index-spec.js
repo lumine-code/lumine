@@ -842,13 +842,14 @@ describe("FileIndex", () => {
       await attach([]);
     });
 
-    it("admits nothing from a bulk burst and re-crawls the root instead", () => {
+    it("admits nothing from a bulk burst and re-crawls the root instead", async () => {
       const events = [];
       for (let i = 0; i < 150; i++) {
         events.push({ action: "created", path: touch("bulk", `f${i}.js`) });
       }
       const before = project.crawls.length;
       project.emitFileEvents(events);
+      await index.whenIdle();
 
       // Guessing 150 times is both slower and less accurate than one ripgrep run.
       expect(index.getPathCount()).toBe(0);
