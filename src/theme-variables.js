@@ -411,7 +411,12 @@ const THEME_VARIABLES = Object.freeze([
       "Size of checkbox and radio indicators.",
     ],
     ["choice-control-border-width", "length", "1.5px", "Width of choice control outlines."],
-    ["choice-control-radius", "length", "3px", "Corner radius of checkbox indicators."],
+    [
+      "choice-control-radius",
+      "length",
+      "var(--ui-border-radius)",
+      "Corner radius of checkbox indicators.",
+    ],
     [
       "choice-control-border-color",
       "color",
@@ -441,6 +446,24 @@ const THEME_VARIABLES = Object.freeze([
       "color",
       "var(--accent-indicator-text-color)",
       "Checkmark, radio dot and mixed-state dash.",
+    ],
+    [
+      "choice-control-checkbox-background-color",
+      "color",
+      "initial",
+      "Optional checkbox-only fill; otherwise follows the current choice state.",
+    ],
+    [
+      "choice-control-checkbox-border-color",
+      "color",
+      "initial",
+      "Optional checkbox-only outline; otherwise follows the current choice state.",
+    ],
+    [
+      "choice-control-checkbox-mark-color",
+      "color",
+      "initial",
+      "Optional checkbox-only mark; otherwise follows the shared mark color.",
     ],
     ["choice-control-disabled-opacity", "number", "0.5", "Opacity of unavailable choice controls."],
   ]),

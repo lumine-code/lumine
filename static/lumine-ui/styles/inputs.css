@@ -40,9 +40,11 @@ input.input-toggle {
   }
 }
 
-/* Popup choice indicators are decorative. The menu item or listbox option
-   owns semantics, keyboard navigation and the full-row hit target. */
+/* Popup indicators share the form controls' glyph geometry. Their owner
+   supplies semantics, keyboard navigation and the full-row hit target. */
 .choice-control {
+  --_choice-control-size: var(--choice-control-size);
+  --_choice-mark-color: var(--choice-control-mark-color);
   box-sizing: border-box;
   display: inline-block;
   position: relative;
@@ -55,52 +57,39 @@ input.input-toggle {
   vertical-align: middle;
   pointer-events: none;
 
-  &::before {
-    content: "";
-    box-sizing: border-box;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: calc(var(--choice-control-size) * 0.3);
-    height: calc(var(--choice-control-size) * 0.55);
-    border: solid var(--choice-control-mark-color);
-    border-width: 0 2px 2px 0;
-    transform: translate(-50%, -65%) rotate(45deg);
-    opacity: 0;
-  }
-
   &[data-checked="true"],
   &[data-checked="mixed"] {
     border-color: var(--choice-control-selected-border-color);
     background-color: var(--choice-control-selected-background-color);
+  }
 
-    &::before {
-      opacity: 1;
+  &:not(.choice-control-radio) {
+    --_choice-mark-color: var(
+      --choice-control-checkbox-mark-color,
+      var(--choice-control-mark-color)
+    );
+    border-color: var(--choice-control-checkbox-border-color, var(--choice-control-border-color));
+    background-color: var(
+      --choice-control-checkbox-background-color,
+      var(--choice-control-background-color)
+    );
+
+    &[data-checked="true"],
+    &[data-checked="mixed"] {
+      border-color: var(
+        --choice-control-checkbox-border-color,
+        var(--choice-control-selected-border-color)
+      );
+      background-color: var(
+        --choice-control-checkbox-background-color,
+        var(--choice-control-selected-background-color)
+      );
     }
   }
 
   &.choice-control-radio {
     border-radius: 50%;
-
-    &::before {
-      width: calc(var(--choice-control-size) * 0.375);
-      height: calc(var(--choice-control-size) * 0.375);
-      border: 0;
-      border-radius: 50%;
-      background-color: var(--choice-control-mark-color);
-      transform: translate(-50%, -50%);
-    }
   }
-
-  &[data-checked="mixed"]::before {
-    width: calc(var(--choice-control-size) * 0.5);
-    height: 2px;
-    border: 0;
-    border-radius: 1px;
-    background-color: var(--choice-control-mark-color);
-    transform: translate(-50%, -50%);
-  }
-
   &[data-disabled="true"] {
     opacity: var(--choice-control-disabled-opacity);
   }
@@ -110,23 +99,151 @@ input.input-toggle {
   opacity: var(--choice-control-disabled-opacity);
 }
 
+/* Rounded arms, their proportions and their anchors have one owner. Position
+   from the centre so a theme's outer border cannot displace the checkmark. */
+:where(.input-checkbox, .choice-control:not(.choice-control-radio)) {
+  &::before,
+  &::after {
+    content: "";
+    box-sizing: border-box;
+    position: absolute;
+    top: calc(50% + var(--_choice-control-size) * 0.25);
+    left: calc(50% - var(--_choice-control-size) * 0.1);
+    height: 2px;
+    border: 0;
+    border-radius: 1px;
+    background-color: var(--_choice-mark-color, var(--accent-indicator-text-color));
+    transform-origin: 0 0;
+    opacity: 0;
+    transition:
+      transform 0.1s cubic-bezier(0.5, 0.15, 0.2, 1),
+      opacity 0.1s cubic-bezier(0.5, 0.15, 0.2, 1);
+  }
+  &::before {
+    width: calc(var(--_choice-control-size) * 0.3);
+    transform: rotate(225deg) scale(0);
+  }
+  &::after {
+    width: calc(var(--_choice-control-size) * 0.6);
+    margin: -1px;
+    transform: rotate(-45deg) scale(0);
+    transition-delay: 0.05s;
+  }
+  &:is(:checked, [data-checked="true"]) {
+    &::before {
+      opacity: 1;
+      transform: rotate(225deg) scale(1);
+      transition-delay: 0.05s;
+    }
+    &::after {
+      opacity: 1;
+      transform: rotate(-45deg) scale(1);
+      transition-delay: 0s;
+    }
+  }
+  &:is(:indeterminate, [data-checked="mixed"]) {
+    &::before {
+      opacity: 0;
+      transform: rotate(225deg) scale(0);
+    }
+    &::after {
+      opacity: 1;
+      transform: translate(
+        calc(var(--_choice-control-size) * -0.14),
+        calc(var(--_choice-control-size) * -0.25)
+      );
+      transition-delay: 0s;
+    }
+  }
+}
+
+:where(.input-radio, .choice-control-radio) {
+  &::before {
+    content: "";
+    box-sizing: border-box;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(var(--_choice-control-size) / 3);
+    height: calc(var(--_choice-control-size) / 3);
+    border: 0;
+    border-radius: 50%;
+    background-color: var(--_choice-mark-color, var(--accent-indicator-text-color));
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0);
+    transition: transform 0.1s cubic-bezier(0.5, 0.15, 0.2, 1);
+  }
+  &::after {
+    content: none;
+  }
+  &:is(:checked, [data-checked="true"])::before {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* The native opt-out applies only to actual inputs, never to passive menu
+   indicators. Native widgets must not acquire custom pseudo-element marks. */
+@container style(--use-custom-controls: false) {
+  :is(input.input-checkbox, input.input-radio)::before,
+  :is(input.input-checkbox, input.input-radio)::after {
+    content: none;
+  }
+}
+
 @media (forced-colors: active) {
-  .choice-control {
-    --choice-control-border-color: ButtonText;
-    --choice-control-background-color: ButtonFace;
-    --choice-control-selected-border-color: Highlight;
-    --choice-control-selected-background-color: Highlight;
-    --choice-control-mark-color: HighlightText;
+  :root .choice-control {
     --choice-control-disabled-opacity: 1;
     forced-color-adjust: none;
-  }
+    border-color: ButtonText;
+    background-color: ButtonFace;
 
-  [aria-disabled="true"] > .choice-control,
-  .choice-control[data-disabled="true"] {
-    --choice-control-border-color: GrayText;
-    --choice-control-selected-border-color: GrayText;
-    --choice-control-selected-background-color: ButtonFace;
-    --choice-control-mark-color: GrayText;
+    &::before,
+    &::after {
+      background-color: HighlightText;
+    }
+    &[data-checked="true"],
+    &[data-checked="mixed"] {
+      border-color: Highlight;
+      background-color: Highlight;
+    }
+  }
+  :root [aria-disabled="true"] > .choice-control,
+  :root .choice-control[data-disabled="true"] {
+    border-color: GrayText;
+    background-color: ButtonFace;
+    &::before,
+    &::after {
+      background-color: GrayText;
+    }
+  }
+  /* System colors also outrank package-local setting scope palettes. */
+  :root
+    input:is(.input-checkbox.input-checkbox.input-checkbox, .input-radio.input-radio.input-radio) {
+    @container style(--use-custom-controls: true) {
+      forced-color-adjust: none;
+      box-sizing: border-box;
+      border: var(--choice-control-border-width) solid ButtonText;
+      background-color: ButtonFace;
+      &::before,
+      &::after {
+        background-color: HighlightText;
+      }
+      &:checked,
+      &.input-checkbox:indeterminate {
+        border-color: Highlight;
+        background-color: Highlight;
+      }
+      &:disabled {
+        opacity: 1;
+        border-color: GrayText;
+        background-color: ButtonFace;
+        &::before,
+        &::after {
+          background-color: GrayText;
+        }
+      }
+    }
   }
 }
 
@@ -136,91 +253,32 @@ input.input-toggle {
  */
 
 .input-checkbox {
+  --_choice-control-size: var(--ui-icon-size);
   vertical-align: middle;
-
   @container style(--use-custom-controls: true) {
-    -webkit-appearance: none;
+    appearance: none;
     display: inline-block;
     position: relative;
-    width: var(--ui-icon-size); /* @component-size */
+    width: var(--ui-icon-size);
     height: var(--ui-icon-size);
     font-size: inherit;
     border-radius: var(--ui-border-radius);
     background-color: var(--component-background-color);
     transition: background-color 0.16s cubic-bezier(0.5, 0.15, 0.2, 1);
-
     &&:focus {
       outline: none;
     }
     &:focus-visible {
-      /* A theme may replace this ring; custom controls need a fallback too. */
       box-shadow: 0 0 0 2px var(--accent-indicator-color);
     }
     &:active {
       background-color: var(--accent-indicator-color);
     }
-
-    &:before,
-    &:after {
-      content: "";
-      position: absolute;
-      top: calc(var(--ui-icon-size) * 0.75);
-      left: calc(var(--ui-icon-size) * 0.4);
-      height: 2px;
-      border-radius: 1px;
-      background-color: var(--accent-indicator-text-color);
-      transform-origin: 0 0;
-      opacity: 0;
-      transition:
-        transform 0.1s cubic-bezier(0.5, 0.15, 0.2, 1),
-        opacity 0.1s cubic-bezier(0.5, 0.15, 0.2, 1);
-    }
-    /* Arm lengths keep the checkmark's 1:2 proportion. They are sized so the
-       mark centres in the box on whole pixels — a wider mark rounds to a half
-       pixel off — and so its top-right tip clears a rounded corner rather than
-       crowding it. */
-    &:before {
-      width: calc(var(--ui-icon-size) * 0.3);
-      transform: translate3d(0, 0, 0) rotate(225deg) scale(0);
-    }
-    &:after {
-      width: calc(var(--ui-icon-size) * 0.6);
-      margin: -1px;
-      transform: translate3d(0, 0, 0) rotate(-45deg) scale(0);
-      transition-delay: 0.05s;
-    }
-
-    &:checked {
-      background-color: var(--accent-indicator-color);
-      &:active {
-        background-color: var(--component-background-color);
-      }
-      &:before {
-        opacity: 1;
-        transform: translate3d(0, 0, 0) rotate(225deg) scale(1);
-        transition-delay: 0.05s;
-      }
-      &:after {
-        opacity: 1;
-        transform: translate3d(0, 0, 0) rotate(-45deg) scale(1);
-        transition-delay: 0;
-      }
-    }
-
+    &:checked,
     &:indeterminate {
       background-color: var(--accent-indicator-color);
       &:active {
         background-color: var(--component-background-color);
-      }
-      &:after {
-        opacity: 1;
-        transform: translate3d(
-            calc(var(--ui-icon-size) * -0.14),
-            calc(var(--ui-icon-size) * -0.25),
-            0
-          )
-          rotate(0deg) scale(1);
-        transition-delay: 0;
       }
     }
   }
@@ -325,42 +383,24 @@ input.input-toggle {
  */
 
 .input-radio {
+  --_choice-control-size: var(--ui-icon-size);
   vertical-align: middle;
-
   @container style(--use-custom-controls: true) {
-    -webkit-appearance: none;
+    appearance: none;
     display: inline-block;
     position: relative;
-    width: var(--ui-icon-size); /* @component-size */
+    width: var(--ui-icon-size);
     height: var(--ui-icon-size);
     font-size: inherit;
     border-radius: 50%;
     background-color: var(--component-background-color);
     transition: background-color 0.16s cubic-bezier(0.5, 0.15, 0.2, 1);
-
-    &:before {
-      content: "";
-      position: absolute;
-      width: inherit;
-      height: inherit;
-      border-radius: inherit;
-      border: calc(var(--ui-icon-size) / 3) solid transparent;
-      background-clip: content-box;
-      background-color: var(--accent-indicator-text-color);
-      transform: scale(0);
-      transition: transform 0.1s cubic-bezier(0.5, 0.15, 0.2, 1);
-    }
     &&:focus {
       outline: none;
     }
-    &:active {
-      background-color: var(--accent-indicator-color);
-    }
+    &:active,
     &:checked {
       background-color: var(--accent-indicator-color);
-      &:before {
-        transform: scale(1);
-      }
     }
   }
 }
@@ -594,6 +634,8 @@ lumine-text-editor[input]:where(:not([mini])) {
 
 /* Keep the settled UI appearance when the system requests reduced motion. */
 @media (prefers-reduced-motion: reduce) {
+  .choice-control::before,
+  .choice-control::after,
   .input-checkbox.input-checkbox,
   .input-checkbox.input-checkbox::before,
   .input-checkbox.input-checkbox::after,

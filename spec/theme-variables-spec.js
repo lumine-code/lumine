@@ -115,7 +115,7 @@ describe("the theme variable contract", () => {
     }
   });
 
-  it("resolves every documented color and length to a usable CSS value", () => {
+  it("resolves documented colors and lengths, including optional color fallbacks", () => {
     const sheet = lumine.styles.addStyleSheet(buildThemeVariablesStylesheet(), { priority: 2 });
     const probe = document.createElement("span");
     probe.style.cssText = "display:block;color:rgb(1,2,3);font-size:13px;";
@@ -125,7 +125,11 @@ describe("the theme variable contract", () => {
         if (definition.type === "color") {
           probe.style.color = `var(--${definition.name}, rgb(1, 2, 3))`;
           const resolved = getComputedStyle(probe).color;
-          expect(resolved).not.toBe("rgb(1, 2, 3)");
+          if (definition.default === "initial") {
+            expect(resolved).withContext(definition.name).toBe("rgb(1, 2, 3)");
+          } else {
+            expect(resolved).withContext(definition.name).not.toBe("rgb(1, 2, 3)");
+          }
           expect(CSS.supports("color", resolved)).toBe(true);
           probe.style.color = "rgb(1, 2, 3)";
         } else if (definition.type === "length") {
