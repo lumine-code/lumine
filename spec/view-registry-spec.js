@@ -212,6 +212,59 @@ describe("ViewRegistry", () => {
       });
     }
 
+    it("does not leave shared DOM work on an unregistered focused presentation", async () => {
+      let fire;
+      const registered = {
+        closed: false,
+        document: { visibilityState: "visible" },
+        requestAnimationFrame: (callback) => {
+          fire = callback;
+          return 7;
+        },
+        cancelAnimationFrame() {},
+      };
+      const unregistered = {
+        closed: false,
+        document: { visibilityState: "visible" },
+        requestAnimationFrame: jasmine.createSpy("unowned frame"),
+        cancelAnimationFrame() {},
+      };
+      registry = withWindows([registered]);
+      spyOn(registry.lumineEnvironment.workspace, "getFocusedWindow").and.returnValue({
+        getDOMWindow: () => unregistered,
+      });
+      const updated = jasmine.createSpy("registered update");
+      registry.updateDocument(updated);
+      const done = registry.getNextUpdatePromise();
+      fire();
+      await done;
+      expect(updated).toHaveBeenCalledTimes(1);
+      expect(unregistered.requestAnimationFrame).not.toHaveBeenCalled();
+    });
+
+    it("uses the document window when presentation metadata has no DOM access", async () => {
+      registry = new ViewRegistry({
+        document,
+        workspace: {
+          getWindows: () => [{ getDocument: () => document }],
+          getFocusedWindow: () => ({ getDocument: () => document }),
+        },
+      });
+      const updated = jasmine.createSpy("document update");
+      registry.updateDocument(updated);
+      await registry.getNextUpdatePromise();
+      expect(updated).toHaveBeenCalledTimes(1);
+    });
+
+    it("skips partial presentation objects without a DOM document or animation frame", async () => {
+      registry = withWindows([{ requestIdleCallback() {} }]);
+      registry.lumineEnvironment.document = document;
+      const updated = jasmine.createSpy("physical document update");
+      registry.updateDocument(updated);
+      await registry.getNextUpdatePromise();
+      expect(updated).toHaveBeenCalledTimes(1);
+    });
+
     it("moves an already queued frame off a presentation that becomes hidden", async () => {
       const presentationDocument = document.implementation.createHTMLDocument();
       let visibility = "visible";

@@ -31,7 +31,9 @@ describe("shared background work across presentation windows", () => {
       }),
       cancelIdleCallback: jasmine.createSpy("aux cancel idle"),
     };
-    spyOn(lumine.workspace, "getFocusedWindow").and.returnValue({ getDOMWindow: () => auxiliary });
+    const focused = spyOn(lumine.workspace, "getFocusedWindow").and.returnValue({
+      getDOMWindow: () => auxiliary,
+    });
     const mainFrame = spyOn(window, "requestAnimationFrame").and.returnValue(99);
     const callback = jasmine.createSpy("query compilation");
     const cancel = TreeSitterLanguageMode.prototype.scheduleAfterHighlightPaint.call(
@@ -46,6 +48,11 @@ describe("shared background work across presentation windows", () => {
     }
     cancel();
     expect(callback).toHaveBeenCalledTimes(1);
+    // Shared DOM observers may also queue work while this test substitutes
+    // presentation clocks. Retire those clocks before the environment resets.
+    focused.and.callThrough();
+    mainFrame.and.callThrough();
+    lumine.views.setAnimationFrameWindow(null);
   });
 
   it("retires a queued tooltip layout before destroying its observer", async () => {

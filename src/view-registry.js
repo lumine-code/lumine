@@ -412,18 +412,23 @@ module.exports = class ViewRegistry {
       const presentations =
         workspace
           ?.getWindows?.()
-          .map((window) => window.getDOMWindow())
+          .map((window) => window.getDOMWindow?.())
           .filter(Boolean) ?? [];
+      const focused = workspace?.getFocusedWindow()?.getDOMWindow?.();
       const candidates = [
-        workspace?.getFocusedWindow()?.getDOMWindow(),
+        presentations.includes(focused) ? focused : null,
         this.preferredAnimationFrameWindow,
         ...presentations,
+        this.lumineEnvironment?.document?.defaultView,
       ];
       if (!presentations.length) candidates.push(globalThis.window);
       this.animationFrameWindow =
         candidates.find(
           (window) =>
             window &&
+            window.document &&
+            typeof window.requestAnimationFrame === "function" &&
+            typeof window.cancelAnimationFrame === "function" &&
             !window.closed &&
             !this.retiredPresentationWindows.has(window) &&
             window.document.visibilityState !== "hidden",
