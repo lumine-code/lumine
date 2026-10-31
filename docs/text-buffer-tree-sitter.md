@@ -60,7 +60,7 @@ The upstream sources above were reviewed at tag `v0.27.1` on 2026-10-19 alongsid
 
 ## Indentation plans
 
-Indentation hinting and explicit reindent serve different purposes. A new line needs a suggestion from its surrounding text, including incomplete syntax. Reindent of an existing Python document must preserve the parsed block structure: a following top-level function must not become nested merely because the preceding row was inside another function. Paste keeps relative indentation instead of independently reformatting every copied line.
+Indentation hinting and explicit reindent serve different purposes. A new line needs a suggestion from its surrounding text, including incomplete syntax. Reindent of an existing Python document must preserve the parsed block structure: a following top-level function must not become nested merely because the preceding row was inside another function. Paste keeps relative indentation instead of independently reformatting every copied line. When a pasted block needs no indentation shift, its hard tabs and whitespace-only rows remain byte for byte rather than being regenerated from their visual indentation levels.
 
 An ordinary indentation hint is an absolute level. With `preserveLeadingWhitespace`, it is an amount to prepend. Batch planning keeps these returned values separate from the absolute levels used by comparison rows and `@match` references. It accounts for tab stops after prepending whitespace and honors blank-line comparison policy. Blank-row baselines for multicursor Enter are captured before insertion observers can trim the old rows. LF and CRLF insertion use the same indentation policy.
 

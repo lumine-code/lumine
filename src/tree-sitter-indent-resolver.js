@@ -1069,10 +1069,14 @@ class IndentResolver {
             indentDelta = options.preserveLeadingWhitespace
               ? firstLineIdealIndent
               : firstLineIdealIndent - firstLineCurrentIndent;
-            if (indentDelta === 0 && !options.requireComplete) {
-              // If the first row doesn't have to be adjusted, neither do any
-              // others.
-              return null;
+            if (indentDelta === 0) {
+              // A relative paste with no shift must keep its original bytes,
+              // including hard tabs and whitespace-only rows. A complete
+              // stream still covers every row without normalizing its prefix.
+              if (!options.requireComplete) return null;
+              preservePastedIndentation = true;
+              yield [row, null];
+              continue;
             }
             yield [row, firstLineIdealIndent];
           }
