@@ -136,6 +136,18 @@ The performance benefit comes from structural selection in the query and fewer n
 
 Run `npm run test:only -- benchmark/tree-sitter-static-injections-spec.js` from the editor repository for a diagnostic comparison of equivalent JavaScript and static rules. It measures initial parsing with warm languages and queries, edits inside content and prefix shifts, and verifies owner ranges, content, syntax trees, scopes and layer counts outside the timers. It reports samples and medians without performance thresholds; set `LUMINE_STATIC_INJECTION_BENCHMARK_CONFIG` to a JSON object with `sizes`, `samples` and `warmups` to change the workload.
 
+## Conservative indentation
+
+An `indentsQuery` should change indentation only when syntax provides a clear reason. Start with paired block delimiters and explicit suite headers. Preserve the preceding indentation when a partial expression, optional block, layout-sensitive construct or parser error leaves the intended structure ambiguous. A missing query is a valid policy for a grammar without reliable structural hints; it keeps ordinary newline indentation without guessing an extra level.
+
+Lumine evaluates `@indent` and `@dedent` tokens on the preceding row, balances completed pairs, and increases the next row by at most one level. On the current row, a leading `@dedent` can remove one level; `@match` with `indent.match` can align a closing delimiter or sibling clause with its actual owner. Prefer that owner over a fixed subtraction when branches can contain nested blocks. Capturing an entire multiline construct as `@indent` can repeatedly increase indentation on its interior rows; capture its opening token or constrain the capture to its opening row instead.
+
+Typing and explicit reindent have different evidence available. Restrict structural repair to `(#is? indent.reindent true)` when it depends on an existing parse. Use `@preserve` for literal contents and existing layout that must retain whitespace byte for byte during reindent. Avoid inferring a block from every colon, an identifier prefix, an optional argument list or a keyword that can also be a complete one-line statement. Scope error-recovery rules narrowly and test their negative cases.
+
+The [Neovim Tree-sitter indentation vocabulary](https://github.com/nvim-treesitter/nvim-treesitter/blob/master/CONTRIBUTING.md#indents) and [Zed indentation documentation](https://zed.dev/docs/extensions/languages#auto-indentation) are useful references for syntax boundaries and cases to test. Their captures describe different algorithms: Neovim uses captures such as `@indent.begin`, while Zed's `@indent` describes a range with optional `@start` and `@end`. Translate the intended behavior to Lumine's row-based model and verify it against the package's committed parser; copying capture names is insufficient.
+
+Regression cases should exercise Enter after an incomplete header, a completed one-line construct, nested and sibling branches, closing delimiters, comments and multiline strings. Check edits to existing code, manual indentation, relative paste adjustment and undo where the change affects those operations. Run package specs against the working checkout and include all language directories in `LUMINE_GRAMMAR_PACKAGE_ROOTS` when running `spec/grammar-query-validation-spec.js`.
+
 ## Keeping grammar work local
 
 ### Optional incremental parse boundaries
