@@ -512,9 +512,9 @@ test("typing filter proves ordinary Python text cannot dedent and retains keywor
   try {
     const metadata = (await host.dispatch("settle", data)).value;
     assert.ok(Array.isArray(metadata.typingIndentationRules));
-    for (const value of ["hello", "field = 123", "els", "elsewhere"])
+    for (const value of ["hello", "field = 123", "els", "elsewhere", "except Error", "excepted"])
       assert.equal(rules.mayMatch(metadata.typingIndentationRules, value), false, value);
-    for (const value of ["else", "elif", "case", "except Error", ")", "]", "}"])
+    for (const value of ["else", "elif", "case", "except", ")", "]", "}"])
       assert.equal(rules.mayMatch(metadata.typingIndentationRules, value), true, value);
     const mode = host.sessions.get(1).mode;
     for (const source of [
