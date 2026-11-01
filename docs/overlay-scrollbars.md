@@ -12,6 +12,8 @@ Without an explicit role, a center pane's primary scrollport defaults to `docume
 
 Track clicks immediately center the thumb at the clicked point and cancel previous scrolling destinations. Thumb movement has no positional animation.
 
+Pressing and holding a thumb or track removes the thumb's transparent inset and squares its corners without changing its logical geometry, so the painted thumb fills the track's cross axis and reaches both ends. Release or pointer cancellation restores the normal inset and rounded shape.
+
 In every layout, when both axes are visible, the vertical track spans the full height and owns their intersection; the horizontal track ends before it. For reserved gutters, the vertical track includes the horizontal gutter's height while the content viewport retains its reserved space. A document's persistent vertical separator keeps that slot even when only horizontal scrolling is possible, while panels and inline surfaces without vertical overflow use the full horizontal width. This leaves no empty corner or overlapping thumbs, including left-side vertical tracks in RTL content.
 
 ## DOM surfaces

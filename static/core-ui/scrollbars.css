@@ -125,7 +125,8 @@ lumine-text-editor ::-webkit-scrollbar-thumb {
   );
 }
 .lumine-scrollbar.is-dragging > .scrollbar-thumb {
-  border-radius: 3px;
+  border-width: 0;
+  border-radius: 0;
 }
 .lumine-scrollbar-overlay:is(.is-persistent, .is-revealed) > .lumine-scrollbar,
 .lumine-scrollbar:is(:hover, .is-dragging),
