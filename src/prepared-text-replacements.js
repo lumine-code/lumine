@@ -14,12 +14,14 @@ function createPlan(data) {
       if (!current) throw new Error("Prepared replacement is closed");
       current.check();
       current.markerPlan?.verify();
+      current.intermediate?.validate();
       return true;
     },
     commit(options) {
       return commitPlans([plan], options);
     },
     dispose() {
+      plans.get(plan)?.intermediate?.dispose();
       plans.delete(plan);
     },
   });
@@ -115,16 +117,6 @@ function commitPlans(prepared, options = {}) {
   }
   for (const buffer of buffers) {
     buffer.assertCanEdit();
-    if (
-      buffers.length > 1 &&
-      Object.values(buffer.markerLayers).some(
-        (layer) => layer.trackRanges && layer.getMarkerCount(),
-      )
-    )
-      throw Object.assign(
-        new Error("Atomic multi-buffer replacement cannot run custom intermediate range trackers"),
-        { code: "ERR_REPLACE_RANGE_TRACKER" },
-      );
   }
   const context = { token: Symbol("atomic text publication") };
   const errors = [];
@@ -170,7 +162,7 @@ function commitPlans(prepared, options = {}) {
             coordinateMap: entry.coordinateMap,
           });
           entry.buffer.prepareDisplayLayersForChange(entry.event, entry.edit.snapshot);
-          entry.markerPlan?.preparePublication(entry.snapshot);
+          if (!entry.intermediate) entry.markerPlan?.preparePublication(entry.snapshot);
         }
         check();
         publications = publicationQueue(buffers);
@@ -192,6 +184,7 @@ function commitPlans(prepared, options = {}) {
           for (const entry of active) entry.buffer.historyProvider.pushPatch(entry.patch);
           check();
           for (const entry of active) {
+            if (entry.intermediate) continue;
             entry.edit.commit();
             published.push(entry);
           }
@@ -211,6 +204,16 @@ function commitPlans(prepared, options = {}) {
         }
         committed = true;
         for (const entry of active) {
+          if (entry.intermediate) {
+            for (const edit of entry.intermediate.edits)
+              entry.buffer.applyChange(edit, {
+                atomicToken: context.token,
+                skipDisplayPreparation: true,
+                deferDidChange: true,
+                collectErrors: (error) => errors.push(error),
+              });
+            continue;
+          }
           const replay = {
             getChange: () => entry.change,
             createPatch: () => entry.patch,

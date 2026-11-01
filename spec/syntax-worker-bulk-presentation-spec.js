@@ -7,7 +7,9 @@ describe("Worker presentation during atomic source edits", () => {
   for (const scope of ["source.python", "source.python.ipy"])
     for (const operation of [
       "stream",
+      "stream-tracked",
       "replace-all",
+      "replace-all-tracked",
       "independent-127",
       "independent-128",
       "independent-256",
@@ -20,6 +22,16 @@ describe("Worker presentation during atomic source edits", () => {
         const buffer = editor.getBuffer();
         const source = 'value = "old"; untouched = 42\n'.repeat(300);
         editor.setText(source);
+        const trackedSources = [];
+        if (operation.endsWith("-tracked")) {
+          const layer = buffer.addMarkerLayer({
+            trackRanges(entries) {
+              trackedSources.push(buffer.getTextSnapshot());
+              return entries.map(({ id }) => ({ id, range: buffer.getRange() }));
+            },
+          });
+          layer.markRange(buffer.getRange(), { invalidate: "never" });
+        }
         const mode = new WorkerMode({
           buffer,
           grammar: lumine.grammars.grammarForScopeName(scope),
@@ -35,7 +47,7 @@ describe("Worker presentation during atomic source edits", () => {
           expect(before.length).toBeGreaterThan(5);
           const refresh = spyOn(mode, "refresh").and.callFake(async () => {});
           buffer.clearUndoStack();
-          const count = operation === "stream" ? 256 : Number(operation.split("-")[1]);
+          const count = operation.startsWith("stream") ? 256 : Number(operation.split("-")[1]);
           const edits = Array.from({ length: count }, (_, row) => ({
             range: [
               [row, 9],
@@ -43,9 +55,17 @@ describe("Worker presentation during atomic source edits", () => {
             ],
             text: "new",
           }));
-          if (operation === "stream") await buffer.applyTextEdits(edits);
-          else if (operation === "replace-all") await buffer.replaceAllMatches(/old/g, "new");
+          if (operation.startsWith("stream")) await buffer.applyTextEdits(edits);
+          else if (operation.startsWith("replace-all"))
+            await buffer.replaceAllMatches(/old/g, "new");
           else buffer.setTextInIndependentRanges(edits);
+          if (operation.endsWith("-tracked")) {
+            expect(trackedSources.length).toBe(operation.startsWith("stream") ? 256 : 300);
+            expect(trackedSources[0].slice(0, source.indexOf("\n") * 2 + 2)).toContain(
+              'value = "new"; untouched = 42\nvalue = "old"',
+            );
+            expect(trackedSources.at(-1).equals(buffer.getTextSnapshot())).toBe(true);
+          }
           const expected = before.map((token) => ({
             ...token,
             text: token.text === "old" ? "new" : token.text,

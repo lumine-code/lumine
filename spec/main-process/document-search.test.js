@@ -219,7 +219,7 @@ test("atomic replacement preserves exact marker geometry and invalidation plus u
   }
 });
 
-test("replacement cancellation, changed selections and custom trackers do not mutate text", async () => {
+test("replacement cancellation and changed selections do not mutate text", async () => {
   const buffer = new TextBuffer("one ".repeat(10000));
   try {
     const before = buffer.getText();
@@ -232,11 +232,6 @@ test("replacement cancellation, changed selections and custom trackers do not mu
     const moved = buffer.replaceAllMatches(/one/g, "two");
     marker.setHeadPosition([0, 4]);
     await assert.rejects(moved, { code: "ERR_STALE_EDIT" });
-    assert.equal(buffer.getText(), before);
-    buffer.addMarkerLayer({ trackRanges: () => [] }).markPosition([0, 0]);
-    await assert.rejects(buffer.replaceAllMatches(/one/g, "two"), {
-      code: "ERR_REPLACE_RANGE_TRACKER",
-    });
     assert.equal(buffer.getText(), before);
   } finally {
     buffer.destroy();

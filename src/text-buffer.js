@@ -1740,16 +1740,64 @@ class TextBuffer {
     check();
     if (!result.count) return 0;
     markerPlan.verify();
-    let committed = false;
+    let committed = false,
+      markerPublications,
+      rollbackObservation,
+      restoreAbortedMarkers,
+      startedEditing = false;
+    const failures = [];
     try {
       let invoked = false;
       const publish = () => {
         if (invoked) throw new Error("An edit publication callback can only run once");
         invoked = true;
+        // Trackers read each live splice, but marker observers see the completed
+        // text, selection finalizer and enclosing presentation wrapper.
+        if (plan.requiresIntermediateEdits) {
+          markerPublications = require("./text-buffer-marker-events").begin(this);
+          const displayMarkers = plan.layers.flatMap(({ layer }) =>
+            Array.from(layer.displayMarkerLayers, (displayLayer) => ({
+              layer: displayLayer,
+              markers: new Map(displayLayer.markersById),
+              destroyListeners: new Set(displayLayer.markersWithDestroyListeners),
+            })),
+          );
+          let restored = false;
+          restoreAbortedMarkers = () => {
+            if (committed || !startedEditing || restored || !this.getTextSnapshot().equals(source))
+              return;
+            restored = true;
+            // Aborting publication restores provider-owned annotations too;
+            // ordinary undo still obeys each layer's maintainHistory policy.
+            for (const { layer, original } of plan.layers) {
+              const emitCreateMarkerEvents = layer.emitCreateMarkerEvents;
+              layer.emitCreateMarkerEvents = false;
+              try {
+                layer.restoreFromSnapshot(original, false);
+              } finally {
+                layer.emitCreateMarkerEvents = emitCreateMarkerEvents;
+              }
+              for (const { marker } of Object.values(original)) {
+                if (marker.hasChangeObservers) layer.markersWithChangeListeners.add(marker);
+                if (marker.emitter.listenerCountForEventName("did-destroy"))
+                  layer.markersWithDestroyListeners.add(marker);
+              }
+            }
+            for (const { layer, markers, destroyListeners } of displayMarkers) {
+              for (const [id, marker] of markers) layer.markersById.set(id, marker);
+              for (const marker of destroyListeners) layer.markersWithDestroyListeners.add(marker);
+              layer.bufferMarkerRangesDidChange();
+            }
+          };
+          // Rollback publishes its applied batch before transact() returns.
+          // Restore annotations before any public observer receives that batch.
+          rollbackObservation = this.emitter.preempt("did-apply-changes", restoreAbortedMarkers);
+        }
         return this.transact({ coordinateMap: result.coordinateMap }, () => {
           this.emitWillChangeEvent();
           check();
           markerPlan.verify();
+          startedEditing = true;
           if (plan.requiresIntermediateEdits) {
             // Replay the prepared map rather than the producer: calculations
             // and other stateful transformations must run only once. Expanding
@@ -1775,12 +1823,28 @@ class TextBuffer {
       if (!invoked || wrapped?.then)
         throw new Error("Text edit publication wrappers must commit synchronously");
     } catch (error) {
+      failures.push(error);
+      try {
+        restoreAbortedMarkers?.();
+      } catch (restoreError) {
+        failures.push(restoreError);
+      }
+    } finally {
+      if (committed) markerPublications?.flush(failures);
+      markerPublications?.dispose();
+      rollbackObservation?.dispose();
+    }
+    if (failures.length) {
+      const cause =
+        failures.length === 1
+          ? failures[0]
+          : new AggregateError(failures, "Text edit publication observers failed");
       if (committed)
         throw Object.assign(
-          new Error("Text edits were committed, but a change listener failed", { cause: error }),
+          new Error("Text edits were committed, but a change listener failed", { cause }),
           { code: "ERR_EDIT_OBSERVER_FAILED", committed: true, editCount: result.count },
         );
-      throw error;
+      throw cause;
     }
     return result.count;
   }
@@ -3213,11 +3277,12 @@ class TextBuffer {
    * @param {RegExp} regex - Expression to replace.
    * @param {String} replacement - ECMAScript replacement template.
    * @param {Object} [options] - Ranges, signal, literalReplacement and transformReplacement.
+   * @param {Function} [options.didCommit] - Synchronous finalizer run after all text changes and before public change observers.
    * @returns {Promise<Number>} Number of replaced matches.
    */
   async replaceAllMatches(regex, replacement, options = {}) {
     const plan = await this.prepareReplaceAllMatches(regex, replacement, options);
-    return plan.commit();
+    return plan.commit(options);
   }
 
   /**
@@ -3248,7 +3313,9 @@ class TextBuffer {
       this.createSearch(regex, { range, signal: options.signal }),
     );
     const ReplacementMarkerPlan = require("./replacement-marker-plan");
-    const markerPlan = options.onlyMatch ? null : new ReplacementMarkerPlan(this, snapshot);
+    const markerPlan = options.onlyMatch
+      ? null
+      : new ReplacementMarkerPlan(this, snapshot, { allowCustomTrackers: true });
     const result = await buildReplacement(snapshot, sessions, replacement, {
       ...options,
       onReplacement: (start, end, length, boundaries) =>
@@ -3289,6 +3356,22 @@ class TextBuffer {
       if (options.isCurrent?.() === false)
         throw Object.assign(new Error("Replacement owner changed"), { code: "ERR_STALE_EDIT" });
     };
+    let intermediate;
+    if (markerPlan?.requiresIntermediateEdits && result.changedCount) {
+      // Custom trackers must read the actual intermediate live text. Prepare
+      // every storage state before a synchronous, possibly multi-buffer commit.
+      intermediate = await this.buffer.preparePublication(
+        require("./text-change-map-edits")(result.coordinateMap),
+        { check },
+      );
+      try {
+        check();
+        markerPlan.verify();
+      } catch (error) {
+        intermediate.dispose();
+        throw error;
+      }
+    }
     return require("./prepared-text-replacements").createPlan({
       buffer: this,
       before: snapshot,
@@ -3299,6 +3382,7 @@ class TextBuffer {
       inserted,
       coordinateMap: result.coordinateMap,
       markerPlan,
+      intermediate,
       check,
     });
   }
