@@ -6,20 +6,22 @@ const FLAGS = { touch: 1, inside: 2, overlap: 4, surround: 8 };
 // invalidation rules stay identical to ordinary edits, while no live marker
 // is touched until the complete replacement is ready to publish.
 module.exports = class ReplacementMarkerPlan {
-  constructor(buffer, snapshot) {
+  constructor(buffer, snapshot, { allowCustomTrackers = false } = {}) {
     this.buffer = buffer;
     this.snapshot = snapshot;
     this.layers = [];
     this.delta = 0;
+    this.requiresIntermediateEdits = false;
     for (const layer of Object.values(buffer.markerLayers)) {
       if (!layer.getMarkerCount()) continue;
-      if (layer.trackRanges)
+      if (layer.trackRanges && !allowCustomTrackers)
         throw Object.assign(
           new Error(
             "This document has a custom range tracker that requires intermediate edits. Use Replace Next for this document.",
           ),
           { code: "ERR_REPLACE_RANGE_TRACKER" },
         );
+      if (layer.trackRanges) this.requiresIntermediateEdits = true;
       const original = layer.createEagerSnapshot();
       const planned = new Map();
       const index = new MarkerIndex();
@@ -47,6 +49,9 @@ module.exports = class ReplacementMarkerPlan {
   }
 
   splice(start, end, insertedLength, { previousUnit, insertedFirst, insertedLast }) {
+    // Custom trackers read live intermediate text. Their callers replay the
+    // source-backed edits at publication; this plan only verifies marker state.
+    if (this.requiresIntermediateEdits) return;
     let physicalStart = start + this.delta,
       physicalEnd = end + this.delta;
     let length = insertedLength;

@@ -1686,7 +1686,7 @@ class TextBuffer {
    * captured revision and must be ordered, in bounds, with distinct starts.
    * Marker positions and invalidation follow forward individual edit semantics.
    * Text and markers remain unchanged on cancellation or stale preparation.
-   * Custom range trackers requiring intermediate live text reject before edits.
+   * Custom range trackers receive each intermediate edit inside the transaction.
    * @param {Iterable|AsyncIterable} edits - Entries with `range` and `text` (string or immutable snapshot), optionally grouped into arrays of at most 1024 entries to amortize asynchronous delivery.
    * @param {Object} [options]
    * @param {Number} [options.expectedRevision] - Required source revision.
@@ -1718,7 +1718,7 @@ class TextBuffer {
     check();
     const source = this.getTextSnapshot();
     const ReplacementMarkerPlan = require("./replacement-marker-plan");
-    const plan = new ReplacementMarkerPlan(this, source);
+    const plan = new ReplacementMarkerPlan(this, source, { allowCustomTrackers: true });
     const markerPlan = {
       verify() {
         check();
@@ -1746,16 +1746,26 @@ class TextBuffer {
       const publish = () => {
         if (invoked) throw new Error("An edit publication callback can only run once");
         invoked = true;
-        return this.transact(() => {
+        return this.transact({ coordinateMap: result.coordinateMap }, () => {
           this.emitWillChangeEvent();
           check();
           markerPlan.verify();
-          this.applyChange(this.buffer.prepareEdit(result.range, result.inserted), {
-            recordHistory: true,
-            markerPlan,
-            coordinateMap: result.coordinateMap,
-            syntaxChanges: result.syntaxChanges,
-          });
+          if (plan.requiresIntermediateEdits) {
+            // Replay the prepared map rather than the producer: calculations
+            // and other stateful transformations must run only once. Expanding
+            // it lazily also retains every splice beyond the parser journal.
+            for (const change of require("./text-change-map-edits")(result.coordinateMap))
+              this.applyChange(this.buffer.prepareEditFromChange(change), {
+                recordHistory: true,
+              });
+          } else {
+            this.applyChange(this.buffer.prepareEdit(result.range, result.inserted), {
+              recordHistory: true,
+              markerPlan,
+              coordinateMap: result.coordinateMap,
+              syntaxChanges: result.syntaxChanges,
+            });
+          }
           options.didCommit?.();
           require("./text-buffer-marker-finalizers").run(this);
           committed = true;
