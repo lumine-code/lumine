@@ -97,7 +97,7 @@
     "metadata": "github:lumine-code/metadata#709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
     "normalize-package-data": "9.0.0",
     "notifications": "github:lumine-code/notifications#b3f6288191f15153e2c53b33152abe45f5b657bc",
-    "one-theme": "github:lumine-code/one-theme#130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+    "one-theme": "github:lumine-code/one-theme#89cf6ed4c8e12e6043230644936026d7eb28d2ef",
     "picomatch": "^4.0.7",
     "postcss-selector-parser": "7.1.7",
     "random-seed": "^0.3.0",
