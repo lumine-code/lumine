@@ -8,6 +8,14 @@ lumine-pane-container {
   min-width: 0;
   min-height: 0;
 
+  .pane-presentation-slot {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+
   lumine-pane-axis {
     position: relative;
     display: flex;

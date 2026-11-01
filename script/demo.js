@@ -111,8 +111,19 @@ async function revision(directory) {
         maxBuffer: 16 * 1024 * 1024,
       })
     ).stdout;
-  const commit = (await git(["rev-parse", "HEAD"])).trim();
-  const changes = await git(["diff", "HEAD", "--binary"]);
+  let commit;
+  try {
+    commit = (await git(["rev-parse", "--verify", "--quiet", "HEAD"])).trim();
+  } catch (error) {
+    if (error.code !== 1) throw error;
+    // An unborn branch has no commit yet. A missing repository, detached
+    // invalid HEAD or other Git failure must still fail the capture.
+    await git(["symbolic-ref", "--quiet", "HEAD"]);
+    commit = null;
+  }
+  const changes = commit
+    ? await git(["diff", "HEAD", "--binary"])
+    : (await git(["diff", "--cached", "--binary"])) + (await git(["diff", "--binary"]));
   const untracked = (await git(["ls-files", "--others", "--exclude-standard", "-z"]))
     .split("\0")
     .filter(Boolean);

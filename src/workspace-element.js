@@ -463,7 +463,13 @@ class WorkspaceElement extends HTMLElement {
   }
 
   boundingBoxForPaneView(paneView) {
-    const boundingBox = paneView.getBoundingClientRect();
+    const pane = paneView.getModel();
+    const container = pane.getContainer();
+    // A presented pane represents the complete container for directional
+    // navigation, including the dock beside the center's original edge.
+    const boundsElement =
+      container?.getPresentedPane() === pane ? container.getElement() : paneView;
+    const boundingBox = boundsElement.getBoundingClientRect();
 
     return {
       left: { x: boundingBox.left, y: boundingBox.top },

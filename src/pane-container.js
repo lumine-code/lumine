@@ -78,6 +78,7 @@ module.exports = class PaneContainer {
   }
 
   destroy() {
+    this.dismissPanePresentation();
     this.alive = false;
     for (let pane of this.getRoot().getPanes()) {
       pane.destroy();
@@ -218,6 +219,7 @@ module.exports = class PaneContainer {
 
   setRoot(root) {
     this.assertMutable();
+    this.dismissPanePresentation();
     this.root = root;
     this.root.setParent(this);
     this.root.setContainer(this);
@@ -239,6 +241,75 @@ module.exports = class PaneContainer {
       return this.getRoot().getPanes();
     } else {
       return [];
+    }
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Present one pane independently of its split layout without recreating or
+   * disconnecting its live view. The caller owns its visual positioning.
+   * Visual navigation treats it as the container's only pane and uses the
+   * container's bounds when finding neighboring docks.
+   * Activating a different pane or changing the split layout ends the presentation.
+   * @param {Pane} pane - A pane in this connected container.
+   * @returns {Object} A handle with element, slot, dispose() and onDidDispose(callback).
+   * @category Pane Presentation
+   */
+  presentPane(pane) {
+    this.assertMutable();
+    if (this.presentingPane || this.dismissingPanePresentation)
+      throw new Error("A pane presentation is already being changed.");
+    if (!this.isAlive() || !this.getPanes().includes(pane) || pane.isDestroyed())
+      throw new Error("A pane presentation requires a live pane in this container.");
+    const element = pane.getElement();
+    if (!element.isConnected || !this.getElement().contains(element))
+      throw new Error("A pane presentation requires a connected pane view.");
+    if (this.getPresentedPane() === pane) return this.panePresentation;
+    this.presentingPane = true;
+    try {
+      this.dismissPanePresentation();
+      if (this.getActivePane() !== pane) pane.activate();
+      // Activation and previous-owner cleanup notify package code. A listener
+      // may close, move or select another pane before this call resumes.
+      if (
+        !this.isAlive() ||
+        pane.isDestroyed() ||
+        pane.getContainer() !== this ||
+        this.getActivePane() !== pane ||
+        !this.getPanes().includes(pane) ||
+        !element.isConnected ||
+        !this.getElement().contains(element)
+      )
+        throw new Error("The pane changed while its presentation was being activated.");
+      const PanePresentation = require("./pane-presentation");
+      return (this.panePresentation = new PanePresentation(this, pane));
+    } finally {
+      this.presentingPane = false;
+    }
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Get the pane currently representing this container's visible presentation.
+   * @returns {Pane|null} The presented pane, or null for the normal split layout.
+   * @category Pane Presentation
+   */
+  getPresentedPane() {
+    return this.panePresentation?.pane ?? null;
+  }
+
+  /** @private */
+  dismissPanePresentation() {
+    const previous = this.dismissingPanePresentation;
+    this.dismissingPanePresentation = true;
+    try {
+      this.panePresentation?.dispose();
+    } finally {
+      this.dismissingPanePresentation = previous;
     }
   }
 
@@ -494,12 +565,12 @@ module.exports = class PaneContainer {
   }
 
   didActivatePane(activePane) {
+    if (activePane !== this.activePane && !this.getPanes().includes(activePane))
+      throw new Error("Setting active pane that is not present in pane container");
+    if (this.getPresentedPane() && activePane !== this.getPresentedPane())
+      this.dismissPanePresentation();
     this.enlistInActiveStateTransaction();
     if (activePane !== this.activePane) {
-      if (!this.getPanes().includes(activePane)) {
-        throw new Error("Setting active pane that is not present in pane container");
-      }
-
       this.paneActivationOrder.delete(activePane);
       this.paneActivationOrder.add(activePane);
       this.activePane = activePane;

@@ -264,6 +264,7 @@ const THEME_VARIABLES = Object.freeze([
       "Overlay backdrop color.",
     ],
     ["overlay-backdrop-opacity", "number", "0.75", "Overlay backdrop opacity."],
+    ["overlay-backdrop-blur", "length", "3px", "Blur radius of overlay backdrops."],
     [
       "progress-background-color",
       "color",

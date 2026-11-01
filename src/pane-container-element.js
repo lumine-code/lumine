@@ -27,7 +27,8 @@ class PaneContainerElement extends HTMLElement {
     const focusedElement = this.hasFocus() ? this.ownerDocument.activeElement : null;
     const oldView = this.firstChild;
     if (root != null) {
-      const view = this.views.getView(root);
+      const rootView = this.views.getView(root);
+      const view = rootView.getLayoutElement?.() ?? rootView;
       if (view !== oldView) {
         const reference = oldView?.parentNode === this ? oldView : null;
         if (view.isConnected && this.isConnected && view.ownerDocument === this.ownerDocument)

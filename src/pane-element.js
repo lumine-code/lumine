@@ -111,6 +111,11 @@ class PaneElement extends HTMLElement {
     return this.model;
   }
 
+  // Temporary presentations retain a slot in the model's split layout.
+  getLayoutElement() {
+    return this.layoutElement ?? this;
+  }
+
   // Focus the active item's view, falling back to this element for a pane with
   // nothing to show. Focusing this element instead only reaches the item
   // through `handleFocus`, and a `focus()` call fires no event at all while the

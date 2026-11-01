@@ -4464,8 +4464,23 @@ module.exports = class Workspace extends Model {
     return _.flatten(this.getPaneContainers().map((container) => container.getPanes()));
   }
 
+  /**
+   * @public
+   * @status extended
+   *
+   * Get panes available to visual navigation, including visible docks.
+   * A temporary pane presentation exposes only its representative pane;
+   * getPanes() continues to return every pane in the original layout.
+   * @returns {Array<Pane>} The panes available in the current presentation.
+   * @category Panes
+   */
   getVisiblePanes() {
-    return _.flatten(this.getVisiblePaneContainers().map((container) => container.getPanes()));
+    return _.flatten(
+      this.getVisiblePaneContainers().map((container) => container.getPanes()),
+    ).filter((pane) => {
+      const presented = pane.getContainer().getPresentedPane();
+      return !presented || presented === pane;
+    });
   }
 
   /**

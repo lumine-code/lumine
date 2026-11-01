@@ -74,6 +74,7 @@
   );
   --overlay-backdrop-color: hsl(from var(--base-background-color) h s calc(l * 0.2));
   --overlay-backdrop-opacity: 0.75;
+  --overlay-backdrop-blur: 3px;
   --progress-background-color: var(--accent-indicator-color);
   --tab-text-color: var(--text-color-subtle);
   --tab-text-color-active: var(--text-color-highlight);

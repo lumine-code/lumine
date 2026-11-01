@@ -83,7 +83,7 @@ Treat `demo/` as fixture data in package lint and formatting configuration, just
 
 ## What can be reproduced
 
-`run.json` records the recipe and fixture hashes, editor/package/theme revisions, working-tree hashes and dirty flags, Electron/Chromium versions, OS, architecture, locale, display scale, fonts and window size. Source changes during a capture fail the run. `.github/demo.json` retains this provenance without local absolute paths. The fresh profile and copied project remain local for diagnosis.
+`run.json` records the recipe and fixture hashes, editor/package/theme revisions, working-tree hashes and dirty flags, Electron/Chromium versions, OS, architecture, locale, display scale, fonts and window size. A repository with no first commit records `revision: null`; its working-tree hash includes staged and unstaged changes and untracked source contents. Source changes during a capture fail the run. `.github/demo.json` retains this provenance without local absolute paths. The fresh profile and copied project remain local for diagnosis.
 
 The same recipe reproduces the workflow and framing. Pixel-identical output additionally needs the same OS, installed fonts, display scaling, editor dependencies and external tool versions. Prefer clean committed sources for published captures; a dirty-tree hash identifies a local state but cannot reconstruct uncommitted work. Review remains necessary: automated readiness checks cannot judge every visual defect.
 

@@ -115,6 +115,7 @@ class PaneAxis extends Model {
   }
 
   addChild(child, index = this.children.length) {
+    this.container?.dismissPanePresentation();
     this.children.splice(index, 0, child);
     child.setParent(this);
     child.setContainer(this.container);
@@ -142,6 +143,8 @@ class PaneAxis extends Model {
       throw new Error("Removing non-existent child");
     }
 
+    this.container?.dismissPanePresentation();
+
     this.unsubscribeFromChild(child);
 
     this.children.splice(index, 1);
@@ -153,6 +156,7 @@ class PaneAxis extends Model {
   }
 
   replaceChild(oldChild, newChild) {
+    this.container?.dismissPanePresentation();
     this.unsubscribeFromChild(oldChild);
     this.subscribeToChild(newChild);
 

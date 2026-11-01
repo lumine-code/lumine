@@ -56,7 +56,8 @@ class PaneAxisElement extends HTMLElement {
 
   childAdded({ child, index }) {
     let resizeHandle;
-    const view = this.viewRegistry.getView(child);
+    const childView = this.viewRegistry.getView(child);
+    const view = childView.getLayoutElement?.() ?? childView;
     if (!this.isConnected && view.isConnected) return;
     const reference = this.children[index * 2] || null;
     if (view === reference) return;
@@ -81,7 +82,8 @@ class PaneAxisElement extends HTMLElement {
   }
 
   childRemoved({ child }) {
-    const view = this.viewRegistry.getView(child);
+    const childView = this.viewRegistry.getView(child);
+    const view = childView.getLayoutElement?.() ?? childView;
     if (view.parentNode !== this) return;
     const siblingView = view.previousSibling;
     // make sure next sibling view is pane resize view
@@ -97,8 +99,10 @@ class PaneAxisElement extends HTMLElement {
     if (this.hasFocus()) {
       focusedElement = this.ownerDocument.activeElement;
     }
-    const oldView = this.viewRegistry.getView(oldChild);
-    const newView = this.viewRegistry.getView(newChild);
+    const oldChildView = this.viewRegistry.getView(oldChild);
+    const newChildView = this.viewRegistry.getView(newChild);
+    const oldView = oldChildView.getLayoutElement?.() ?? oldChildView;
+    const newView = newChildView.getLayoutElement?.() ?? newChildView;
     if (!this.isConnected && newView.isConnected) return;
     const reference = oldView.parentNode === this ? oldView : this.children[index * 2] || null;
     if (this.isConnected && newView.isConnected && newView.ownerDocument === this.ownerDocument)

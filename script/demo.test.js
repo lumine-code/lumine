@@ -77,6 +77,52 @@ test("source snapshots preserve order and re-read tracked and untracked changes"
   assert.deepEqual(changed.first, after.first);
 });
 
+test("source snapshots record unborn repositories and every uncommitted source state", async (t) => {
+  const directory = temporary(t);
+  const git = (...args) =>
+    execFileSync("git", args, { cwd: directory, windowsHide: true, stdio: "pipe" });
+  git("-c", "init.templateDir=", "init", "--initial-branch=master");
+  const snapshot = async () => (await sourceRevisions([["package", directory]])).package;
+  const empty = await snapshot();
+  assert.equal(empty.revision, null);
+  assert.equal(empty.dirty, false);
+
+  fs.writeFileSync(path.join(directory, "source.txt"), "untracked source");
+  const untracked = await snapshot();
+  assert.equal(untracked.revision, null);
+  assert.equal(untracked.dirty, true);
+  assert.notEqual(untracked.workingTreeHash, empty.workingTreeHash);
+
+  git("add", "source.txt");
+  const staged = await snapshot();
+  assert.equal(staged.revision, null);
+  assert.equal(staged.dirty, true);
+  assert.notEqual(staged.workingTreeHash, untracked.workingTreeHash);
+  assert.deepEqual(await snapshot(), staged);
+
+  fs.writeFileSync(path.join(directory, "source.txt"), "unstaged source change");
+  const unstaged = await snapshot();
+  assert.notEqual(unstaged.workingTreeHash, staged.workingTreeHash);
+  assert.equal(unstaged.revision, null);
+
+  fs.writeFileSync(path.join(directory, "new.txt"), "new untracked source");
+  const added = await snapshot();
+  assert.notEqual(added.workingTreeHash, unstaged.workingTreeHash);
+  fs.writeFileSync(path.join(directory, "new.txt"), "changed untracked source");
+  const changed = await snapshot();
+  assert.notEqual(changed.workingTreeHash, added.workingTreeHash);
+
+  fs.mkdirSync(path.join(directory, ".git", "info"), { recursive: true });
+  fs.writeFileSync(path.join(directory, ".git", "info", "exclude"), "ignored.txt\n");
+  fs.writeFileSync(path.join(directory, "ignored.txt"), "ignored output");
+  assert.deepEqual(await snapshot(), changed);
+});
+
+test("source snapshots still reject directories that are not Git repositories", async (t) => {
+  const directory = temporary(t);
+  await assert.rejects(sourceRevisions([["package", directory]]), /not a git repository/i);
+});
+
 test("capture paths stay outside private roots, including junction aliases", (t) => {
   const root = temporary(t);
   const workspace = path.join(root, "workspace");
