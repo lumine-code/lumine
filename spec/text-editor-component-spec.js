@@ -17,6 +17,7 @@ const path = require("path");
 const electron = require("electron");
 const clipboardBridge = require("../src/clipboard-bridge");
 const { beginLayoutDrag } = require("../src/layout-drag");
+const { beginLayoutResize } = require("../src/layout-resize");
 const {
   roundToPhysicalPixelBoundary,
   UPDATE_MODE_NORMAL,
@@ -9470,6 +9471,100 @@ describe("TextEditorComponent", () => {
         expect(editor.getEditorWidthInChars()).toBeLessThan(widthBefore);
       } finally {
         divider.dispose();
+      }
+    });
+
+    it("uses the configured wrap interval throughout continuous animation resizing", async () => {
+      jasmine.useRealClock();
+      const { component, editor } = buildComponent({ softWrapped: true, autoHeight: false });
+      await setEditorHeightInLines(component, 10);
+      await setEditorWidthInCharacters(component, 40);
+      editor.update({ softWrapDebounceInterval: 1000 });
+      const originalWidth = editor.getEditorWidthInChars();
+      const resize = beginLayoutResize();
+      try {
+        await setEditorWidthInCharacters(component, 30);
+        await setEditorWidthInCharacters(component, 20);
+        expect(editor.getEditorWidthInChars()).toBe(originalWidth);
+        expect(component.softWrapDebounceTimer).not.toBeNull();
+      } finally {
+        resize.dispose();
+      }
+      expect(component.softWrapDebounceTimer).toBeNull();
+      expect(editor.getEditorWidthInChars()).toBeLessThan(originalWidth);
+      expect(editor.getEditorWidthInChars()).toBe(
+        component.getScrollContainerClientWidthInBaseCharacters(),
+      );
+    });
+
+    it("samples the final animation viewport before flushing pending wrap", async () => {
+      jasmine.useRealClock();
+      const { component, editor, element } = buildComponent({
+        softWrapped: true,
+        autoHeight: false,
+      });
+      await setEditorHeightInLines(component, 10);
+      await setEditorWidthInCharacters(component, 40);
+      editor.update({ softWrapDebounceInterval: 1000 });
+      const resize = beginLayoutResize();
+      try {
+        await setEditorWidthInCharacters(component, 30);
+        const intermediateWidth = component.getScrollContainerClientWidthInBaseCharacters();
+        expect(component.softWrapDebounceTimer).not.toBeNull();
+        // Animation completion may run before the final ResizeObserver delivery.
+        element.style.width =
+          component.getGutterContainerWidth() +
+          20 * component.measurements.baseCharacterWidth +
+          verticalScrollbarWidth +
+          "px";
+        resize.dispose();
+        expect(editor.getEditorWidthInChars()).toBeLessThan(intermediateWidth);
+        expect(editor.getEditorWidthInChars()).toBe(
+          component.getScrollContainerClientWidthInBaseCharacters(),
+        );
+        expect(component.softWrapDebounceTimer).toBeNull();
+      } finally {
+        resize.dispose();
+      }
+    });
+
+    it("settles a resize that ends before its first observer delivery", async () => {
+      jasmine.useRealClock();
+      const { component, editor, element } = buildComponent({
+        softWrapped: true,
+        autoHeight: false,
+      });
+      await setEditorHeightInLines(component, 10);
+      await setEditorWidthInCharacters(component, 40);
+      editor.update({ softWrapDebounceInterval: 1000 });
+      const originalWidth = editor.getEditorWidthInChars();
+      const resize = beginLayoutResize();
+      element.style.width =
+        component.getGutterContainerWidth() +
+        20 * component.measurements.baseCharacterWidth +
+        verticalScrollbarWidth +
+        "px";
+      resize.dispose();
+      expect(editor.getEditorWidthInChars()).toBeLessThan(originalWidth);
+      expect(editor.getEditorWidthInChars()).toBe(
+        component.getScrollContainerClientWidthInBaseCharacters(),
+      );
+      expect(component.softWrapDebounceTimer).toBeNull();
+    });
+
+    it("honors a zero wrap interval during animation resizing", async () => {
+      const { component, editor } = buildComponent({ softWrapped: true, autoHeight: false });
+      await setEditorHeightInLines(component, 10);
+      await setEditorWidthInCharacters(component, 40);
+      editor.update({ softWrapDebounceInterval: 0 });
+      const originalWidth = editor.getEditorWidthInChars();
+      const resize = beginLayoutResize();
+      try {
+        await setEditorWidthInCharacters(component, 20);
+        expect(editor.getEditorWidthInChars()).toBeLessThan(originalWidth);
+        expect(component.softWrapDebounceTimer).toBeNull();
+      } finally {
+        resize.dispose();
       }
     });
 

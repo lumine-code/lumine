@@ -21,6 +21,7 @@ const { fileEditorForItem, embeddedEditorForItem } = require("./item-text-editor
 const { confirmItemsClose } = require("./pane-item-close-batch");
 const { createWorkspaceElement } = require("./workspace-element");
 const layoutDrag = require("./layout-drag");
+const layoutResize = require("./layout-resize");
 // Builds detached dialog models and their optional modal hosts with this
 // window's services.
 const ModalDialogFactory = require("./modal-dialog-factory");
@@ -4816,13 +4817,31 @@ module.exports = class Workspace extends Model {
    * @public
    * @status extended
    *
+   * Declare continuous layout resizing, such as an animated pane transition.
+   * Soft wrap honors editor.softWrapDebounceInterval while any resize session
+   * remains active and settles synchronously at the final width when it ends.
+   * Start before changing geometry, retain the session across interrupted or
+   * retargeted animation frames, and dispose after restoring the final layout.
+   * One-shot layout changes need no session. This API leaves pointer input enabled.
+   * @returns {Disposable} Ends this resize session; repeated disposal is safe.
+   * @category Layout
+   */
+  beginLayoutResize() {
+    return layoutResize.beginLayoutResize();
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
    * Declare that a drag which resizes editors has begun — a pane divider, a
    * dock handle, a panel's own resize grip, a gutter's width handle.
    *
    * Such a drag moves editor widths once per animation frame for as long as the
    * button is held, and work derived from those widths is worth deferring until
    * it stops. Soft wrap is the one that ships: it re-wraps on every width
-   * change except while a drag is live, when it waits for the width to settle
+   * change except while a resize session is live, when it waits for the width
+   * to settle
    * rather than reflowing a frame the next one abandons. Anything that resizes
    * an editor from a `mousemove` should declare it; a one-shot layout change
    * should not, since it is already the final width.

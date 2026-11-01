@@ -1,15 +1,12 @@
 const { Disposable, Emitter } = require("@lumine-code/event-kit");
+const { beginLayoutResize } = require("./layout-resize");
 
 // Tracks whether the user is dragging something that resizes editors right now
 // — a pane divider, a dock handle, a package's own resize grip.
 //
-// Such a gesture moves editor widths once per animation frame for as long as the
-// button is held. Anything whose layout is derived from that width — soft wrap
-// above all — has to tell it apart from a one-shot change (a dock toggle, a pane
-// split, a package resizing the client container), because they want opposite
-// treatment: during a drag every reflow is abandoned by the next frame and is
-// pure cost, while a one-shot change is already the final width and must land on
-// the frame it happens.
+// It also owns a general resize session, so width-derived editor work follows
+// the same settling policy as animated resizing. Only a pointer drag shields
+// embedded surfaces against stealing the pointer before the gesture ends.
 //
 // The signal is global on purpose. One divider moves every editor on both sides
 // of it, and the surfaces that run the gesture know nothing about which editors
@@ -26,6 +23,7 @@ const DRAGGING_CLASS = "lumine-layout-dragging";
 // destroyed. More than one of those can run for the same drag, and a Disposable
 // only fires once.
 function beginLayoutDrag(document = globalThis.document) {
+  const resize = beginLayoutResize();
   let state;
   if (document?.documentElement) {
     state = documentDrags.get(document);
@@ -44,7 +42,11 @@ function beginLayoutDrag(document = globalThis.document) {
       documentDrags.delete(document);
     }
     activeDrags--;
-    if (activeDrags === 0) emitter.emit("did-end");
+    try {
+      resize.dispose();
+    } finally {
+      if (activeDrags === 0) emitter.emit("did-end");
+    }
   });
 }
 
@@ -69,9 +71,8 @@ function isLayoutDragActive() {
   return activeDrags > 0;
 }
 
-// Fires when the last live drag ends, so work deferred for its duration can
-// settle at the final width instead of waiting out a timeout the gesture has
-// already answered.
+// Reports the end of pointer gestures independently of overlapping animations.
+// Width-derived work uses layout-resize's end signal instead.
 function onDidEndLayoutDrag(callback) {
   return emitter.on("did-end", callback);
 }

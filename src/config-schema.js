@@ -565,7 +565,7 @@ const configSchema = {
         scopeResolution: "grammar",
         title: "Soft Wrap Debounce Interval",
         description:
-          "While a pane divider or a dock handle is being dragged, soft-wrapped text re-wraps only once the width has held still for this many milliseconds, and again the moment the drag ends. A width change outside a drag always re-wraps immediately. `0` re-wraps on every change. Higher values reduce CPU usage while dragging against large files, at the cost of showing stale wrapping until the drag settles.",
+          "During continuous layout resizing, including pane and dock drags or animated pane transitions, soft-wrapped text re-wraps once the width has held still for this many milliseconds and when resizing ends. One-shot width changes re-wrap immediately. `0` re-wraps on every change. Higher values reduce CPU usage while resizing large files, at the cost of showing stale wrapping until resizing settles.",
         type: "integer",
         minimum: 0,
         maximum: 1000,

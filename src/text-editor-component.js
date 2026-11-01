@@ -16,7 +16,7 @@ const LinesTileComponent = require("./lines-tile-component");
 const LineComponent = require("./line-component");
 const HighlightsComponent = require("./highlights-component");
 const OverlayComponent = require("./overlay-component");
-const { isLayoutDragActive, onDidEndLayoutDrag } = require("./layout-drag");
+const { isLayoutResizeActive, onDidEndLayoutResize } = require("./layout-resize");
 const {
   roundToPhysicalPixelBoundary,
   ceilToPhysicalPixelBoundary,
@@ -216,11 +216,11 @@ module.exports = class TextEditorComponent {
     // captureScrollAnchor's usual choices for as long as the gesture lasts.
     // See pinScrollAnchorToBlockDecoration.
     this.scrollAnchorBlockDecoration = null;
-    // Coalesces width-driven soft-wrap reflows for the duration of a pane or
-    // dock resize drag, when softWrapDebounceInterval > 0.
+    // Coalesces width-driven soft-wrap reflows during continuous layout
+    // resizing, when softWrapDebounceInterval > 0.
     this.softWrapDebounceTimer = null;
     this.flushingSoftWrapColumn = false;
-    this.layoutDragSubscription = null;
+    this.layoutResizeSubscription = null;
     this.previousScrollWidth = 0;
     this.previousScrollHeight = 0;
     this.lastKeydown = null;
@@ -2921,7 +2921,7 @@ module.exports = class TextEditorComponent {
       this.resizeObserver = new this.window.ResizeObserver(this.didResize.bind(this));
       this.observeResizeTargets();
 
-      this.layoutDragSubscription = onDidEndLayoutDrag(this.didEndLayoutDrag.bind(this));
+      this.layoutResizeSubscription = onDidEndLayoutResize(this.didEndLayoutResize.bind(this));
 
       if (this.refs.gutterContainer) {
         this.gutterContainerResizeObserver = new this.window.ResizeObserver(
@@ -3014,9 +3014,9 @@ module.exports = class TextEditorComponent {
       this.intersectionObserver.disconnect();
       this.resizeObserver.disconnect();
       if (this.gutterContainerResizeObserver) this.gutterContainerResizeObserver.disconnect();
-      if (this.layoutDragSubscription) {
-        this.layoutDragSubscription.dispose();
-        this.layoutDragSubscription = null;
+      if (this.layoutResizeSubscription) {
+        this.layoutResizeSubscription.dispose();
+        this.layoutResizeSubscription = null;
       }
       this.overlayComponents.forEach((component) => component.didDetach());
 
@@ -3243,17 +3243,23 @@ module.exports = class TextEditorComponent {
     });
   }
 
-  // Releasing the divider answers the question the debounce timer was waiting
-  // on, so a deferred reflow lands now instead of an interval later. updateSync
-  // rather than scheduleUpdate, for the reason didResize gives: mouseup runs
-  // before the frame paints, and a scheduled update would land a frame later,
-  // painting the drag's final width still wrapped at the width it started from.
-  didEndLayoutDrag() {
-    if (!this.softWrapDebounceTimer) return;
-    clearTimeout(this.softWrapDebounceTimer);
-    this.softWrapDebounceTimer = null;
+  // The final animation callback or mouseup may precede ResizeObserver's last
+  // delivery. Measure the real final viewport before flushing deferred wrap,
+  // so the settled frame never uses an intermediate cached width.
+  didEndLayoutResize() {
+    const pending = Boolean(this.softWrapDebounceTimer);
+    if (pending) {
+      clearTimeout(this.softWrapDebounceTimer);
+      this.softWrapDebounceTimer = null;
+    }
+    if (!this.attached) return;
     this.flushingSoftWrapColumn = true;
-    this.updateSync();
+    try {
+      this.didResize();
+      if (pending && this.flushingSoftWrapColumn && this.isVisible()) this.updateSync();
+    } finally {
+      this.flushingSoftWrapColumn = false;
+    }
   }
 
   didResizeGutterContainer() {
@@ -4156,22 +4162,20 @@ module.exports = class TextEditorComponent {
       return;
     }
 
-    // Only a live drag of a pane divider or a dock handle defers the reflow.
-    // Such a drag moves the width once per frame, so re-wrapping in the
+    // A continuous resize moves the width once per frame, so re-wrapping in the
     // callback that reports the change spends a full reflow on a width the next
-    // frame abandons — and on a large file that stall is what the drag feels
-    // like. Every other width change is one-shot (a dock toggle, a pane split,
-    // a copy's pane settling, a package resizing the client container) and
+    // frame abandons. A one-shot width change (a dock toggle, a pane split,
+    // a copy's pane settling, a package resizing the client container)
     // re-wraps on the frame it happens, exactly as it does with the debounce
-    // turned off. Pausing mid-drag still re-wraps once the width has held for
-    // the interval; releasing the button flushes at once, in didEndLayoutDrag.
+    // turned off. Pausing still re-wraps once the width has held for the
+    // interval; ending the session flushes at once, in didEndLayoutResize.
     const debounceInterval = model.getSoftWrapDebounceInterval();
     if (
       debounceInterval > 0 &&
       this.hasInitialMeasurements &&
       !this.flushingSoftWrapColumn &&
       model.isSoftWrapped() &&
-      isLayoutDragActive()
+      isLayoutResizeActive()
     ) {
       clearTimeout(this.softWrapDebounceTimer);
       this.softWrapDebounceTimer = setTimeout(() => {
