@@ -6,8 +6,9 @@ class SyntaxPaintRetries {
     ready,
     wanted,
     now = () => performance.now(),
-    schedule = setTimeout,
-    cancel = clearTimeout,
+    // Renderer timers must not receive the retry queue as their receiver.
+    schedule = (callback, delay) => setTimeout(callback, delay),
+    cancel = (timer) => clearTimeout(timer),
     delays = [100, 500, 2000],
     maxEntries = 64,
   }) {
