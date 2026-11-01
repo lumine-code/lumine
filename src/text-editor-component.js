@@ -956,6 +956,12 @@ module.exports = class TextEditorComponent {
     let style = clientContainer.style;
     style.position = "relative";
     style.contain = "strict";
+    // Give the stationary, opaque viewport its own compositor layer. Without
+    // this boundary every scroll transform below it re-layerizes paint chunks
+    // across sibling editors and docks. Bound the layer to the viewport, not
+    // the document; keeping the moving text off a will-change layer also
+    // preserves its subpixel antialiasing.
+    style.transform = "translateZ(0)";
     // The client box clips both text and gutters. Revealing the focused input must not move this box
     // independently of the editor's transform-based scroll position.
     style.overflow = "clip";
