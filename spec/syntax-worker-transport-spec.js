@@ -96,39 +96,43 @@ describe("Syntax worker transport", () => {
     expect(mode.cache.evictColdSnapshots).toHaveBeenCalledTimes(1);
   });
 
-  it("paints cached custom thumb destinations immediately and defers missing colors", () => {
-    const Component = require("../src/text-editor-component");
-    let ready = true;
-    const component = {
-      scrollAnimator: { cancel: jasmine.createSpy("cancel") },
-      scrollbarTakeover: new Set(),
-      props: {
-        model: {
-          getBuffer: () => ({ getLanguageMode: () => ({ asynchronousSyntax: true }) }),
-          displayLayer: { prepareHighlightingForScreenRows: () => ready },
+  for (const orientation of ["vertical", "horizontal"])
+    it(`paints every ${orientation} thumb destination immediately while syntax is cold`, () => {
+      const Component = require("../src/text-editor-component");
+      const positions = [];
+      const component = {
+        scrollAnimator: { cancel: jasmine.createSpy("cancel") },
+        props: {
+          model: {
+            getBuffer: () => ({ getLanguageMode: () => ({ asynchronousSyntax: true }) }),
+            displayLayer: { prepareHighlightingForScreenRows: () => false },
+          },
         },
-      },
-      setScrollTop: () => true,
-      beginScrollHighlighting: jasmine.createSpy("prepare"),
-      getRenderedStartRow: () => 100,
-      getRenderedEndRow: () => 140,
-      highlightingOptions: () => ({}),
-      updateSync: jasmine.createSpy("paint"),
-      scheduleUpdate: jasmine.createSpy("schedule"),
-    };
-    const scroll = () =>
-      Component.prototype.didScrollScrollbar.call(component, {
-        orientation: "vertical",
-        position: 2000,
-      });
-    scroll();
-    expect(component.updateSync).toHaveBeenCalledTimes(1);
-    expect(component.scheduleUpdate).not.toHaveBeenCalled();
-    ready = false;
-    scroll();
-    expect(component.updateSync).toHaveBeenCalledTimes(1);
-    expect(component.scheduleUpdate).toHaveBeenCalledTimes(1);
-  });
+        settlingScrollAnchor: {},
+        setScrollTop: (position) => {
+          positions.push(["vertical", position]);
+          return true;
+        },
+        setScrollLeft: (position) => {
+          positions.push(["horizontal", position]);
+          return true;
+        },
+        updateSync: jasmine.createSpy("paint"),
+        scheduleUpdate: jasmine.createSpy("schedule"),
+      };
+      for (const position of [100, 200, 300]) {
+        Component.prototype.didScrollScrollbar.call(component, { orientation, position });
+        expect(component.updateSync).toHaveBeenCalledTimes(positions.length);
+      }
+      expect(positions).toEqual([
+        [orientation, 100],
+        [orientation, 200],
+        [orientation, 300],
+      ]);
+      expect(component.scrollAnimator.cancel).toHaveBeenCalledTimes(3);
+      expect(component.scheduleUpdate).not.toHaveBeenCalled();
+      if (orientation === "vertical") expect(component.settlingScrollAnchor).toBeNull();
+    });
 
   it("prepares a bounded initial window and releases the wait on paint or timeout", async () => {
     jasmine.useRealClock();
@@ -165,16 +169,12 @@ describe("Syntax worker transport", () => {
     }
   });
 
-  it("colors mounted lines while a newer scroll destination is still waiting", async () => {
+  it("colors mounted lines after navigation without moving their viewport", async () => {
     jasmine.useRealClock();
     await lumine.packages.activatePackage("language-javascript");
     const service = new Service(lumine.grammars);
     const editor = lumine.workspace.buildTextEditor({ autoHeight: false });
-    editor.setText("const value = 1; // color\n".repeat(3000));
-    lumine.grammars.assignGrammar(
-      editor.getBuffer(),
-      lumine.grammars.grammarForScopeName("source.js"),
-    );
+    editor.setText("const value = 1; // color\n".repeat(300));
     const mode = new WorkerMode({
       buffer: editor.getBuffer(),
       grammar: lumine.grammars.grammarForScopeName("source.js"),
@@ -185,42 +185,48 @@ describe("Syntax worker transport", () => {
     element.style.cssText = "height:200px;width:800px";
     try {
       await mode.ready;
+      const owner = {};
+      mode.requestHighlighting(owner, [[80, 140]], false, { priority: 0, prefetch: false });
       await mode.refresh();
-      // Hold further worker work so the old viewport and the new destination
-      // can receive their colors independently, in a deterministic order.
+      const prepared = mode.cache.captureRange(
+        new TextBuffer.Point(80, 0),
+        new TextBuffer.Point(140, 0),
+        new TextBuffer.Point(80, 0),
+        [],
+      );
+      const stamp = {
+        revision: editor.getBuffer().getTextRevision(),
+        generation: mode.session.generation,
+        presentation: mode.presentationVersion,
+      };
       spyOn(mode, "schedule");
+      clearTimeout(mode.timer);
+      mode.timer = null;
+      mode.requestHighlighting(owner, [], false);
+      mode.cache.clear();
       jasmine.attachToDOM(element);
       element.setUpdatedSynchronously(true);
       const component = element.component;
-      expect(editor.getBuffer().getLanguageMode()).toBe(mode);
-      expect(component.visible).toBeTrue();
-      component.updateSync();
-      const prepared = mode.cache.snapshots.filter((item) => item.start.row < 128);
-      mode.cache.clear();
-      mode.emitter.emit("did-change-highlighting", new TextBuffer.Range([0, 0], [127, 0]));
-      component.updateSync();
-      expect(element.querySelectorAll(".syntax--keyword").length).toBe(0);
+      component.didScrollScrollbar({
+        orientation: "vertical",
+        position: 100 * component.getLineHeight(),
+      });
+      expect(component.getScrollTop()).toBe(100 * component.getLineHeight());
+      expect(component.renderedScreenLinesStartRow).toBeGreaterThan(80);
+      expect(element.querySelectorAll(".syntax--constant").length).toBe(0);
       const mounted = component.mountedTileStartRow;
       const transform = component.refs.lineTiles.style.transform;
-      spyOn(component.window, "requestAnimationFrame").and.returnValue(1234567);
-      component.setScrollTop(1000 * component.getLineHeight());
-      component.beginScrollHighlighting();
+      mode.cache.replace(prepared, stamp);
+      mode.emitter.emit("did-change-highlighting", new TextBuffer.Range([80, 0], [140, 0]));
       component.updateSync();
-      expect(component.scrollHighlightingFrame).toBeTruthy();
-      mode.cache.replace(prepared, { revision: 0, generation: 0 });
-      const repaint = spyOn(component, "refreshMountedHighlighting");
-      mode.emitter.emit("did-change-highlighting", new TextBuffer.Range([0, 0], [127, 0]));
-      expect(element.querySelectorAll(".syntax--keyword").length).toBe(0);
-      repaint.and.callThrough();
-      mode.emitter.emit("did-change-highlighting", new TextBuffer.Range([0, 0], [127, 0]));
-      expect(component.scrollHighlightingFrame).toBeTruthy();
+      expect(component.getScrollTop()).toBe(100 * component.getLineHeight());
       expect(component.mountedTileStartRow).toBe(mounted);
       expect(component.refs.lineTiles.style.transform).toBe(transform);
-      expect(element.querySelectorAll(".syntax--keyword").length).toBeGreaterThan(0);
+      expect(element.querySelectorAll(".syntax--constant").length).toBeGreaterThan(0);
     } finally {
       editor.destroy();
       element.remove();
-      service.dispose();
+      await service.dispose();
     }
   });
 
@@ -291,144 +297,19 @@ describe("Syntax worker transport", () => {
     }
   });
 
-  it("waits at most one frame for scroll colors and does not extend it for more input", () => {
+  it("does not repaint or revive motion for an unchanged scrollbar destination", () => {
     const Component = require("../src/text-editor-component");
-    let ready = false,
-      callback;
-    const frameWindow = {
-      requestAnimationFrame: jasmine.createSpy("requestAnimationFrame").and.callFake((fn) => {
-        callback = fn;
-        return 7;
-      }),
-      cancelAnimationFrame: jasmine.createSpy("cancelAnimationFrame"),
-    };
-    const component = {
-      props: {
-        model: {
-          getBuffer: () => ({ getLanguageMode: () => ({ asynchronousSyntax: true }) }),
-          displayLayer: { prepareHighlightingForScreenRows: () => ready },
-        },
-      },
-      attached: true,
-      visible: true,
-      hasInitialMeasurements: true,
-      scrollTopPending: true,
-      scrollHighlightingRequested: true,
-      window: frameWindow,
-      getRenderedStartRow: () => 100,
-      getRenderedEndRow: () => 140,
-      highlightingOptions: () => ({}),
-      cancelScrollHighlighting: Component.prototype.cancelScrollHighlighting,
-      updateSync: jasmine.createSpy("updateSync"),
-    };
-    const wait = () => Component.prototype.waitForScrollHighlighting.call(component);
-    expect(wait()).toBeTrue();
-    expect(wait()).toBeTrue();
-    expect(frameWindow.requestAnimationFrame).toHaveBeenCalledTimes(1);
-    callback();
-    expect(component.updateSync).toHaveBeenCalledTimes(1);
-    expect(wait()).toBeFalse();
-    expect(component.scrollHighlightingRequested).toBeFalse();
-
-    component.scrollHighlightingRequested = true;
-    expect(wait()).toBeTrue();
-    ready = true;
-    expect(wait()).toBeFalse();
-    expect(frameWindow.cancelAnimationFrame).toHaveBeenCalledWith(7);
-    expect(component.scrollHighlightingFrame).toBeNull();
-    ready = false;
-    component.scrollHighlightingRequested = true;
-    component.resolveNextUpdatePromise = jasmine.createSpy("resolveNextUpdatePromise");
-    expect(wait()).toBeTrue();
-    component.cancelScrollHighlighting(true);
-    expect(component.resolveNextUpdatePromise).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps the scroll deadline through geometry changes but cancels it on an edit", () => {
-    const Component = require("../src/text-editor-component");
-    let revision = 1;
-    const mode = {};
-    const buffer = { getTextRevision: () => revision, getLanguageMode: () => mode };
-    const frame = {
-      window: { cancelAnimationFrame: jasmine.createSpy("cancelAnimationFrame") },
-      handle: 1,
-    };
-    const component = {
-      props: { model: { getBuffer: () => buffer } },
-      scrollHighlightingFrame: frame,
-      cancelScrollHighlighting: Component.prototype.cancelScrollHighlighting,
-      spliceLineTopIndex: jasmine.createSpy("spliceLineTopIndex"),
-      scheduleUpdate: jasmine.createSpy("scheduleUpdate"),
-      hasInitialMeasurements: false,
-      scrollTop: 0,
-    };
-    Component.prototype.beginScrollHighlighting.call(component);
-    const changes = [
-      {
-        oldRange: new TextBuffer.Range([0, 0], [1, 0]),
-        newRange: new TextBuffer.Range([0, 0], [1, 0]),
-      },
-    ];
-    Component.prototype.didChangeDisplayLayer.call(component, changes);
-    expect(component.scrollHighlightingFrame).toBe(frame);
-    expect(component.scrollHighlightingRequested).toBeTrue();
-    revision++;
-    Component.prototype.didChangeDisplayLayer.call(component, changes);
-    expect(component.scrollHighlightingFrame).toBeNull();
-    expect(component.scrollHighlightingRequested).toBeFalse();
-  });
-
-  it("prepares custom thumb positions before their frame without dropping subsequent input", () => {
-    const Component = require("../src/text-editor-component");
-    const calls = [];
-    const displayLayer = {
-      prepareHighlightingForScreenRows: (...args) => {
-        calls.push(["prepare", ...args]);
-        return false;
-      },
-    };
     const component = {
       scrollAnimator: { cancel: jasmine.createSpy("cancel") },
-      scrollbarTakeover: new Set(),
-      props: {
-        model: {
-          displayLayer,
-          getBuffer: () => ({
-            getLanguageMode: () => ({ asynchronousSyntax: true }),
-            getTextRevision: () => 1,
-          }),
-        },
-      },
-      scrollTopPending: true,
-      beginScrollHighlighting: Component.prototype.beginScrollHighlighting,
-      setScrollTop(position) {
-        this.position = position;
-        return true;
-      },
-      getRenderedStartRow() {
-        return this.position;
-      },
-      getRenderedEndRow() {
-        return this.position + 40;
-      },
-      scheduleUpdate: () => calls.push(["schedule"]),
-      highlightingOptions: () => ({}),
+      setScrollTop: jasmine.createSpy("setScrollTop").and.returnValue(false),
+      setScrollLeft: jasmine.createSpy("setScrollLeft").and.returnValue(false),
       updateSync: jasmine.createSpy("updateSync"),
     };
-    for (const position of [100, 200, 300])
-      Component.prototype.didScrollScrollbar.call(component, {
-        orientation: "vertical",
-        position,
-      });
-    expect(component.position).toBe(300);
-    expect(calls).toEqual([
-      ["prepare", 100, 140, displayLayer, {}],
-      ["schedule"],
-      ["prepare", 200, 240, displayLayer, {}],
-      ["schedule"],
-      ["prepare", 300, 340, displayLayer, {}],
-      ["schedule"],
-    ]);
+    for (const orientation of ["vertical", "horizontal"])
+      Component.prototype.didScrollScrollbar.call(component, { orientation, position: 100 });
+    expect(component.scrollAnimator.cancel).toHaveBeenCalledTimes(2);
+    expect(component.setScrollTop).toHaveBeenCalledOnceWith(100);
+    expect(component.setScrollLeft).toHaveBeenCalledOnceWith(100);
     expect(component.updateSync).not.toHaveBeenCalled();
   });
 

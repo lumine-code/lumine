@@ -26,23 +26,30 @@ describe("Viewport column syntax", () => {
         element.setUpdatedSynchronously(true);
         const c = element.component;
         c.updateSync();
+        await mode.refresh();
+        spyOn(mode, "schedule");
+        clearTimeout(mode.timer);
+        mode.timer = null;
+        mode.cache.clear();
         if (wrapped) {
           const screenRow = editor.screenPositionForBufferPosition([0, 200000]).row;
           c.didScrollScrollbar({
             orientation: "vertical",
             position: screenRow * c.getLineHeight(),
           });
-          await mode.refresh();
-          c.scrollPresentation.flush();
+          expect(c.getScrollTop()).toBe(screenRow * c.getLineHeight());
         } else {
           c.didScrollScrollbar({
             orientation: "horizontal",
             position: 200000 * c.getBaseCharacterWidth(),
           });
-          expect(c.getScrollLeft()).toBe(0);
-          await mode.refresh();
-          c.horizontalScrollPresentation.flush();
+          expect(c.getScrollLeft()).toBe(200000 * c.getBaseCharacterWidth());
         }
+        const requested = mode.requestsByOwner.get(editor.displayLayer);
+        expect(requested.priority).toBe(0);
+        expect(requested.windows.some(({ start }) => start.column > 100000)).toBeTrue();
+        expect(mode.cache.snapshots.length).toBe(0);
+        await mode.refresh();
         c.updateSync();
         let line = wrapped
           ? c.renderedScreenLines[0]

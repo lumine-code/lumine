@@ -16,7 +16,8 @@ function scopeMismatches(editor, mode, component, lines) {
     if (!rendered || rendered.props.offScreen || rendered.props.screenLine.lineText.length < 2)
       continue;
     const row = Number(line.dataset.screenRow);
-    const column = Math.floor(rendered.props.screenLine.lineText.length / 2);
+    const offsetInLine = Math.floor(rendered.props.screenLine.lineText.length / 2);
+    const column = (rendered.props.screenLine.startScreenColumn ?? 0) + offsetInLine;
     const point = editor.bufferPositionForScreenPosition([row, column]);
     const projected = editor.screenPositionForBufferPosition(point);
     if (projected.row !== row || projected.column !== column) continue;
@@ -32,7 +33,7 @@ function scopeMismatches(editor, mode, component, lines) {
       scopes.push(...iterator.getOpenScopeIds());
       iterator.moveToSuccessor();
     }
-    let offset = column,
+    let offset = offsetInLine,
       textNode;
     for (const node of rendered.textNodes) {
       if (offset < node.length) {
@@ -90,31 +91,6 @@ describe("Fast scroll syntax coverage", () => {
     }
     const element = editor.getElement();
     element.setUpdatedSynchronously(false);
-    const waitForColors = element.component.waitForScrollHighlighting;
-    let paintDecisions = null,
-      waitStartedAt = null;
-    element.component.waitForScrollHighlighting = function (...args) {
-      const requested = this.scrollHighlightingRequested;
-      const expired = this.scrollHighlightingExpired;
-      let waiting;
-      if (c.frameDeadline === false) {
-        this.cancelScrollHighlighting();
-        waiting = false;
-      } else waiting = waitForColors.apply(this, args);
-      if (waiting && waitStartedAt == null) waitStartedAt = performance.now();
-      if (requested && !waiting && paintDecisions) {
-        const at = performance.now();
-        paintDecisions.push({
-          at,
-          expired: Boolean(expired),
-          waitMs: waitStartedAt == null ? 0 : at - waitStartedAt,
-          first: this.getRenderedStartRow(),
-          last: this.getRenderedEndRow(),
-        });
-        waitStartedAt = null;
-      }
-      return waiting;
-    };
     const mode = editor.getBuffer().getLanguageMode();
     const result = { configuration: c, inputHash: before, cases: [] };
     let stopFrames, restoreRequest, restorePaint, releaseMouse;
@@ -191,7 +167,6 @@ describe("Fast scroll syntax coverage", () => {
           wheels = [],
           requests = [],
           chunks = [];
-        paintDecisions = [];
         let active = true,
           bounce = 1,
           previous,
@@ -257,7 +232,6 @@ describe("Fast scroll syntax coverage", () => {
             first,
             last,
             targetFirst: editor.getFirstVisibleScreenRow(),
-            waitingForColors: Boolean(component.scrollHighlightingFrame),
             scopeMismatches: scopeMismatches(editor, mode, component, visibleLines),
             covered,
             total,
@@ -319,7 +293,7 @@ describe("Fast scroll syntax coverage", () => {
                         const component = element.component;
                         if (i === 0)
                           component.didDragScrollbar({ orientation: "vertical", dragging: true });
-                        const position = component.getRequestedScrollTop();
+                        const position = component.getScrollTop();
                         const delta = (c.delta ?? 100) * direction;
                         if (
                           position + delta * bounce < 0 ||
@@ -372,9 +346,7 @@ describe("Fast scroll syntax coverage", () => {
           requests,
           chunks,
           thumbStart,
-          paintDecisions,
         });
-        paintDecisions = null;
         expect(frames.some((frame) => frame.first !== frames[0].first)).toBeTrue();
       }
     } finally {
@@ -382,7 +354,6 @@ describe("Fast scroll syntax coverage", () => {
       restoreRequest?.();
       restorePaint?.();
       await releaseMouse?.();
-      element.component.waitForScrollHighlighting = waitForColors;
       editor.destroy();
       expect(hash()).toBe(before);
     }
@@ -400,21 +371,9 @@ describe("Fast scroll syntax coverage", () => {
           (sum, frame, i) => sum + (i ? Math.abs(frame.first - frames[i - 1].first) : 0),
           0,
         ),
-        framesWaitingForColors: frames.filter((frame) => frame.waitingForColors).length,
+        framesWithUnpaintedViewport: frames.filter((frame) => frame.first !== frame.targetFirst)
+          .length,
         framesWithScopeMismatch: frames.filter((frame) => frame.scopeMismatches.length).length,
-        mismatchesWithoutExpiredBudget: frames.flatMap((frame) =>
-          frame.scopeMismatches.filter((sample) => {
-            const decision = item.paintDecisions
-              .filter(
-                (decision) =>
-                  decision.at <= item.start + frame.at &&
-                  decision.first <= sample.row &&
-                  decision.last > sample.row,
-              )
-              .at(-1);
-            return !decision?.expired;
-          }),
-        ).length,
         coveredFraction: mode.cache
           ? frames.reduce((sum, f) => sum + f.covered / f.total, 0) / frames.length
           : null,
@@ -445,8 +404,8 @@ describe("Fast scroll syntax coverage", () => {
       path.join(c.out, "fast-scroll-summary.json"),
       JSON.stringify(summaries, null, 2),
     );
-    if (c.backend === "worker" && c.frameDeadline !== false)
-      for (const summary of summaries) expect(summary.mismatchesWithoutExpiredBudget).toBe(0);
+    if (c.backend === "worker")
+      for (const summary of summaries) expect(summary.framesWithScopeMismatch).toBe(0);
     console.log(JSON.stringify(summaries));
   }, 180000);
 });

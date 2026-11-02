@@ -18,8 +18,7 @@
   let active = false;
   const frames = [],
     packets = [],
-    requests = [],
-    waits = [];
+    requests = [];
   let paintedFirst = component.getFirstVisibleRow(),
     paintedLast = component.getLastVisibleRow();
   const transform = component.updateContentScrollTransform;
@@ -51,21 +50,6 @@
         return next;
       },
     });
-  };
-  const wait = component.waitForScrollHighlighting;
-  component.waitForScrollHighlighting = function (...a) {
-    const req = this.scrollHighlightingRequested,
-      exp = this.scrollHighlightingExpired;
-    const result = wait.apply(this, a);
-    if (req)
-      waits.push({
-        at: performance.now(),
-        result,
-        expired: exp,
-        start: this.getRenderedStartRow(),
-        end: this.getRenderedEndRow(),
-      });
-    return result;
   };
   const tick = () => {
     if (!active) return;
@@ -111,7 +95,6 @@
       first: paintedFirst,
       last: paintedLast,
       logical: component.getFirstVisibleRow(),
-      waiting: !!component.scrollHighlightingFrame,
       lines,
       readyButUnpainted,
       ms: performance.now() - began,
@@ -126,14 +109,12 @@
     stop() {
       active = false;
       component.updateContentScrollTransform = transform;
-      component.waitForScrollHighlighting = wait;
       mode.service.request = original;
       if (mode.error) throw mode.error;
       return {
         frames,
         packets,
         requests,
-        waits,
         packages: lumine.packages.getActivePackages().map((pack) => pack.name),
         cache: {
           snapshots: mode.cache.snapshots.length,
@@ -146,8 +127,7 @@
           plain: frames.filter((f) => f.lines.length && !f.lines.some((l) => l.colored)).length,
           readyButUnpainted: frames.filter((f) => f.readyButUnpainted).length,
           packets: packets.length,
-          waits: waits.length,
-          expired: waits.filter((w) => w.expired).length,
+          unpaintedViewport: frames.filter((f) => f.first !== f.logical).length,
           range: [Math.min(...frames.map((f) => f.first)), Math.max(...frames.map((f) => f.first))],
           owners: [...mode.requests].map((r) => ({
             ranges: r.ranges,

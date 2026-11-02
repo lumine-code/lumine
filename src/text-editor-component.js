@@ -3,7 +3,6 @@ const { Point, Range } = require("./text-buffer");
 const LineTopIndex = require("./line-top-index");
 const TextEditor = require("./text-editor");
 const ScrollAnimator = require("./scroll-animator");
-const ScrollPresentation = require("./scroll-presentation");
 const { originForOffset, physicalExtent } = require("./scroll-coordinate-space");
 const { idleDisposals } = require("./idle-disposal-queue");
 const { isPairedCharacter, hasRtlText } = require("./text-utils");
@@ -132,7 +131,6 @@ module.exports = class TextEditorComponent {
     this.updatedSynchronously = this.props.updatedSynchronously;
     this.didScrollScrollbar = this.didScrollScrollbar.bind(this);
     this.didDragScrollbar = this.didDragScrollbar.bind(this);
-    this.scrollbarTakeover = new Set();
     this.didResizeOverlay = this.didResizeOverlay.bind(this);
     this.didMouseDownOnContent = this.didMouseDownOnContent.bind(this);
     this.didMouseWheel = this.didMouseWheel.bind(this);
@@ -191,8 +189,6 @@ module.exports = class TextEditorComponent {
     this.scrollTopPending = false;
     this.scrollLeftPending = false;
     this.scrollTop = 0;
-    this.scrollPresentation = new ScrollPresentation(this);
-    this.horizontalScrollPresentation = new ScrollPresentation(this, { horizontal: true });
     this.preservedScrollTop = 0;
     this.scrollLeft = 0;
     this.renderedScrollTop = 0;
@@ -350,7 +346,6 @@ module.exports = class TextEditorComponent {
     // Don't proceed if the model was destroyed (see scheduleUpdate; an
     // already-scheduled update can also land after a synchronous destroy).
     if (this.props.model.isDestroyed()) {
-      this.cancelScrollHighlighting();
       if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
       this.updateScheduled = false;
       return;
@@ -362,7 +357,6 @@ module.exports = class TextEditorComponent {
     // display:none ancestor has no layout box and still suppresses updates.
     // Resolve rather than leak an update promise when no update can happen.
     if (!this.visible && !this.canMeasureOffscreenAutoHeight()) {
-      this.cancelScrollHighlighting();
       if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
       this.updateScheduled = false;
       return;
@@ -373,11 +367,6 @@ module.exports = class TextEditorComponent {
     // outside the viewport, before IntersectionObserver ever calls didShow.
     if (!this.hasInitialMeasurements) this.measureDimensions();
     const scrollbarPresentationChanged = this.updateScrollbarPresentation();
-
-    if (this.waitForScrollHighlighting()) {
-      this.updateScheduled = false;
-      return;
-    }
 
     // Don't proceed if we have to pay for a measurement anyway and detect
     // that we are no longer visible.
@@ -525,8 +514,6 @@ module.exports = class TextEditorComponent {
   // Everything else retains the complete update path as its correctness
   // fallback.
   updateScrollAnimationFrame({ horizontal, vertical }) {
-    if (vertical) this.beginScrollHighlighting();
-    if (this.waitForScrollHighlighting()) return false;
     if (!this.canUpdateForScrollOnly(horizontal, vertical)) {
       this.updateSync({ updateMode: UPDATE_MODE_NORMAL });
       return false;
@@ -539,7 +526,7 @@ module.exports = class TextEditorComponent {
     this.updateContentScrollTransform();
     if (vertical) {
       this.refs.gutterContainer.updateScrollTop(this.getScrollTop());
-      this.refs.verticalScrollbar.updateScrollPosition(this.getRequestedScrollTop());
+      this.refs.verticalScrollbar.updateScrollPosition(this.getScrollTop());
       this.scrollTopPending = false;
     }
     if (horizontal) {
@@ -548,61 +535,6 @@ module.exports = class TextEditorComponent {
     }
     this.updateOverlayPositions();
     return true;
-  }
-
-  // Give an uncached scroll destination one frame to arrive with its colors.
-  // This never blocks the event loop, and further input cannot extend the
-  // deadline. Once the frame expires, scrolling proceeds even on a slow query.
-  beginScrollHighlighting() {
-    const buffer = this.props.model.getBuffer();
-    this.scrollHighlightingRequested = true;
-    this.scrollHighlightingRevision = buffer.getTextRevision();
-    this.scrollHighlightingMode = buffer.getLanguageMode();
-  }
-
-  waitForScrollHighlighting() {
-    if (!this.scrollHighlightingRequested) return false;
-    const model = this.props.model;
-    if (
-      !this.scrollHighlightingExpired &&
-      this.attached &&
-      this.visible &&
-      this.hasInitialMeasurements &&
-      this.scrollTopPending &&
-      model.getBuffer().getLanguageMode().asynchronousSyntax &&
-      model.displayLayer.prepareHighlightingForScreenRows(
-        this.getRenderedStartRow(),
-        this.getRenderedEndRow(),
-        model.displayLayer,
-        this.highlightingOptions(),
-      ) === false
-    ) {
-      if (!this.scrollHighlightingFrame) {
-        const frameWindow = this.window;
-        const handle = frameWindow.requestAnimationFrame(() => {
-          this.scrollHighlightingFrame = null;
-          this.scrollHighlightingExpired = true;
-          this.updateSync();
-        });
-        this.scrollHighlightingFrame = { window: frameWindow, handle };
-      }
-      return true;
-    }
-    this.cancelScrollHighlighting();
-    return false;
-  }
-
-  cancelScrollHighlighting(resolvePending = false) {
-    if (resolvePending) {
-      this.scrollPresentation?.cancel();
-      this.horizontalScrollPresentation?.cancel();
-    }
-    const frame = this.scrollHighlightingFrame;
-    if (frame) frame.window.cancelAnimationFrame(frame.handle);
-    this.scrollHighlightingFrame = null;
-    this.scrollHighlightingRequested = this.scrollHighlightingExpired = false;
-    this.scrollHighlightingMode = this.scrollHighlightingRevision = null;
-    if (frame && resolvePending) this.resolveNextUpdatePromise?.();
   }
 
   canUpdateScrollPositionOnly(horizontal, vertical) {
@@ -823,18 +755,6 @@ module.exports = class TextEditorComponent {
     if (anchorRestored) {
       this.populateVisibleRowRange(this.getRenderedStartRow());
       this.populateVisibleTiles();
-    }
-    if (
-      (this.scrollPresentation?.committing || this.horizontalScrollPresentation?.committing) &&
-      this.props.model.displayLayer.prepareHighlightingForScreenRows(
-        this.getRenderedStartRow(),
-        this.getRenderedEndRow(),
-        this.props.model.displayLayer,
-        this.highlightingOptions(),
-      ) === false
-    ) {
-      this.preparedScrollDeferred = true;
-      return false;
     }
     this.queryScreenLinesToRender();
     this.queryLongestLine();
@@ -1550,8 +1470,8 @@ module.exports = class TextEditorComponent {
       if (this.hasInitialMeasurements) {
         scrollHeight = this.getScrollHeight();
         scrollWidth = this.getScrollWidth();
-        scrollTop = this.getRequestedScrollTop();
-        scrollLeft = this.getRequestedScrollLeft();
+        scrollTop = this.getScrollTop();
+        scrollLeft = this.getScrollLeft();
         canScrollHorizontally = this.canScrollHorizontally();
         canScrollVertically = this.canScrollVertically();
         horizontalScrollbarHeight = canScrollHorizontally ? this.getHorizontalScrollbarHeight() : 0;
@@ -3005,7 +2925,6 @@ module.exports = class TextEditorComponent {
   }
 
   didDetach() {
-    this.cancelScrollHighlighting(true);
     if (this.attached) {
       this.scrollAnimator.cancel();
       this.highlightsComponent?.cancelFlashes();
@@ -3061,7 +2980,6 @@ module.exports = class TextEditorComponent {
   }
 
   didHide() {
-    this.cancelScrollHighlighting(true);
     if (this.visible) {
       this.visible = false;
       this.props.model.setVisible(false);
@@ -3197,7 +3115,6 @@ module.exports = class TextEditorComponent {
     if (scrollTopChanged) {
       // The user took over the viewport; stop pinning the inherited anchor.
       this.settlingScrollAnchor = null;
-      this.beginScrollHighlighting();
     }
 
     if (scrollLeftChanged || scrollTopChanged) {
@@ -3280,45 +3197,14 @@ module.exports = class TextEditorComponent {
     }
   }
 
-  didDragScrollbar({ orientation, dragging }) {
+  didDragScrollbar({ dragging }) {
     if (!dragging) return;
     this.scrollAnimator.cancel();
-    this.scrollbarTakeover.add(orientation);
     this.settlingScrollAnchor = null;
   }
 
-  didScrollScrollbar({ orientation, position, jump = false }) {
-    // Takeover is explicit: async syntax publication may accept this request
-    // before setScrollTop/Left runs, so their cancellation guard is too late.
+  didScrollScrollbar({ orientation, position }) {
     this.scrollAnimator.cancel();
-    const takeover = this.scrollbarTakeover.delete(orientation);
-    const replace = jump || takeover;
-    if (
-      orientation === "vertical" &&
-      this.scrollPresentation &&
-      position !== this.getRequestedScrollTop()
-    )
-      this.settlingScrollAnchor = null;
-    const presentation =
-      orientation === "vertical" ? this.scrollPresentation : this.horizontalScrollPresentation;
-    if (
-      replace &&
-      (orientation === "vertical" ||
-        this.renderedScreenLines?.some((line) => line.startScreenColumn != null)) &&
-      presentation?.jump(position)
-    ) {
-      this.syncScrollbars();
-      return;
-    }
-    if (!replace && orientation === "vertical" && this.scrollPresentation?.request(position)) {
-      return;
-    }
-    if (
-      !replace &&
-      orientation === "horizontal" &&
-      this.requestHorizontalScrollPresentation(position)
-    )
-      return;
     let scrollPositionChanged = false;
     if (orientation === "vertical") {
       scrollPositionChanged = this.setScrollTop(position);
@@ -3329,22 +3215,7 @@ module.exports = class TextEditorComponent {
     } else if (orientation === "horizontal") {
       scrollPositionChanged = this.setScrollLeft(position);
     }
-    if (scrollPositionChanged) {
-      // Begin asynchronous preparation from the input event, before the next
-      // frame builds its lines. Cached destinations paint in this input
-      // event; missing colors use the bounded asynchronous preparation path.
-      if (this.props.model.getBuffer().getLanguageMode().asynchronousSyntax) {
-        this.beginScrollHighlighting();
-        const ready = this.props.model.displayLayer.prepareHighlightingForScreenRows(
-          this.getRenderedStartRow(),
-          this.getRenderedEndRow(),
-          this.props.model.displayLayer,
-          this.highlightingOptions(),
-        );
-        if (ready) this.updateSync();
-        else this.scheduleUpdate();
-      } else this.updateSync();
-    }
+    if (scrollPositionChanged) this.updateSync();
   }
 
   didUpdateStyles() {
@@ -3891,7 +3762,6 @@ module.exports = class TextEditorComponent {
           ? ceilToPhysicalPixelBoundary(scaledDelta, this.window.devicePixelRatio)
           : floorToPhysicalPixelBoundary(scaledDelta, this.window.devicePixelRatio);
       scrolled = this.setScrollTop(this.getScrollTop() + scaledDelta) || scrolled;
-      if (scrolled) this.beginScrollHighlighting();
     }
 
     if (!verticalOnly && xDelta != null) {
@@ -4098,13 +3968,6 @@ module.exports = class TextEditorComponent {
   }
 
   setAutoscrollTop(top) {
-    // Layout already owns this update. Ready destinations can be applied in
-    // place; cold ones prepare without recursively rendering inside the pass.
-    if (
-      !this.scrollPresentation?.committing &&
-      this.scrollPresentation?.request(top, { defer: true, inlineReady: true })
-    )
-      return false;
     return this.setScrollTop(top);
   }
 
@@ -4965,8 +4828,8 @@ module.exports = class TextEditorComponent {
   }
 
   refreshMountedHighlighting(changes) {
-    // A newer scroll destination may still be waiting. Colors arriving for
-    // the text actually on screen must not wait behind that destination.
+    // Scrolling can expose rows before their colors arrive. Repaint their
+    // scopes without changing the current viewport or its decorations.
     if (!this.attached || !this.visible || !this.hasInitialMeasurements) return;
     for (const tile of this.lineTileComponentsById.values()) {
       const { tileStartRow, tileEndRow } = tile.props;
@@ -4986,19 +4849,13 @@ module.exports = class TextEditorComponent {
 
   didChangeFoldability(rows) {
     // Fold controls are gutter state, not a syntax repaint. Keep cached screen
-    // lines and text DOM intact; a pending scroll still waits for its colors.
+    // lines and text DOM intact.
     if (this.lineNumbersToRender.bufferRows.some((row) => rows.has(row))) this.scheduleUpdate();
   }
 
   didChangeDisplayLayer(changes) {
     if (changes.some((change) => change.origin !== "highlight")) this.rowGeometryVersion++;
-    this.scrollPresentation?.update();
-    this.horizontalScrollPresentation?.update();
     if (changes.length && changes.every((change) => change.origin === "highlight")) {
-      if (this.scrollHighlightingFrame && !this.waitForScrollHighlighting()) {
-        this.updateSync();
-        return;
-      }
       if (this.props.model.getBuffer().getLanguageMode().asynchronousSyntax)
         this.refreshMountedHighlighting(changes);
       // Prepared colors do not change row geometry. Offscreen prefetch only
@@ -5015,14 +4872,6 @@ module.exports = class TextEditorComponent {
         this.scheduleUpdate();
       }
       return;
-    }
-    if (this.scrollHighlightingRequested) {
-      const buffer = this.props.model.getBuffer();
-      if (
-        buffer.getTextRevision() !== this.scrollHighlightingRevision ||
-        buffer.getLanguageMode() !== this.scrollHighlightingMode
-      )
-        this.cancelScrollHighlighting();
     }
     // An edit means the settling window is over (and the anchor's buffer
     // position may no longer point at the same content); resume normal
@@ -5463,8 +5312,6 @@ module.exports = class TextEditorComponent {
   }
 
   destroyBlockDecorations() {
-    this.scrollPresentation?.cancel();
-    this.horizontalScrollPresentation?.cancel();
     const owner = this.blockDecorationOwner;
     if (!owner || owner.retired) return;
     owner.retired = true;
@@ -5813,53 +5660,8 @@ module.exports = class TextEditorComponent {
     return this.scrollTop;
   }
 
-  getRequestedScrollTop() {
-    return this.scrollPresentation?.requestedTop ?? this.getScrollTop();
-  }
-
-  getRequestedScrollLeft() {
-    return this.horizontalScrollPresentation?.requestedTop ?? this.getScrollLeft();
-  }
-
-  requestHorizontalScrollPresentation(left, options) {
-    // Ordinary lines already own colors for their whole width. Only virtual
-    // long-line windows expose previously unqueried text on horizontal input.
-    if (!this.renderedScreenLines?.some((line) => line.startScreenColumn != null)) return false;
-    return this.horizontalScrollPresentation?.request(left, options) ?? false;
-  }
-
-  commitHorizontalScrollPresentation(left) {
-    const previous = this.getScrollLeft();
-    this.preparedScrollDeferred = false;
-    this.setScrollLeft(left);
-    this.updateSync();
-    if (this.preparedScrollDeferred) {
-      this.setScrollLeft(previous);
-      return false;
-    }
-    return true;
-  }
-
-  requestScrollPresentation(top, options) {
-    return this.scrollPresentation?.request(top, options) ?? false;
-  }
-
-  commitScrollPresentation(top) {
-    const previous = this.getScrollTop();
-    this.preparedScrollDeferred = false;
-    this.setScrollTop(top);
-    this.beginScrollHighlighting();
-    this.updateSync();
-    if (this.preparedScrollDeferred) {
-      this.setScrollTop(previous);
-      return false;
-    }
-    return !this.scrollHighlightingFrame;
-  }
-
   setScrollTop(scrollTop) {
     if (Number.isNaN(scrollTop) || scrollTop == null) return false;
-    if (!this.scrollPresentation?.committing) this.scrollPresentation?.cancel();
 
     // The stored position is exact; only outputs quantize (the content
     // transform and the gutter each snap to the physical grid themselves).
@@ -5882,8 +5684,7 @@ module.exports = class TextEditorComponent {
       if (
         this.scrollAnimator &&
         this.scrollAnimator.isAnimating() &&
-        !this.scrollAnimator.applyingFrame &&
-        !this.scrollPresentation?.committing
+        !this.scrollAnimator.applyingFrame
       ) {
         this.scrollAnimator.cancel();
       }
@@ -5915,7 +5716,6 @@ module.exports = class TextEditorComponent {
 
   setScrollLeft(scrollLeft) {
     if (Number.isNaN(scrollLeft) || scrollLeft == null) return false;
-    if (!this.horizontalScrollPresentation?.committing) this.horizontalScrollPresentation?.cancel();
 
     // Exact for the same reason as setScrollTop; outputs quantize.
     scrollLeft = Math.max(0, Math.min(this.getMaxScrollLeft(), scrollLeft));
@@ -5955,7 +5755,6 @@ module.exports = class TextEditorComponent {
     if (this.hasInitialMeasurements) {
       const didScroll = this.setScrollTop(this.pixelPositionBeforeBlocksForRow(scrollTopRow));
       if (didScroll && scheduleUpdate) {
-        this.beginScrollHighlighting();
         this.scheduleUpdate();
       }
       return didScroll;
@@ -6045,14 +5844,6 @@ module.exports = class TextEditorComponent {
   }
 
   getNextUpdatePromise() {
-    if (
-      this.scrollPresentation?.requestedTop != null ||
-      this.horizontalScrollPresentation?.requestedTop != null
-    )
-      return Promise.all([
-        this.scrollPresentation?.whenSettled(),
-        this.horizontalScrollPresentation?.whenSettled(),
-      ]);
     if (!this.nextUpdatePromise) {
       this.nextUpdatePromise = new Promise((resolve) => {
         this.resolveNextUpdatePromise = () => {

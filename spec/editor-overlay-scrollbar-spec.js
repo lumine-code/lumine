@@ -177,8 +177,8 @@ describe("Editor overlay scrollbars", () => {
     ).and.callThrough();
     component.scrollAnimator.scrollBy({ x: 10, y: 10, duration: 120 });
     component.scrollAnimator.advance(1000 / 60);
-    expect(vertical.props.scrollTop).toBe(component.getRequestedScrollTop());
-    expect(horizontal.props.scrollLeft).toBe(component.getRequestedScrollLeft());
+    expect(vertical.props.scrollTop).toBe(component.getScrollTop());
+    expect(horizontal.props.scrollLeft).toBe(component.getScrollLeft());
     expect(verticalRect).not.toHaveBeenCalled();
     expect(horizontalRect).not.toHaveBeenCalled();
     expect(verticalOffset).not.toHaveBeenCalled();
