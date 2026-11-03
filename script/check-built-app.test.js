@@ -4,9 +4,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { createRequire } = require("node:module");
 const test = require("node:test");
 const asar = require("@electron/asar");
-const { getNodeModuleFileMatcher } = require("app-builder-lib/out/fileMatcher");
+const { FileMatcher, getNodeModuleFileMatcher } = require("app-builder-lib/out/fileMatcher");
 const { whatToBuild } = require("./electron-builder");
 const packageWindowsCrashHelper = require("./windows-wer");
 const {
@@ -21,6 +22,88 @@ function write(root, file, value) {
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   fs.writeFileSync(destination, typeof value === "object" ? JSON.stringify(value) : value);
 }
+
+const builderRequire = createRequire(require.resolve("app-builder-lib/package.json"));
+const universalRequire = createRequire(builderRequire.resolve("@electron/universal/package.json"));
+const squirrelRequire = createRequire(
+  builderRequire.resolve("electron-builder-squirrel-windows/package.json"),
+);
+const installerRequire = createRequire(squirrelRequire.resolve("electron-winstaller/package.json"));
+
+for (const [name, implementation] of [
+  ["application archive", asar],
+  ["builder archive", builderRequire("@electron/asar")],
+  ["universal archive", universalRequire("@electron/asar")],
+  ["Windows installer archive", installerRequire("@electron/asar")],
+]) {
+  test(`${name} preserves hidden contents and glob-based native unpacking`, async (t) => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-packaging-dependencies-"));
+    t.after(() => {
+      assert.equal(path.dirname(path.resolve(temp)), path.resolve(os.tmpdir()));
+      implementation.uncacheAll();
+      fs.rmSync(temp, { recursive: true, force: true });
+    });
+    const source = path.join(temp, "source");
+    write(source, "LICENSE", "project terms");
+    write(source, ".hidden", "hidden contents");
+    write(source, "native/addon.node", "native contents");
+    const archive = path.join(temp, "app.asar");
+    await implementation.createPackageWithOptions(source, archive, { unpack: "**/*.node" });
+    assert.equal(implementation.extractFile(archive, "LICENSE").toString(), "project terms");
+    assert.equal(implementation.extractFile(archive, ".hidden").toString(), "hidden contents");
+    assert.equal(implementation.statFile(archive, "native/addon.node").unpacked, true);
+    assert.equal(
+      fs.readFileSync(path.join(`${archive}.unpacked`, "native", "addon.node"), "utf8"),
+      "native contents",
+    );
+  });
+}
+
+test("universal packaging directory comparisons apply include and exclude filters", async (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-packaging-comparison-"));
+  t.after(() => {
+    assert.equal(path.dirname(path.resolve(temp)), path.resolve(os.tmpdir()));
+    fs.rmSync(temp, { recursive: true, force: true });
+  });
+  const left = path.join(temp, "left");
+  const right = path.join(temp, "right");
+  for (const directory of [left, right]) write(directory, "included.txt", "same contents");
+  write(left, "ignored.txt", "first ignored contents");
+  write(right, "ignored.txt", "second ignored contents");
+  write(left, "ignored.js", "only the left includes this JavaScript");
+  const options = {
+    compareContent: true,
+    includeFilter: "**/*.txt",
+    excludeFilter: "**/ignored*",
+  };
+  const compare = universalRequire("dir-compare").compare;
+  assert.equal((await compare(left, right, options)).same, true);
+  write(right, "included.txt", "different contents");
+  assert.equal((await compare(left, right, options)).same, false);
+});
+
+test("packaging file filters retain braces, exclusions and directory traversal", () => {
+  const directory = path.resolve("packaging-filter-fixture");
+  const filter = new FileMatcher(directory, directory, (value) => value, [
+    "src/**/*.{js,json}",
+    "!**/*.test.js",
+    "LICENSE",
+  ]).createFilter();
+  for (const [relative, isDirectory, expected] of [
+    ["src", true, true],
+    ["src/main.js", false, true],
+    ["src/config.json", false, true],
+    ["src/main.test.js", false, false],
+    ["src/main.js.map", false, false],
+    ["LICENSE", false, true],
+    ["docs/readme.md", false, false],
+  ]) {
+    assert.equal(
+      filter(path.join(directory, relative), { isDirectory: () => isDirectory }),
+      expected,
+    );
+  }
+});
 
 async function fixture(
   t,
