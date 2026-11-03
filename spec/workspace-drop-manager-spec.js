@@ -1,5 +1,6 @@
 const { copyableElement } = require("./helpers/pane-item-fixtures");
 const path = require("path");
+const { webUtils } = require("electron");
 const { Disposable } = require("@lumine-code/event-kit");
 const { MIME_PREFIX } = require("../src/workspace-drop-manager");
 const WorkspaceDropManager = require("../src/workspace-drop-manager");
@@ -59,13 +60,15 @@ function dragEvent(
 }
 
 describe("WorkspaceDropManager", () => {
-  let manager, pane, paneElement, itemViews, disposables;
+  let manager, pane, paneElement, itemViews, disposables, nativePaths;
 
   beforeEach(() => {
     manager = lumine.workspaceDrops;
     pane = lumine.workspace.getCenter().getActivePane();
     paneElement = pane.getElement();
     disposables = [];
+    nativePaths = new WeakMap();
+    spyOn(webUtils, "getPathForFile").and.callFake((file) => nativePaths.get(file) ?? "");
     jasmine.attachToDOM(lumine.workspace.getElement());
     itemViews = paneElement.querySelector(":scope > .item-views");
     spyOn(itemViews, "getBoundingClientRect").and.returnValue({
@@ -80,6 +83,13 @@ describe("WorkspaceDropManager", () => {
     for (const disposable of disposables) disposable.dispose();
     manager.clearActiveClaim();
   });
+
+  function nativeFile(filePath) {
+    // Electron exposes dropped paths through webUtils rather than File.path.
+    const file = {};
+    nativePaths.set(file, filePath);
+    return file;
+  }
 
   it("writes one versioned offer that remains inspectable in protected mode", () => {
     const dataTransfer = new TestDataTransfer();
@@ -364,7 +374,7 @@ describe("WorkspaceDropManager", () => {
     const filePath = path.join(__dirname, "fixtures", "sample.js");
     const directoryPath = path.join(__dirname, "fixtures");
     const dataTransfer = new TestDataTransfer();
-    dataTransfer.files = [{ path: filePath }, { path: directoryPath }];
+    dataTransfer.files = [nativeFile(filePath), nativeFile(directoryPath)];
     dataTransfer.items = [
       { kind: "file", getAsEntry: () => ({ isFile: true }) },
       { kind: "file", getAsEntry: () => ({ isDirectory: true }) },
@@ -413,7 +423,7 @@ describe("WorkspaceDropManager", () => {
     expect(manager.overlay.matches(":popover-open")).toBe(true);
 
     const dataTransfer = new TestDataTransfer();
-    dataTransfer.files = [{ path: directoryPath }];
+    dataTransfer.files = [nativeFile(directoryPath)];
     dataTransfer.items = [{ kind: "file", getAsEntry: () => ({ isDirectory: true }) }];
     let openedDirectories;
     const directoriesOpened = new Promise((resolve) => (openedDirectories = resolve));
@@ -445,7 +455,7 @@ describe("WorkspaceDropManager", () => {
     expect(manager.overlay.matches(":popover-open")).toBe(false);
 
     dataTransfer.mode = "readonly";
-    dataTransfer.files = [{ path: directoryPath }];
+    dataTransfer.files = [nativeFile(directoryPath)];
     const dropping = manager.handleDrop(
       dragEvent("drop", itemViews, dataTransfer, { x: 110, y: 45, dispatch: false }),
     );
@@ -482,7 +492,7 @@ describe("WorkspaceDropManager", () => {
     expect(manager.overlay.classList.contains("visible")).toBe(false);
     expect(manager.overlay.matches(":popover-open")).toBe(false);
     dataTransfer.mode = "readonly";
-    dataTransfer.files = [{ path: filePath }];
+    dataTransfer.files = [nativeFile(filePath)];
     const dropping = manager.handleDrop(
       dragEvent("drop", itemViews, dataTransfer, { x: 110, y: 45, dispatch: false }),
     );
@@ -568,7 +578,7 @@ describe("WorkspaceDropManager", () => {
     pane.addItem(copyableElement("div"));
     const filePath = path.join(__dirname, "fixtures", "sample.js");
     const dataTransfer = new TestDataTransfer();
-    dataTransfer.files = [{ path: filePath }];
+    dataTransfer.files = [nativeFile(filePath)];
     dataTransfer.items = [{ kind: "file", getAsEntry: () => ({ isFile: true }) }];
     spyOn(lumine.workspace, "open").and.resolveTo(null);
     spyOn(console, "error");

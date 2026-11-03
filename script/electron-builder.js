@@ -241,12 +241,13 @@ let options = {
     afterInstall: "script/post-install.sh",
     afterRemove: "script/post-uninstall.sh",
     packageName: baseName,
+    fpm: ["--verbose"],
   },
   rpm: {
     afterInstall: "script/post-install.sh",
     afterRemove: "script/post-uninstall-rpm.sh",
     compression: "xz",
-    fpm: ["--rpm-digest", "sha256", "--rpm-rpmbuild-define=_build_id_links none"],
+    fpm: ["--verbose", "--rpm-digest", "sha256", "--rpm-rpmbuild-define=_build_id_links none"],
   },
 
   linux: {

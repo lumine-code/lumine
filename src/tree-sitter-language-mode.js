@@ -396,6 +396,7 @@ class TreeSitterLanguageMode {
   }
 
   destroy() {
+    if (this.destroyed) return;
     // Queued and running initial parses observe destruction before publishing.
     this.destroyed = true;
     this.invalidateSyntaxConfiguration();
@@ -417,6 +418,7 @@ class TreeSitterLanguageMode {
     this.rootLanguageLayer = null;
     this.pendingDirtyHighlightRanges.clear();
     this.subscriptions?.dispose();
+    this.emitter.dispose();
 
     // close() cancels active work; the binding keeps its resources alive until
     // completion. The active pool entry is removed by the parse finalizer.
