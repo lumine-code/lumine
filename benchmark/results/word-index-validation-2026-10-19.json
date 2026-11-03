@@ -11,13 +11,13 @@
   "consumers": {
     "startedAt": "2026-10-19T02:50:22.925Z",
     "coreHash": "314255f6d7e35977a3780ad80ca5781514f96d3ef4e593806723e18862037a3c",
-    "source": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\index",
+    "source": "<workspace>\\.dev\\word-index-20261019\\index",
     "packages": [
       {
         "name": "autocomplete",
         "status": "passed",
         "startedAt": "2026-10-19T02:50:23.047Z",
-        "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\autocomplete-retry-1792378222925.log",
+        "log": "<workspace>\\.dev\\word-index-20261019\\consumers\\autocomplete-retry-1792378222925.log",
         "code": 0,
         "specs": 455,
         "failures": 0,
@@ -29,7 +29,7 @@
         "name": "autocomplete-lumine",
         "status": "passed",
         "startedAt": "2026-10-19T02:52:03.522Z",
-        "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\autocomplete-lumine-retry-1792378222925.log",
+        "log": "<workspace>\\.dev\\word-index-20261019\\consumers\\autocomplete-lumine-retry-1792378222925.log",
         "code": 0,
         "specs": 29,
         "failures": 0,
@@ -41,7 +41,7 @@
         "name": "ide",
         "status": "passed",
         "startedAt": "2026-10-19T02:52:07.029Z",
-        "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\ide-retry-1792378222925.log",
+        "log": "<workspace>\\.dev\\word-index-20261019\\consumers\\ide-retry-1792378222925.log",
         "code": 0,
         "specs": 1222,
         "failures": 0,
@@ -53,7 +53,7 @@
         "name": "snippets",
         "status": "passed",
         "startedAt": "2026-10-19T02:53:23.858Z",
-        "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\snippets-retry-1792378222925.log",
+        "log": "<workspace>\\.dev\\word-index-20261019\\consumers\\snippets-retry-1792378222925.log",
         "code": 0,
         "specs": 215,
         "failures": 0,
@@ -65,7 +65,7 @@
         "name": "spell-check",
         "status": "passed",
         "startedAt": "2026-10-19T02:53:59.721Z",
-        "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\spell-check-retry-1792378222925.log",
+        "log": "<workspace>\\.dev\\word-index-20261019\\consumers\\spell-check-retry-1792378222925.log",
         "code": 0,
         "specs": 151,
         "failures": 0,
@@ -83,7 +83,7 @@
       "name": "aura-theme",
       "status": "failed",
       "startedAt": "2026-10-19T02:49:48.348Z",
-      "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\aura-theme.log",
+      "log": "<workspace>\\.dev\\word-index-20261019\\consumers\\aura-theme.log",
       "code": 1,
       "specs": 13,
       "failures": 4,
@@ -100,7 +100,7 @@
       "name": "aura-theme",
       "status": "failed",
       "startedAt": "2026-10-19T02:52:36.497Z",
-      "log": "C:\\Data\\Develop\\Lumine\\.dev\\word-index-20261019\\consumers\\aura-theme-retry-1792378356363.log",
+      "log": "<workspace>\\.dev\\word-index-20261019\\consumers\\aura-theme-retry-1792378356363.log",
       "code": 1,
       "specs": 13,
       "failures": 4,
@@ -114,5 +114,11 @@
       ]
     }
   },
-  "passingTests": 2332
+  "passingTests": 2332,
+  "redaction": {
+    "appliedAt": "2026-11-03",
+    "kind": "workspace-prefix",
+    "replacement": "<workspace>",
+    "note": "Absolute workspace prefixes were replaced; measurements, results and source revisions are unchanged."
+  }
 }

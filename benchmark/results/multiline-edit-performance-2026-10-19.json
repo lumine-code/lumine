@@ -9577,7 +9577,7 @@
         "code": 0,
         "specs": 110,
         "failures": 0,
-        "log": "C:\\Data\\Develop\\Lumine\\.dev\\multiline-20261019\\validation-retry\\run-1.log",
+        "log": "<workspace>\\.dev\\multiline-20261019\\validation-retry\\run-1.log",
         "pending": 0,
         "failureNames": [],
         "cleanupRepair": true
@@ -10038,14 +10038,14 @@
           "code": 0,
           "specs": 110,
           "failures": 0,
-          "log": "C:\\Data\\Develop\\Lumine\\.dev\\multiline-20261019\\validation-retry\\run-0.log"
+          "log": "<workspace>\\.dev\\multiline-20261019\\validation-retry\\run-0.log"
         },
         {
           "name": "code-format",
           "code": 0,
           "specs": 110,
           "failures": 0,
-          "log": "C:\\Data\\Develop\\Lumine\\.dev\\multiline-20261019\\validation-retry\\run-1.log"
+          "log": "<workspace>\\.dev\\multiline-20261019\\validation-retry\\run-1.log"
         }
       ],
       "finishedAt": "2026-10-19T13:58:08.030Z"
@@ -13094,5 +13094,11 @@
         }
       }
     ]
+  },
+  "redaction": {
+    "appliedAt": "2026-11-03",
+    "kind": "workspace-prefix",
+    "replacement": "<workspace>",
+    "note": "Absolute workspace prefixes were replaced; measurements, results and source revisions are unchanged."
   }
 }

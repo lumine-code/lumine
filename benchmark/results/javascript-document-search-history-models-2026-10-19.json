@@ -96,9 +96,9 @@
         "platform": "win32",
         "arch": "x64",
         "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
-        "source": "C:\\Data\\Develop\\Lumine\\.dev\\js-fleet-optimization\\native-reference\\lumine",
+        "source": "<workspace>\\.dev\\js-fleet-optimization\\native-reference\\lumine",
         "documentBackend": "native",
-        "binding": "C:\\Data\\Develop\\Lumine\\lumine\\node_modules\\@lumine-code\\superstring\\build\\Release\\superstring.node",
+        "binding": "<workspace>\\lumine\\node_modules\\@lumine-code\\superstring\\build\\Release\\superstring.node",
         "bindingSha256": "a38f64f60f846bb1acb1cde4f88372b3ec01d28da180308549611a4551a592ea",
         "gcBetweenSamples": true,
         "gcAfterSetup": false
@@ -287,7 +287,7 @@
         "platform": "win32",
         "arch": "x64",
         "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
-        "source": "C:\\Data\\Develop\\Lumine\\.dev\\js-fleet-optimization\\final-frozen-performance\\javascript",
+        "source": "<workspace>\\.dev\\js-fleet-optimization\\final-frozen-performance\\javascript",
         "documentBackend": "javascript",
         "gcBetweenSamples": true,
         "gcAfterSetup": false
@@ -484,7 +484,7 @@
         "platform": "win32",
         "arch": "x64",
         "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
-        "source": "C:\\Data\\Develop\\Lumine\\.dev\\js-fleet-optimization\\core-search-history",
+        "source": "<workspace>\\.dev\\js-fleet-optimization\\core-search-history",
         "documentBackend": "javascript",
         "gcBetweenSamples": true,
         "gcAfterSetup": false
@@ -682,7 +682,7 @@
         "platform": "win32",
         "arch": "x64",
         "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
-        "source": "C:\\Data\\Develop\\Lumine\\.dev\\js-fleet-optimization\\core-search-history",
+        "source": "<workspace>\\.dev\\js-fleet-optimization\\core-search-history",
         "documentBackend": "javascript",
         "gcBetweenSamples": true,
         "gcAfterSetup": false
@@ -878,7 +878,7 @@
         "platform": "win32",
         "arch": "x64",
         "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
-        "source": "C:\\Data\\Develop\\Lumine\\.dev\\js-fleet-optimization\\final-frozen-performance\\javascript",
+        "source": "<workspace>\\.dev\\js-fleet-optimization\\final-frozen-performance\\javascript",
         "documentBackend": "javascript",
         "gcBetweenSamples": true,
         "gcAfterSetup": false
@@ -1076,9 +1076,9 @@
         "platform": "win32",
         "arch": "x64",
         "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
-        "source": "C:\\Data\\Develop\\Lumine\\.dev\\js-fleet-optimization\\native-reference\\lumine",
+        "source": "<workspace>\\.dev\\js-fleet-optimization\\native-reference\\lumine",
         "documentBackend": "native",
-        "binding": "C:\\Data\\Develop\\Lumine\\lumine\\node_modules\\@lumine-code\\superstring\\build\\Release\\superstring.node",
+        "binding": "<workspace>\\lumine\\node_modules\\@lumine-code\\superstring\\build\\Release\\superstring.node",
         "bindingSha256": "a38f64f60f846bb1acb1cde4f88372b3ec01d28da180308549611a4551a592ea",
         "gcBetweenSamples": true,
         "gcAfterSetup": false
@@ -1262,5 +1262,11 @@
       ],
       "checksum": 96720312
     }
-  ]
+  ],
+  "redaction": {
+    "appliedAt": "2026-11-03",
+    "kind": "workspace-prefix",
+    "replacement": "<workspace>",
+    "note": "Absolute workspace prefixes were replaced; measurements, results and source revisions are unchanged."
+  }
 }

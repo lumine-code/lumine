@@ -6006,7 +6006,7 @@
       },
       "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
       "parallelism": 20,
-      "modulePath": "C:\\Data\\Develop\\Lumine\\.dev\\fuzzy-js-20261020\\native.node",
+      "modulePath": "<workspace>\\.dev\\fuzzy-js-20261020\\native.node",
       "implementationHash": "300291a8b211be0fcade42a4ff849a803e381be4f8cd630536ca4278f6320ba6",
       "implementationFiles": [
         ["native.node", "e3aafec0313fed5135a18ee48742b87a813ce905b81fecb58e359af810476728"]
@@ -6911,7 +6911,7 @@
       },
       "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
       "parallelism": 20,
-      "modulePath": "C:\\Data\\Develop\\Lumine\\fast-fuzzy",
+      "modulePath": "<workspace>\\fast-fuzzy",
       "implementationHash": "d766159f87357ff704b1527be93346ef32edc258a875ff99e4acfed38cb44d78",
       "implementationFiles": [
         ["command-t.js", "5ba815f5010ddc8a6fa2003ddad7a48cc06ed75ca3e3a997f95ccf2b2b4aba2c"],
@@ -7826,7 +7826,7 @@
       },
       "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
       "parallelism": 20,
-      "modulePath": "C:\\Data\\Develop\\Lumine\\fast-fuzzy",
+      "modulePath": "<workspace>\\fast-fuzzy",
       "implementationHash": "d766159f87357ff704b1527be93346ef32edc258a875ff99e4acfed38cb44d78",
       "implementationFiles": [
         ["command-t.js", "5ba815f5010ddc8a6fa2003ddad7a48cc06ed75ca3e3a997f95ccf2b2b4aba2c"],
@@ -8743,7 +8743,7 @@
       },
       "cpu": "Intel(R) Core(TM) i9-10900K CPU @ 3.70GHz",
       "parallelism": 20,
-      "modulePath": "C:\\Data\\Develop\\Lumine\\.dev\\fuzzy-js-20261020\\native.node",
+      "modulePath": "<workspace>\\.dev\\fuzzy-js-20261020\\native.node",
       "implementationHash": "300291a8b211be0fcade42a4ff849a803e381be4f8cd630536ca4278f6320ba6",
       "implementationFiles": [
         ["native.node", "e3aafec0313fed5135a18ee48742b87a813ce905b81fecb58e359af810476728"]
@@ -9835,5 +9835,11 @@
     }
   ],
   "portCommit": "6b2ab78ed81aabb09cc03e3930c59095cc0cf928",
-  "editorMatchingSourceAtStart": "5460f4e1997d7885477b627bbfadde6e83ae3aac"
+  "editorMatchingSourceAtStart": "5460f4e1997d7885477b627bbfadde6e83ae3aac",
+  "redaction": {
+    "appliedAt": "2026-11-03",
+    "kind": "workspace-prefix",
+    "replacement": "<workspace>",
+    "note": "Absolute workspace prefixes were replaced; measurements, results and source revisions are unchanged."
+  }
 }
