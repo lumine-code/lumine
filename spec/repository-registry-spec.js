@@ -3509,15 +3509,21 @@ describe("RepositoryRegistry", () => {
     for (let index = 0; index < 4; index++) {
       repositories.push(new FakeRepository(path.join(rootPath, `repo-${index}`)));
     }
+    let startedProviders = 0;
+    let releaseProviders;
+    const allProvidersStarted = new Promise((resolve) => {
+      releaseProviders = resolve;
+    });
     const abandoned = spyOn(project, "repositoryForPathFromProviders").and.callFake(
       async (filePath) => {
         if (filePath === rootPath) return null;
         const repository = repositories.find(
           (candidate) => candidate.getWorkingDirectory() === filePath,
         );
-        for (let tick = 0; tick < 5; tick++) {
-          await new Promise((resolve) => setImmediate(resolve));
-        }
+        // A sibling can still be reading its directory after others reach the
+        // provider. Invalidate only after all four discoveries are pending.
+        if (++startedProviders === repositories.length) releaseProviders();
+        await allProvidersStarted;
         if (repository === repositories[0]) registry.setProjectRoots([], { scan: false });
         return repository;
       },
