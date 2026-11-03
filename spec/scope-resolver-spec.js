@@ -240,6 +240,171 @@ describe("ScopeResolver", () => {
     expect([...scopeResolver].map(([point]) => point)).toEqual([Point(0, 3)]);
   });
 
+  it("nests shared capture boundaries by range rather than capture order", async () => {
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer, grammars: lumine.grammars });
+    buffer.setLanguageMode(languageMode);
+    buffer.setText("abcdef");
+    await languageMode.ready;
+
+    const capture = (name, startIndex, endIndex) => ({
+      name,
+      node: {
+        startIndex,
+        endIndex,
+        startPosition: Point(0, startIndex),
+        endPosition: Point(0, endIndex),
+      },
+    });
+    const captures = [capture("outer", 0, 6), capture("opening", 0, 1), capture("closing", 5, 6)];
+    for (const ordered of [captures, [...captures].reverse()]) {
+      const resolver = new ScopeResolver(languageMode.rootLanguageLayer, (name) => name);
+      for (const item of ordered) resolver.store(item);
+      const boundaries = [...resolver].map(([point, data]) => [
+        point.column,
+        data.open,
+        data.close,
+      ]);
+      expect(boundaries).toEqual([
+        [0, ["outer", "opening"], []],
+        [1, [], ["opening"]],
+        [5, ["closing"], []],
+        [6, [], ["closing", "outer"]],
+      ]);
+      resolver.destroy();
+    }
+  });
+
+  it("preserves identical-range precedence and keeps language scopes outside captures", async () => {
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer, grammars: lumine.grammars });
+    buffer.setLanguageMode(languageMode);
+    buffer.setText("abcdef");
+    await languageMode.ready;
+    const resolver = new ScopeResolver(languageMode.rootLanguageLayer, (name) => name);
+    const node = (endIndex) => ({
+      startIndex: 0,
+      endIndex,
+      startPosition: Point(0, 0),
+      endPosition: Point(0, endIndex),
+    });
+    resolver.store({ name: "opening", node: node(1) });
+    resolver.store({ name: "first", node: node(6) });
+    resolver.setBoundary(Point(0, 0), "direct", "open");
+    resolver.store({ name: "second", node: node(6) });
+    resolver.store({ name: "second", node: node(6) });
+    resolver.setBoundary(Point(0, 6), "direct", "close");
+    resolver.setBoundary(Point(0, 0), "inner-language", "open", { root: true });
+    resolver.setBoundary(Point(0, 0), "outer-language", "open", { root: true });
+    resolver.setBoundary(Point(0, 6), "inner-language", "close", { root: true });
+    resolver.setBoundary(Point(0, 6), "outer-language", "close", { root: true });
+    const boundaries = [...resolver];
+    expect(boundaries[0][1].open).toEqual([
+      "outer-language",
+      "inner-language",
+      "direct",
+      "first",
+      "second",
+      "second",
+      "opening",
+    ]);
+    expect(boundaries.at(-1)[1].close).toEqual([
+      "second",
+      "second",
+      "first",
+      "direct",
+      "inner-language",
+      "outer-language",
+    ]);
+    resolver.destroy();
+  });
+
+  it("orders boundaries using the adjusted and clipped capture ranges", async () => {
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer, grammars: lumine.grammars });
+    buffer.setLanguageMode(languageMode);
+    buffer.setText("abcdef\r\n");
+    await languageMode.ready;
+    const resolver = new ScopeResolver(languageMode.rootLanguageLayer, (name) => name);
+    const node = (endIndex) => ({
+      startIndex: 0,
+      endIndex,
+      startPosition: Point(0, 0),
+      endPosition: Point(0, endIndex),
+    });
+    resolver.store({ name: "opening", node: node(6), setProperties: { "adjust.offsetEnd": -5 } });
+    resolver.store({ name: "inner", node: node(6), setProperties: { "adjust.offsetStart": 1 } });
+    resolver.store({ name: "outer", node: node(7) });
+    expect([...resolver].map(([point, data]) => [point.column, data.open, data.close])).toEqual([
+      [0, ["outer", "opening"], []],
+      [1, ["inner"], ["opening"]],
+      [6, [], ["inner", "outer"]],
+    ]);
+    resolver.destroy();
+  });
+
+  it("renders nested JavaScript delimiters with the same scope order as point queries", async () => {
+    await grammar.setQueryForTest(
+      "highlightsQuery",
+      `
+        ["{" "}"] @punctuation.bracket.js
+        ((call_expression
+          function: (identifier) @_IGNORE_.name
+          arguments: (arguments (_) @meta.object.js))
+          (#match? @_IGNORE_.name "^wrapper$"))
+      `,
+    );
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer, grammars: lumine.grammars });
+    buffer.setLanguageMode(languageMode);
+    const text = "wrapper({value: 1});";
+    buffer.setText(text);
+    await languageMode.ready;
+
+    let column = 0;
+    for (const token of editor.tokensForScreenRow(0)) {
+      for (let offset = 0; offset < token.text.length; offset++) {
+        if (!"{}".includes(token.text[offset])) continue;
+        const point = Point(0, column + offset);
+        const scopes = languageMode.scopeDescriptorForPosition(point).getScopesArray();
+        expect(token.scopes)
+          .withContext("at " + point.column)
+          .toEqual(
+            scopes.map((scope) =>
+              scope
+                .split(".")
+                .map((part) => "syntax--" + part)
+                .join(" "),
+            ),
+          );
+        expect(token.scopes.at(-1)).toBe("syntax--punctuation syntax--bracket syntax--js");
+      }
+      column += token.text.length;
+    }
+  });
+
+  it("retains crossing adjusted scopes when an earlier scope closes", async () => {
+    await grammar.setQueryForTest(
+      "highlightsQuery",
+      `
+        ((identifier) @meta.left.js (#set! adjust.offsetEnd -2))
+        ((identifier) @meta.right.js (#set! adjust.offsetStart 2))
+      `,
+    );
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer, grammars: lumine.grammars });
+    buffer.setLanguageMode(languageMode);
+    buffer.setText("abcdef");
+    await languageMode.ready;
+    expect(editor.tokensForScreenRow(0).map(({ text, scopes }) => [text, scopes])).toEqual([
+      ["ab", ["syntax--source syntax--js", "syntax--meta syntax--left syntax--js"]],
+      [
+        "cd",
+        [
+          "syntax--source syntax--js",
+          "syntax--meta syntax--left syntax--js",
+          "syntax--meta syntax--right syntax--js",
+        ],
+      ],
+      ["ef", ["syntax--source syntax--js", "syntax--meta syntax--right syntax--js"]],
+    ]);
+  });
+
   it("does not apply any scopes when @_IGNORE_ is used", async () => {
     await grammar.setQueryForTest(
       "highlightsQuery",

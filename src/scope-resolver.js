@@ -179,6 +179,7 @@ class ScopeResolver {
     this.grammar = languageLayer.grammar;
     this.idForScope = idForScope ?? ((x) => x);
     this.boundaries = new Map();
+    this.boundarySequence = 0;
     this.rangeData = new Map();
     this.patternCache = new Map();
     this.fieldIndexCache = new Map();
@@ -589,8 +590,8 @@ class ScopeResolver {
 
     if (comparePoints(boundaryStart, boundaryEnd) < 0) {
       let id = this.idForScope(name);
-      this.setClippedBoundary(boundaryStart, id, "open");
-      this.setClippedBoundary(boundaryEnd, id, "close");
+      this.setClippedBoundary(boundaryStart, id, "open", false, boundaryEnd);
+      this.setClippedBoundary(boundaryEnd, id, "close", false, boundaryStart);
     }
 
     return range;
@@ -602,7 +603,7 @@ class ScopeResolver {
     this.setClippedBoundary(this.buffer.clipPosition(point), id, which, root);
   }
 
-  setClippedBoundary(point, id, which, root = false) {
+  setClippedBoundary(point, id, which, root = false, opposite = null) {
     const key = `${point.row},${point.column}`;
     let bundle = this.boundaries.get(key);
     if (!bundle) {
@@ -613,34 +614,40 @@ class ScopeResolver {
       };
       this.boundaries.set(key, bundle);
     }
-    let idBundle = bundle[which];
+    bundle[which].push({ id, root, opposite, sequence: this.boundarySequence++ });
+  }
 
-    // In general, we want to close scopes in the reverse order of when they
-    // were opened, and captures that match earlier get to open first. But
-    // `root` is a way of opting out of this behavior and asserting that a
-    // scope added later is more important. We use this to add the language's
-    // root scope if needed.
-    if (which === "open") {
-      // If an earlier token has already opened at this point, we want to open
-      // after it.
-      if (root) {
-        idBundle.unshift(id);
-      } else {
-        idBundle.push(id);
-      }
-    } else {
-      // If an earlier token has already closed at this point, we want to close
-      // before it.
-      if (root) {
-        idBundle.push(id);
-      } else {
-        idBundle.unshift(id);
-      }
-    }
+  scopeIdsForBoundary(entries, which) {
+    if (entries.length === 1) return [entries[0].id];
+    const opening = which === "open";
+    return entries
+      .sort((a, b) => {
+        // Language scopes must remain outside the query's scopes. Preserve
+        // the existing prepend/append convention for multiple root scopes.
+        if (a.root !== b.root) return a.root === opening ? -1 : 1;
+        if (!a.root && Boolean(a.opposite) !== Boolean(b.opposite)) {
+          // A directly stored boundary has no opposite endpoint. Treat it
+          // as enclosing the ranged captures, rather than mixing capture
+          // order and geometry into a non-transitive comparison.
+          return Boolean(a.opposite) === opening ? 1 : -1;
+        }
+        if (!a.root && a.opposite && b.opposite) {
+          // At a shared start, open the outer range first; at a shared end,
+          // close the inner range first. Native capture order can differ
+          // between a paint window and a point query, especially when a
+          // predicate delays a capture. It must not reverse their nesting.
+          const comparison = comparePoints(b.opposite, a.opposite);
+          if (comparison) return comparison;
+        }
+        // Identical ranges retain capture precedence, closing in reverse.
+        return opening !== a.root ? a.sequence - b.sequence : b.sequence - a.sequence;
+      })
+      .map((entry) => entry.id);
   }
 
   reset() {
     this.boundaries.clear();
+    this.boundarySequence = 0;
     this.rangeData.clear();
     this.fieldIndexCache.clear();
   }
@@ -656,7 +663,14 @@ class ScopeResolver {
     bundles.sort((a, b) => a.point.compare(b.point));
 
     for (let bundle of bundles) {
-      yield [bundle.point, bundle];
+      yield [
+        bundle.point,
+        {
+          point: bundle.point,
+          open: this.scopeIdsForBoundary(bundle.open, "open"),
+          close: this.scopeIdsForBoundary(bundle.close, "close"),
+        },
+      ];
     }
   }
 }
