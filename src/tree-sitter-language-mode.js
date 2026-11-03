@@ -5772,6 +5772,7 @@ class LanguageLayer {
     const source = this.languageMode.document.capture().text;
     let chunkStart = start;
     let chunkStartIndex = startIndex;
+    let windowCodeUnits = chunkCodeUnits;
     while (chunkStartIndex < endIndex) {
       const nextRow = Math.min(end.row, chunkStart.row + chunkRows);
       const rowEnd = nextRow === end.row ? end : new Point(nextRow, 0);
@@ -5780,23 +5781,31 @@ class LanguageLayer {
         source,
         chunkStartIndex,
         rowEndIndex > chunkStartIndex ? Math.min(endIndex, rowEndIndex) : endIndex,
-        chunkCodeUnits,
+        windowCodeUnits,
       ).endIndex;
       const chunkEnd =
         chunkEndIndex === endIndex ? end : this.buffer.positionForCharacterIndex(chunkEndIndex);
-      const result = await this._runInjectionQuery(
-        () =>
-          this._queryStaticInjectionCandidates(
-            tree,
-            query,
-            chunkStart,
-            chunkEnd,
-            injectionPointVersion,
-            state,
-          ),
-        tree,
-        injectionPointVersion,
-      );
+      let result;
+      try {
+        result = await this._runInjectionQuery(
+          () =>
+            this._queryStaticInjectionCandidates(
+              tree,
+              query,
+              chunkStart,
+              chunkEnd,
+              injectionPointVersion,
+              state,
+            ),
+          tree,
+          injectionPointVersion,
+        );
+      } catch (error) {
+        windowCodeUnits = this._smallerInjectionQueryWindow(error, chunkStartIndex, chunkEndIndex);
+        await this.languageMode._yieldForInjectionCandidateScan();
+        if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) return null;
+        continue;
+      }
       if (result === null) return null;
       ({ records, state } = result);
       if (chunkEndIndex >= endIndex) break;
@@ -5853,6 +5862,19 @@ class LanguageLayer {
       }
     };
     return run();
+  }
+
+  _smallerInjectionQueryWindow(error, startIndex, endIndex) {
+    if (
+      error.code !== "ERR_SYNTAX_QUERY_BUDGET" ||
+      error.reason !== "timeout" ||
+      endIndex - startIndex <= 2
+    )
+      throw error;
+    // Refine unfinished work instead of repeating the same expensive window.
+    // Each child keeps the existing query limits, and boundedQueryRange keeps
+    // CRLF and surrogate pairs intact. An indivisible window still fails closed.
+    return Math.max(2, Math.floor((endIndex - startIndex) / 2));
   }
 
   _queryInjectionCandidateNodes(tree, types, start, end, query, injectionPointVersion) {
@@ -5923,6 +5945,7 @@ class LanguageLayer {
     const source = this.languageMode.document.capture().text;
     let chunkStart = start;
     let chunkStartIndex = startIndex;
+    let windowCodeUnits = chunkCodeUnits;
 
     while (chunkStartIndex < endIndex) {
       const nextRow = Math.min(end.row, chunkStart.row + chunkRows);
@@ -5932,24 +5955,32 @@ class LanguageLayer {
         source,
         chunkStartIndex,
         rowChunkEndIndex > chunkStartIndex ? Math.min(endIndex, rowChunkEndIndex) : endIndex,
-        chunkCodeUnits,
+        windowCodeUnits,
       ).endIndex;
       const chunkEnd =
         chunkEndIndex === endIndex ? end : this.buffer.positionForCharacterIndex(chunkEndIndex);
 
-      const chunkNodes = await this._runInjectionQuery(
-        () =>
-          this._queryInjectionCandidateNodes(
-            tree,
-            types,
-            chunkStart,
-            chunkEnd,
-            candidateQuery,
-            injectionPointVersion,
-          ),
-        tree,
-        injectionPointVersion,
-      );
+      let chunkNodes;
+      try {
+        chunkNodes = await this._runInjectionQuery(
+          () =>
+            this._queryInjectionCandidateNodes(
+              tree,
+              types,
+              chunkStart,
+              chunkEnd,
+              candidateQuery,
+              injectionPointVersion,
+            ),
+          tree,
+          injectionPointVersion,
+        );
+      } catch (error) {
+        windowCodeUnits = this._smallerInjectionQueryWindow(error, chunkStartIndex, chunkEndIndex);
+        await this.languageMode._yieldForInjectionCandidateScan();
+        if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) return null;
+        continue;
+      }
       if (chunkNodes === null) return null;
       for (const node of chunkNodes) {
         if (seenNodeIds.has(node.id)) continue;

@@ -451,6 +451,155 @@ test("injection retries are finite, skip structural limits and stop on invalidat
   }
 });
 
+test("cooperative injection scans refine timed-out windows without losing owners or fragments", async () => {
+  const text = `[\r\n${Array.from({ length: 24 }, (_, i) => `"value${i}😀"`).join(",\r\n")}\r\n]`;
+  for (const kind of ["static", "dynamic"]) {
+    const f = await fixture(text);
+    try {
+      let now = 0;
+      const successfulWindows = [];
+      const rejectedWindows = [];
+      f.mode.shouldParseSynchronously = () => false;
+      f.mode.injectionCandidateChunkCodeUnits = 128;
+      f.mode.queryBudget = { now: () => now, timeoutMs: 25 };
+      f.mode._yieldForInjectionCandidateScan = async () => {};
+      const query =
+        kind === "static"
+          ? f.query(
+              "injectionsQuery",
+              '((array (string) @injection.content) @injection.owner (#set! injection.language "unknown") (#set! injection.combined))',
+            )
+          : new Query(f.layer.language, "(string) @candidate");
+      const method = kind === "static" ? "matches" : "captures";
+      const original = query[method];
+      const identity = (records) =>
+        records.map((record) => [
+          record.node.id,
+          record.languageName,
+          record.injectionPoint.combined,
+          record.contentNodes.map((node) => node.id),
+        ]);
+      const whole = original.call(query, f.layer.tree.rootNode);
+      const expected =
+        kind === "static"
+          ? identity(collectInjectionMatches(whole, query.injectionDescriptors).records)
+          : whole.map(({ node }) => node.id);
+      query[method] = function (node, options) {
+        const start = f.buffer.characterIndexForPosition(options.startPosition);
+        const end = f.buffer.characterIndexForPosition(options.endPosition);
+        if (end - start > 16) {
+          rejectedWindows.push([start, end]);
+          now += 100;
+          assert.equal(options.progressCallback({}), true);
+          return [];
+        }
+        successfulWindows.push([start, end]);
+        return original.call(this, node, options);
+      };
+      if (kind === "dynamic") f.layer.grammar._getOrCreateInternalQuerySync = () => query;
+      try {
+        const result = await (kind === "static"
+          ? f.layer._collectStaticInjectionCandidates(
+              f.layer.tree,
+              f.buffer.getRange(),
+              f.layer.injectionPointVersion,
+            )
+          : f.layer._collectInjectionCandidateNodes(
+              f.layer.tree,
+              ["string"],
+              f.buffer.getRange(),
+              f.layer.injectionPointVersion,
+            ));
+        assert.deepEqual(
+          kind === "static" ? identity(result) : result.map((node) => node.id),
+          expected,
+        );
+        assert.ok(rejectedWindows.length > 0);
+        let end = 0;
+        for (const [start, next] of successfulWindows) {
+          assert.equal(start, end);
+          assert.ok(next > start && next - start <= 16);
+          for (const boundary of [start, next]) {
+            assert.notEqual(text.slice(boundary - 1, boundary + 1), "\r\n");
+            assert.ok(
+              !/[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(text.slice(boundary - 1, boundary + 1)),
+            );
+          }
+          end = next;
+        }
+        assert.equal(end, text.length);
+        assert.equal(f.mode.queryBudget.timeoutMs, 25);
+      } finally {
+        if (kind === "dynamic") query.delete();
+      }
+    } finally {
+      f.close();
+    }
+  }
+});
+
+test("cooperative injection refinement fails closed at minimum windows and structural limits", async () => {
+  for (const kind of ["static", "dynamic"]) {
+    for (const reason of ["timeout", "result-limit", "cancelled"]) {
+      const f = await fixture();
+      try {
+        let now = 0,
+          calls = 0,
+          yields = 0;
+        f.mode.shouldParseSynchronously = () => false;
+        f.mode.injectionCandidateChunkCodeUnits = 4;
+        f.mode.queryBudget = { now: () => now, timeoutMs: 25 };
+        f.mode._yieldForInjectionCandidateScan = async () => {
+          if (++yields === 3 && reason === "cancelled") f.layer.injectionPointVersion++;
+        };
+        const query =
+          kind === "static"
+            ? f.query(
+                "injectionsQuery",
+                '((number) @injection.owner @injection.content (#set! injection.language "unknown"))',
+              )
+            : new Query(f.layer.language, "(number) @candidate");
+        const method = kind === "static" ? "matches" : "captures";
+        query[method] = function (_node, options) {
+          calls++;
+          if (reason === "result-limit") throw new QueryBudgetExceeded(reason);
+          now += 100;
+          assert.equal(options.progressCallback({}), true);
+          return [];
+        };
+        if (kind === "dynamic") f.layer.grammar._getOrCreateInternalQuerySync = () => query;
+        try {
+          const pending =
+            kind === "static"
+              ? f.layer._collectStaticInjectionCandidates(
+                  f.layer.tree,
+                  f.buffer.getRange(),
+                  f.layer.injectionPointVersion,
+                )
+              : f.layer._collectInjectionCandidateNodes(
+                  f.layer.tree,
+                  ["number"],
+                  f.buffer.getRange(),
+                  f.layer.injectionPointVersion,
+                );
+          if (reason === "cancelled") {
+            assert.equal(await pending, null);
+            assert.equal(calls, 3);
+          } else {
+            await assert.rejects(pending, { reason });
+            assert.equal(calls, reason === "timeout" ? 6 : 1);
+            if (reason === "result-limit") assert.equal(yields, 0);
+          }
+        } finally {
+          if (kind === "dynamic") query.delete();
+        }
+      } finally {
+        f.close();
+      }
+    }
+  }
+});
+
 test("failed static windows cannot modify accumulated topology before a retry", async () => {
   const f = await fixture();
   try {
