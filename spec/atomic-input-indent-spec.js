@@ -132,6 +132,12 @@ describe("Atomic input indentation", () => {
       const mode = await start(source, root.scopeName);
       expect(mode.typingIndentationRules).toBeNull();
       expect(mode.typingContext).not.toBeNull();
+      editor.setText("result = (\n    value = '\n");
+      await editor.whenGrammarSettled();
+      expect(mode.typingContext).toBeNull();
+      editor.setText(source);
+      await editor.whenGrammarSettled();
+      expect(mode.typingContext).not.toBeNull();
       editor.setCursorBufferPosition([1, Infinity]);
       const request = spyOn(service.client, "request").and.callThrough();
       for (const letter of "abcdefghijklmnopqrst") {

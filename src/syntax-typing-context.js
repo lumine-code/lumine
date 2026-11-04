@@ -9,6 +9,9 @@ function capture(mode) {
   if (mode.publicationPending) return null;
   const root = mode.rootLanguageLayer;
   if (!root || !root.grammar.contentEditPolicies?.size) return null;
+  // Recovery can choose a different owner even when delimiter characters are
+  // unchanged. A lexical policy is proof only against a complete parent tree.
+  if (root.tree?.rootNode.hasError !== false) return null;
   const canIndent = (grammar) =>
     grammar &&
     filters.usesSyntaxIndentation({

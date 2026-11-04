@@ -143,11 +143,15 @@ test("capture bounds ownership and refuses a target-owned content filter", () =>
   const mode = {
     grammarForLanguageString: () => null,
     rootLanguageLayer: {
+      tree: { rootNode: { hasError: false } },
       grammar: { ...grammar, scopeName: "source.host", queryPaths: {}, injectionPointsByType: {} },
       childLayerMarkers: new Set([{ languageLayer: child }]),
     },
   };
   assert.equal(capture(mode).contexts[0].policy, "words");
+  mode.rootLanguageLayer.tree.rootNode.hasError = true;
+  assert.equal(capture(mode), null);
+  mode.rootLanguageLayer.tree.rootNode.hasError = false;
   mode.rootLanguageLayer.grammar.injectionPointsByType = { item: [{ language: () => "dynamic" }] };
   assert.equal(capture(mode), null);
   mode.rootLanguageLayer.grammar.injectionPointsByType.item[0].contentEditPolicy = "words";
