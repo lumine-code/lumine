@@ -131,22 +131,48 @@ test("provisional metadata retains only same-revision ownership and exact metada
 
 test("capture bounds ownership and refuses a target-owned content filter", () => {
   const child = {
-    grammar: { queryPaths: {}, injectionPointsByType: {} },
+    grammar: {
+      queryPaths: { indentsQuery: "empty.scm" },
+      queryCache: new Map([["indentsQuery", { typingIndentationRules: [] }]]),
+      injectionPointsByType: {},
+    },
     injectionPoint: { contentEditPolicy: "words" },
     currentRangesLayer: { getMarkerCount: () => 1 },
     getCurrentRanges: () => [new Range([1, 0], [4, 0])],
   };
   const mode = {
+    grammarForLanguageString: () => null,
     rootLanguageLayer: {
       grammar: { ...grammar, scopeName: "source.host", queryPaths: {}, injectionPointsByType: {} },
       childLayerMarkers: new Set([{ languageLayer: child }]),
     },
   };
   assert.equal(capture(mode).contexts[0].policy, "words");
+  mode.rootLanguageLayer.grammar.injectionPointsByType = { item: [{ language: () => "dynamic" }] };
+  assert.equal(capture(mode), null);
+  mode.rootLanguageLayer.grammar.injectionPointsByType.item[0].contentEditPolicy = "words";
+  assert.deepEqual(capture(mode).rootPolicies, ["words"]);
+  mode.rootLanguageLayer.grammar.injectionPointsByType = {};
   child.grammar.injectionContentRegex = /allowed/;
   assert.equal(capture(mode).contexts[0].policy, null);
   child.currentRangesLayer.getMarkerCount = () => 129;
   assert.equal(capture(mode), null);
+});
+
+test("a controlling child can reject indentation independently of opaque parent rules", () => {
+  const context = snapshot();
+  context.rootRules = null;
+  context.contexts[0].controlsIndentation = true;
+  const edit = () => permits(context, registry, new Range([2, 10], [2, 10]), "a", "    value=");
+  assert.equal(edit(), true);
+  context.contexts[0].controlsIndentation = false;
+  assert.equal(edit(), false);
+  context.contexts[0].controlsIndentation = true;
+  context.rootOwner = "source.host";
+  context.rootPolicies = ["missing"];
+  assert.equal(edit(), false);
+  context.rootPolicies = ["words"];
+  assert.equal(edit(), true);
 });
 
 test("static queries validate policy identifiers without treating them as executable paths", () => {

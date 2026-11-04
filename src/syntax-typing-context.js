@@ -8,20 +8,36 @@ const contains = (range, point) =>
 function capture(mode) {
   if (mode.publicationPending) return null;
   const root = mode.rootLanguageLayer;
-  if (
-    !root ||
-    !root.grammar.contentEditPolicies?.size ||
-    Object.keys(root.grammar.injectionPointsByType).length
-  )
-    return null;
+  if (!root || !root.grammar.contentEditPolicies?.size) return null;
+  const canIndent = (grammar) =>
+    grammar &&
+    filters.usesSyntaxIndentation({
+      grammar,
+      grammarForLanguageString: mode.grammarForLanguageString.bind(mode),
+    });
+  const rootPolicies = new Set();
+  let callbackCount = 0;
+  for (const points of Object.values(root.grammar.injectionPointsByType)) {
+    for (const point of points) {
+      if (++callbackCount > 128) return null;
+      if (
+        typeof point.language === "string" &&
+        !canIndent(mode.grammarForLanguageString(point.language))
+      )
+        continue;
+      if (!root.grammar.contentEditPolicies.has(point.contentEditPolicy)) return null;
+      rootPolicies.add(point.contentEditPolicy);
+    }
+  }
   const rootRules = filters.forGrammar(root.grammar);
-  if (!rootRules) return null;
   const contexts = [];
   let count = 0;
+  let layerCount = 0;
   for (const marker of root.childLayerMarkers) {
-    if (contexts.length === 128) return null;
+    if (++layerCount > 128) return null;
     const layer = marker.languageLayer;
     if (!layer || layer.destroyed) return null;
+    if (!canIndent(layer.grammar) && !layer.injectionPoint.contentEditPolicy) continue;
     count += layer.currentRangesLayer.getMarkerCount();
     if (count > 128) return null;
     contexts.push({
@@ -32,13 +48,30 @@ function capture(mode) {
         ? null
         : (layer.injectionPoint.contentEditPolicy ?? null),
       rules: filters.forMode(mode, layer.grammar),
+      controlsIndentation: filters.hasOwnIndentation(layer.grammar),
       ranges: layer.getCurrentRanges().map(({ start, end }) => ({
         start: { row: start.row, column: start.column },
         end: { row: end.row, column: end.column },
       })),
     });
   }
-  return contexts.length ? { rootRules, contexts } : null;
+  return contexts.length
+    ? { rootRules, rootOwner: root.grammar.scopeName, rootPolicies: [...rootPolicies], contexts }
+    : null;
+}
+
+function policyAccepts(registry, owner, name, edit) {
+  const file = registry.grammarForScopeName(owner)?.contentEditPolicies?.get(name);
+  if (!file) return false;
+  try {
+    const policy = require(file);
+    if (typeof policy !== "function") return false;
+    const accepted = policy(edit);
+    if (accepted?.then) Promise.resolve(accepted).catch(() => {});
+    return accepted === true;
+  } catch {
+    return false;
+  }
 }
 
 function permits(snapshot, registry, range, newText, oldLine, { indentation = true } = {}) {
@@ -48,11 +81,14 @@ function permits(snapshot, registry, range, newText, oldLine, { indentation = tr
   const oldText = oldLine.slice(range.start.column, range.end.column);
   const after = oldLine.slice(range.end.column);
   const nextLine = before + newText + after;
-  if (indentation && filters.mayMatch(snapshot.rootRules, nextLine)) return false;
+  const edit = Object.freeze({ before, oldText, newText, after });
+  for (const name of snapshot.rootPolicies ?? [])
+    if (!policyAccepts(registry, snapshot.rootOwner, name, edit)) return false;
   const first = oldLine.search(/\S/);
   if (first < 0) return false;
   const firstPoint = { row: range.start.row, column: first };
   let matched = false;
+  let controlled = false;
   for (const context of snapshot.contexts) {
     if (
       context.ranges.some((part) =>
@@ -76,21 +112,11 @@ function permits(snapshot, registry, range, newText, oldLine, { indentation = tr
     )
       return false;
     if (indentation && filters.mayMatch(context.rules, nextLine)) return false;
-    const grammar = registry.grammarForScopeName(context.owner);
-    const file = grammar?.contentEditPolicies?.get(context.policy);
-    if (!file) return false;
-    try {
-      const policy = require(file);
-      if (typeof policy !== "function") return false;
-      const accepted = policy(Object.freeze({ before, oldText, newText, after }));
-      if (accepted?.then) Promise.resolve(accepted).catch(() => {});
-      if (accepted !== true) return false;
-    } catch {
-      return false;
-    }
+    if (!policyAccepts(registry, context.owner, context.policy, edit)) return false;
     matched = true;
+    controlled ||= context.controlsIndentation;
   }
-  return matched;
+  return matched && (!indentation || controlled || !filters.mayMatch(snapshot.rootRules, nextLine));
 }
 
 function advance(snapshot, registry, change, buffer) {

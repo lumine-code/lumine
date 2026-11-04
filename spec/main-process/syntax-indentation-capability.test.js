@@ -28,6 +28,15 @@ test("plain indentation requires proof across all possible injection grammars", 
     usesSyntaxIndentation({ grammar: { ...plain, injectionPointsByType: { string: [{}] } } }),
     true,
   );
+  const callback = { ...plain, injectionPointsByType: { string: [{ language: "child" }] } };
+  assert.equal(
+    usesSyntaxIndentation({ grammar: callback, grammarForLanguageString: () => plain }),
+    false,
+  );
+  assert.equal(
+    usesSyntaxIndentation({ grammar: callback, grammarForLanguageString: () => indented }),
+    true,
+  );
 });
 
 test("missing or obsolete indentation metadata cannot bypass syntax", () => {

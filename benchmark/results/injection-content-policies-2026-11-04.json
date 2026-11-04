@@ -1,0 +1,1272 @@
+{
+  "date": "2026-11-04",
+  "runtime": {
+    "electron": "45.2.2",
+    "node": "24.22.2",
+    "platform": "win32"
+  },
+  "activePackages": 247,
+  "repositories": 78,
+  "modifiedRepositories": 21,
+  "grammarDefinitions": 120,
+  "staticRules": 300,
+  "staticPolicies": 72,
+  "callbackPolicyDeclarations": 10,
+  "specs": 801,
+  "testResults": [
+    {
+      "repo": "language-html",
+      "code": 0,
+      "summary": "35 specs, 0 failures"
+    },
+    {
+      "repo": "language-gfm",
+      "code": 0,
+      "summary": "38 specs, 0 failures"
+    },
+    {
+      "repo": "language-javascript",
+      "code": 0,
+      "summary": "62 specs, 0 failures"
+    },
+    {
+      "repo": "language-typescript",
+      "code": 0,
+      "summary": "50 specs, 0 failures"
+    },
+    {
+      "repo": "language-vue",
+      "code": 0,
+      "summary": "33 specs, 0 failures"
+    },
+    {
+      "repo": "language-blade",
+      "code": 0,
+      "summary": "27 specs, 0 failures"
+    },
+    {
+      "repo": "language-coffee-script",
+      "code": 0,
+      "summary": "28 specs, 0 failures"
+    },
+    {
+      "repo": "language-go",
+      "code": 0,
+      "summary": "40 specs, 0 failures"
+    },
+    {
+      "repo": "language-mustache",
+      "code": 0,
+      "summary": "10 specs, 0 failures"
+    },
+    {
+      "repo": "language-ruby-on-rails",
+      "code": 0,
+      "summary": "13 specs, 0 failures"
+    },
+    {
+      "repo": "language-julia",
+      "code": 0,
+      "summary": "44 specs, 0 failures"
+    },
+    {
+      "repo": "language-nix",
+      "code": 0,
+      "summary": "35 specs, 0 failures"
+    },
+    {
+      "repo": "language-elixir",
+      "code": 0,
+      "summary": "31 specs, 0 failures"
+    },
+    {
+      "repo": "language-clojure",
+      "code": 0,
+      "summary": "40 specs, 0 failures"
+    },
+    {
+      "repo": "language-ipython",
+      "code": 0,
+      "summary": "145 specs, 0 failures"
+    },
+    {
+      "repo": "language-crystal",
+      "code": 0,
+      "summary": "22 specs, 0 failures"
+    },
+    {
+      "repo": "language-css",
+      "code": 0,
+      "summary": "27 specs, 0 failures"
+    },
+    {
+      "repo": "language-less",
+      "code": 0,
+      "summary": "14 specs, 0 failures"
+    },
+    {
+      "repo": "language-php",
+      "code": 0,
+      "summary": "33 specs, 0 failures"
+    },
+    {
+      "repo": "language-sass",
+      "code": 0,
+      "summary": "32 specs, 0 failures"
+    },
+    {
+      "repo": "language-cython",
+      "code": 0,
+      "summary": "42 specs, 0 failures"
+    }
+  ],
+  "inputCases": [
+    {
+      "name": "CSS root",
+      "scope": "source.css",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 1.5,
+        "p95": 2.5,
+        "max": 55
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 7.300000011920929,
+        "p95": 11.899999976158142,
+        "max": 66
+      }
+    },
+    {
+      "name": "CSS in HTML",
+      "scope": "text.html.basic",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 1.300000011920929,
+        "p95": 2.399999976158142,
+        "max": 6.600000023841858
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 7.5,
+        "p95": 9.5,
+        "max": 11.400000035762787
+      }
+    },
+    {
+      "name": "CSS in JavaScript",
+      "scope": "source.js",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 1.5,
+        "p95": 2.600000023841858,
+        "max": 5.200000047683716
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 6.800000011920929,
+        "p95": 10.900000035762787,
+        "max": 11.800000011920929
+      }
+    },
+    {
+      "name": "CSS in Vue",
+      "scope": "text.html.vue",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 1.5,
+        "p95": 2.5,
+        "max": 5.5
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 7.799999952316284,
+        "p95": 10.900000035762787,
+        "max": 11.199999988079071
+      }
+    },
+    {
+      "name": "Python root",
+      "scope": "source.python",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 1.399999976158142,
+        "p95": 2.200000047683716,
+        "max": 2.400000035762787
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 7,
+        "p95": 11.299999952316284,
+        "max": 12.5
+      }
+    },
+    {
+      "name": "Python in Markdown",
+      "scope": "source.gfm",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 1.5,
+        "p95": 2.5,
+        "max": 4.400000035762787
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 6.5,
+        "p95": 10.5,
+        "max": 11.200000047683716
+      }
+    },
+    {
+      "name": "Python in IPython",
+      "scope": "source.python.ipy",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 1.5,
+        "p95": 2.399999976158142,
+        "max": 4.399999976158142
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 8,
+        "p95": 10.599999964237213,
+        "max": 11.600000023841858
+      }
+    }
+  ],
+  "repoAudit": [
+    {
+      "name": "language-ahkpp",
+      "baseRevision": "f6986fec238402e62d515db0052ab0e3fd308b49",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.ahk"],
+      "staticRules": 4,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-bibtex",
+      "baseRevision": "e6e1dd1f74d58c6ebe8a3365e8b5d07a9c30437c",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["text.bibtex"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-blade",
+      "baseRevision": "b8a5d72944cf81fca2009bac42ecbf5e7603d0b7",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["text.html.php.blade"],
+      "staticRules": 6,
+      "staticPolicies": 3,
+      "callbacks": [
+        {
+          "file": "lib/injections.js",
+          "policyDeclarations": 5
+        }
+      ],
+      "revision": "82f11d2c58a443f7ce4cbdc3bb04722408cf3fc4"
+    },
+    {
+      "name": "language-c",
+      "baseRevision": "2401c15c6ff403bb216232458b3b408703c204d0",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.c", "source.cpp"],
+      "staticRules": 8,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-clojure",
+      "baseRevision": "dcd6fbdc7a6b48b7b3db6519a941acb70167ebbd",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["source.clojure", "source.edn"],
+      "staticRules": 2,
+      "staticPolicies": 2,
+      "callbacks": [
+        {
+          "file": "lib/injections.js",
+          "policyDeclarations": 2
+        }
+      ],
+      "revision": "1c955709c1380e3257103058846ec6cacc178b27"
+    },
+    {
+      "name": "language-cmake",
+      "baseRevision": "b54051f4848c74ef9f872db49336550a6ad85400",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.cmake"],
+      "staticRules": 4,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-coffee-script",
+      "baseRevision": "d035f1c31c071f5f2e80d0ce9da0f647370cf761",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["source.coffee", "source.litcoffee"],
+      "staticRules": 8,
+      "staticPolicies": 4,
+      "callbacks": [],
+      "revision": "18d4fc722ed2ca2655666d5599f839798b11601d"
+    },
+    {
+      "name": "language-crystal",
+      "baseRevision": "edf73991cfa05ad677c1c05c63a9db47c98c0751",
+      "modified": true,
+      "disposition": "fixed-targets",
+      "grammars": ["source.crystal"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": [
+        {
+          "file": "lib/injections.js",
+          "policyDeclarations": 0
+        }
+      ],
+      "revision": "0fa6386ad9bb057677c6e8a5b98c77c12e967bcf"
+    },
+    {
+      "name": "language-csharp",
+      "baseRevision": "8f06a095ce49a0a5ec69605404edae5e2d256065",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.cs"],
+      "staticRules": 3,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-css",
+      "baseRevision": "fee110a44439aabaac02e1e2c7c63bad5b544aae",
+      "modified": true,
+      "disposition": "fixed-targets",
+      "grammars": ["source.css"],
+      "staticRules": 3,
+      "staticPolicies": 0,
+      "callbacks": [
+        {
+          "file": "lib/injections.js",
+          "policyDeclarations": 0
+        }
+      ],
+      "revision": "b1064c5e681c012beaee767ca9597377621f5f28"
+    },
+    {
+      "name": "language-csv",
+      "baseRevision": "cf9aab5b1f3d013e7e114663ef9564b8062c142a",
+      "modified": false,
+      "disposition": "no-injection-policy-needed",
+      "grammars": ["source.csv", "source.tsv"],
+      "staticRules": 0,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-cython",
+      "baseRevision": "eecbec0d55f8e3bd3546b9ad41df727f9fab4d93",
+      "modified": true,
+      "disposition": "fixed-targets",
+      "grammars": ["source.cython"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": [
+        {
+          "file": "lib/injections.js",
+          "policyDeclarations": 0
+        }
+      ],
+      "revision": "daf5d56d10449c1f3cee394bfde06d0470270a90"
+    },
+    {
+      "name": "language-dart",
+      "baseRevision": "303b5b1e782b572abc7c217379007b8914c44e79",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.dart"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-diff",
+      "baseRevision": "b7114e419899a37d71a9dff755753895c7009faf",
+      "modified": false,
+      "disposition": "no-injection-policy-needed",
+      "grammars": ["source.diff"],
+      "staticRules": 0,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-dockerfile",
+      "baseRevision": "366c3353847dc65f2aa59a86fe6e4c86d676807d",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.dockerfile"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-elixir",
+      "baseRevision": "d0832d29f372230a5d38cce859dd90f1733b6aec",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["source.elixir"],
+      "staticRules": 3,
+      "staticPolicies": 1,
+      "callbacks": [],
+      "revision": "e6cda642a297b8dfdecec83b608e4ad958ae0d4e"
+    },
+    {
+      "name": "language-erlang",
+      "baseRevision": "5d35dddf862138699ea3dd9bc7f9ba58a2b4f5e7",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.erlang"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-fortran",
+      "baseRevision": "2315a839952fdcd2f22fea6991112a3b482af011",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.fortran"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-gfm",
+      "baseRevision": "5543c846876d4a35c8e32a1e6530d1798a9dd0d6",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["source.gfm.inline", "source.gfm"],
+      "staticRules": 6,
+      "staticPolicies": 3,
+      "callbacks": [
+        {
+          "file": "lib/syntax-injections.js",
+          "policyDeclarations": 1
+        }
+      ],
+      "revision": "0d9ceb917ba134ab9d81f52516389868051cb672"
+    },
+    {
+      "name": "language-git",
+      "baseRevision": "0f989820366bc6cc9ae4c31f472b981fd7a6e07f",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": [
+        "text.git-commit",
+        "source.git-config",
+        "text.git-rebase",
+        "source.gitattributes",
+        "source.gitignore"
+      ],
+      "staticRules": 5,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-go",
+      "baseRevision": "c5ade4f9e004d261aafcdbc1fff8dea406788ac8",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": [
+        "source.go",
+        "text.html.gohtml",
+        "source.mod",
+        "source.sum",
+        "source.gotemplate"
+      ],
+      "staticRules": 13,
+      "staticPolicies": 1,
+      "callbacks": [],
+      "revision": "da463095d92ec160c7aafeac000118c1d9fffeec"
+    },
+    {
+      "name": "language-graphql",
+      "baseRevision": "79de10bf4f4c7f3d4b66ac9f832b2027659861de",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.graphql"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-groovy",
+      "baseRevision": "7900cf9153673be72b0c5025129f5e6ac00a0043",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.groovy"],
+      "staticRules": 4,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-haskell",
+      "baseRevision": "61a01ed2ac3b3b3368a7e60ea306d932a88cb0ab",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.haskell"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-hcl",
+      "baseRevision": "89ababadc6c3f59c0c6efeb8ed1c54a7445e7680",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.hcl", "source.terraform"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-html",
+      "baseRevision": "f642ea90ef0eaa2fd20e379b27473c2aa8232c07",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["text.html.ejs", "text.html.erb", "text.html.basic"],
+      "staticRules": 9,
+      "staticPolicies": 6,
+      "callbacks": [],
+      "revision": "c1a01484fbb8ffcbc9bb5a8bfb682782a483fbba"
+    },
+    {
+      "name": "language-hyperlink",
+      "baseRevision": "dd3ffa709e95a26e2db4190034955e1685d1ffd7",
+      "modified": false,
+      "disposition": "no-injection-policy-needed",
+      "grammars": ["text.hyperlink"],
+      "staticRules": 0,
+      "staticPolicies": 0,
+      "callbacks": [
+        {
+          "file": "lib/main.js",
+          "policyDeclarations": 0
+        },
+        {
+          "file": "lib/syntax-injections.js",
+          "policyDeclarations": 0
+        }
+      ]
+    },
+    {
+      "name": "language-ini",
+      "baseRevision": "b1329a37496ec239d94e01708d59faf0373f4410",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.ini"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-ipython",
+      "baseRevision": "974e084d17910350dca275799ae60f0ba2cff0b4",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["source.python.ipy"],
+      "staticRules": 16,
+      "staticPolicies": 14,
+      "callbacks": [],
+      "revision": "c3a2b3abc68d2b5401097f4eef4f41c859c60a96"
+    },
+    {
+      "name": "language-java",
+      "baseRevision": "d4ac810a288a07356bc4ea9bd2ac473c62259c21",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.java", "source.java-properties"],
+      "staticRules": 6,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-javascript",
+      "baseRevision": "c4ef458b5c596aff5bdd9e8911174e70af09b4dd",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["source.js", "source.jsdoc"],
+      "staticRules": 20,
+      "staticPolicies": 13,
+      "callbacks": [
+        {
+          "file": "lib/injections.js",
+          "policyDeclarations": 0
+        }
+      ],
+      "revision": "86a8cc841d6ed15b760b1ad92dc3e6d53833699e"
+    },
+    {
+      "name": "language-json",
+      "baseRevision": "60145093a93147706a2b2ca5e79c0c7c32ad867d",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.json", "source.json5", "source.json.jsonc", "source.jupyter"],
+      "staticRules": 12,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-jsonnet",
+      "baseRevision": "b7b1d70e3b2eeecfba154297911180297f148ed1",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.jsonnet"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-julia",
+      "baseRevision": "aac0f082e8bd436113a6d2c731770f1261db7cd9",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["source.julia"],
+      "staticRules": 7,
+      "staticPolicies": 4,
+      "callbacks": [],
+      "revision": "c8177f58a766a586d9314c9535f91a0397177f0b"
+    },
+    {
+      "name": "language-just",
+      "baseRevision": "3da184b92e6033edd16171e51e0b4fa79cfdecce",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.just"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-kdl",
+      "baseRevision": "d9bf1f91cc2db9b97817bf796fb719422da5a95d",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.kdl"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-kotlin",
+      "baseRevision": "20cd7aa1c01efb9b4fdb2803a2184da16c3748c6",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.kotlin"],
+      "staticRules": 5,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-latex",
+      "baseRevision": "7904ebb00d51e735f7766c103ff68c9b708c3d9d",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["text.tex.latex"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-less",
+      "baseRevision": "85bbf00f5178dc98b1c4b003915e87a067ba6804",
+      "modified": true,
+      "disposition": "fixed-targets",
+      "grammars": ["source.css.less"],
+      "staticRules": 3,
+      "staticPolicies": 0,
+      "callbacks": [
+        {
+          "file": "lib/injections.js",
+          "policyDeclarations": 0
+        }
+      ],
+      "revision": "cdb0ed4a0cb12dc932f46a0f41fe4a5c64724689"
+    },
+    {
+      "name": "language-log",
+      "baseRevision": "83b7da3924ec1ace0533df8626b3b2885ab45b05",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": [
+        "text.junit-test-report",
+        "text.log.latex",
+        "source.log",
+        "text.python.traceback",
+        "text.sofistik-output"
+      ],
+      "staticRules": 5,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-lua",
+      "baseRevision": "5f18041c0e7a98331f538233133af49a12f45405",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.lua"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-make",
+      "baseRevision": "25f17347f9d861f439de251af8a2108f1efa8080",
+      "modified": false,
+      "disposition": "no-injection-policy-needed",
+      "grammars": ["source.makefile"],
+      "staticRules": 0,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-matlab",
+      "baseRevision": "dc7de254704d29516e47f143f247b19e890d45cf",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.matlab"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-mustache",
+      "baseRevision": "5c73596f58ada4bf49cbfa5cf6295f304895c57e",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["text.html.mustache"],
+      "staticRules": 4,
+      "staticPolicies": 1,
+      "callbacks": [],
+      "revision": "f07fe0fecd709383768ab4379d79929461a4f054"
+    },
+    {
+      "name": "language-nginx",
+      "baseRevision": "fa32ef8eb3b7b615b78004f7088e6ba22c635b21",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.nginx"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-nix",
+      "baseRevision": "6dbbb6635d2cc15bd6539acbfdb4f2926d19b452",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["source.nix"],
+      "staticRules": 6,
+      "staticPolicies": 4,
+      "callbacks": [],
+      "revision": "baa45d3c086fbc0385f7119c9f69d58d63da097f"
+    },
+    {
+      "name": "language-objective-c",
+      "baseRevision": "a106ff57def887b1a7714e50953fb7c621a6ebb2",
+      "modified": false,
+      "disposition": "no-injection-policy-needed",
+      "grammars": ["source.objc", "source.objcpp", "source.strings"],
+      "staticRules": 0,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-perl",
+      "baseRevision": "ca19f7a085931f6624b9908528d63b8708187336",
+      "modified": false,
+      "disposition": "no-injection-policy-needed",
+      "grammars": ["source.perl"],
+      "staticRules": 0,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-php",
+      "baseRevision": "224b91a9c0d00518bbce672204e5b76bde5a0b07",
+      "modified": true,
+      "disposition": "fixed-targets",
+      "grammars": [
+        "text.html.php",
+        "source.php.only",
+        "source.php",
+        "comment.block.documentation.phpdoc.php"
+      ],
+      "staticRules": 9,
+      "staticPolicies": 0,
+      "callbacks": [
+        {
+          "file": "lib/injections.js",
+          "policyDeclarations": 0
+        }
+      ],
+      "revision": "fc2c20ab2a6b2652a2f389549a79b45c93db7e9e"
+    },
+    {
+      "name": "language-powershell",
+      "baseRevision": "4d13d274ec318fb55b7a7b5881d38c9d5cb2101a",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.powershell"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-property-list",
+      "baseRevision": "df97eea9bf30ecbfac41084967bad6d6f790da91",
+      "modified": false,
+      "disposition": "no-injection-policy-needed",
+      "grammars": ["source.plist", "text.xml.plist"],
+      "staticRules": 0,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-protobuf",
+      "baseRevision": "579da227c66c9cf18d92ba20ea8a8100bfec35d4",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.proto"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-python",
+      "baseRevision": "31c3685241dfdf646a0f5b7fc54333d6b31682a9",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.python"],
+      "staticRules": 3,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-r",
+      "baseRevision": "1ab0b95cff0b70c2b4c1f0eb24663f0cab5f13c4",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.r"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-regex",
+      "baseRevision": "ae370b05eedb2c00268811b5006ec33cf955b91c",
+      "modified": false,
+      "disposition": "no-injection-policy-needed",
+      "grammars": ["source.regexp.replacement", "source.regexp"],
+      "staticRules": 0,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-ruby",
+      "baseRevision": "fa6ba473f9773758c84ec7035f8cfdff7054eab6",
+      "modified": false,
+      "disposition": "exact-heredoc-routing",
+      "grammars": ["source.ruby"],
+      "staticRules": 4,
+      "staticPolicies": 0,
+      "callbacks": [
+        {
+          "file": "lib/injections.js",
+          "policyDeclarations": 0
+        }
+      ]
+    },
+    {
+      "name": "language-ruby-on-rails",
+      "baseRevision": "140ded34269c105812d0852c6bfc90f24964c054",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["source.js.rails", "source.sql.ruby"],
+      "staticRules": 4,
+      "staticPolicies": 4,
+      "callbacks": [],
+      "revision": "9050d05c8d776e53330d8357813a1a4aa18c877e"
+    },
+    {
+      "name": "language-rust",
+      "baseRevision": "623c629ebe858baa1cb91057719c1e5dd486e1b6",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.rust"],
+      "staticRules": 4,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-sass",
+      "baseRevision": "8983457a448b99df29d9bdb215c6466697bb7758",
+      "modified": true,
+      "disposition": "fixed-targets",
+      "grammars": ["source.sass", "source.sassdoc", "source.css.scss"],
+      "staticRules": 11,
+      "staticPolicies": 0,
+      "callbacks": [
+        {
+          "file": "lib/injections.js",
+          "policyDeclarations": 0
+        }
+      ],
+      "revision": "cf06483d21dbbac22b745c4b6a949b4e266d3112"
+    },
+    {
+      "name": "language-scala",
+      "baseRevision": "eddbef4a046142672b3b6be73d50ebaad5f8f19e",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.scala"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-shellscript",
+      "baseRevision": "e4d9d558edf5e68f7395b39fb193291408de9764",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.shell"],
+      "staticRules": 3,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-snakemake",
+      "baseRevision": "435caf94ba940c81198db2be670096934f51d357",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.snakemake"],
+      "staticRules": 3,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-sofistik",
+      "baseRevision": "c63cd37500b4be01b07651c15d3a0f1b1b0dab59",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": [
+        "source.sofistik.include.aqua",
+        "source.sofistik.include.decreator",
+        "source.sofistik.def",
+        "source.sofistik.include.sofiload",
+        "source.sofistik.include.sofimshc",
+        "source.sofistik.include.tendon",
+        "source.sofistik"
+      ],
+      "staticRules": 7,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-source",
+      "baseRevision": "762a5e2c3373ea102670c3df0ae2fb8da55136c0",
+      "modified": false,
+      "disposition": "no-injection-policy-needed",
+      "grammars": [],
+      "staticRules": 0,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-sql",
+      "baseRevision": "69598a74f9e0bd8ad939f90375540c4175ad4526",
+      "modified": false,
+      "disposition": "no-injection-policy-needed",
+      "grammars": ["source.sql"],
+      "staticRules": 0,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-swift",
+      "baseRevision": "fcde532cddae09e67ef50135286924ec99d9a1a5",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.swift"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-tasklist",
+      "baseRevision": "76e7a758ee4f1b4552be863fd31c2182be3d4312",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["text.tasklist"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-tcl",
+      "baseRevision": "5a7a655f8e69b1934bde413246da1985dae33f80",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.tcl"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-text",
+      "baseRevision": "6853bb0e779acb0cb9d66dbeb06698ea876ca4be",
+      "modified": false,
+      "disposition": "no-injection-policy-needed",
+      "grammars": ["text.plain"],
+      "staticRules": 0,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-todo",
+      "baseRevision": "0d69605374c0a41cdac560d14ed3506f6d641078",
+      "modified": false,
+      "disposition": "no-injection-policy-needed",
+      "grammars": ["text.todo"],
+      "staticRules": 0,
+      "staticPolicies": 0,
+      "callbacks": [
+        {
+          "file": "lib/main.js",
+          "policyDeclarations": 0
+        },
+        {
+          "file": "lib/syntax-injections.js",
+          "policyDeclarations": 0
+        }
+      ]
+    },
+    {
+      "name": "language-toml",
+      "baseRevision": "a39204df0bb9a084fe646b0e4fb3b1ee1618cab8",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.toml"],
+      "staticRules": 3,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-tree-sitter-query",
+      "baseRevision": "96c437f942b457515af9e7fdb6cc6c5460b6b6fe",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.scm"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-typescript",
+      "baseRevision": "f8b684db1ca352f5572dc7c39e995c67a891ba69",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["source.tsx", "source.ts"],
+      "staticRules": 18,
+      "staticPolicies": 10,
+      "callbacks": [
+        {
+          "file": "lib/injections.js",
+          "policyDeclarations": 0
+        }
+      ],
+      "revision": "e0701f609ec1a659a33bba87d2ea240284131425"
+    },
+    {
+      "name": "language-typst",
+      "baseRevision": "dfda0782a96e188399c76f041bdb2f2c0fb5ce69",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.typst"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-vue",
+      "baseRevision": "1c3b57b9eea81577d18af1b306c6be26cbf6d412",
+      "modified": true,
+      "disposition": "content-policies",
+      "grammars": ["text.html.vue"],
+      "staticRules": 5,
+      "staticPolicies": 2,
+      "callbacks": [
+        {
+          "file": "lib/injections.js",
+          "policyDeclarations": 2
+        }
+      ],
+      "revision": "af80d7d7bf9468661db6160a5ecf120f3781c31f"
+    },
+    {
+      "name": "language-xml",
+      "baseRevision": "685da2dbaf92ce41646a6ad9ec4e3f6fc7c78da6",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["text.xml", "text.xml.xsl"],
+      "staticRules": 5,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-yaml",
+      "baseRevision": "2ac27ec9dbbaacf1a817736cae445dcd4fc7b587",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.yaml"],
+      "staticRules": 3,
+      "staticPolicies": 0,
+      "callbacks": []
+    },
+    {
+      "name": "language-zig",
+      "baseRevision": "ef6264e0d0f82f9652de802e5c99ac5623188c51",
+      "modified": false,
+      "disposition": "existing-static-rules",
+      "grammars": ["source.zig"],
+      "staticRules": 2,
+      "staticPolicies": 0,
+      "callbacks": []
+    }
+  ],
+  "packResults": [
+    {
+      "repo": "language-html",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-gfm",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-javascript",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-typescript",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-vue",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-blade",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-coffee-script",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-go",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-mustache",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-ruby-on-rails",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-julia",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-nix",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-elixir",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-clojure",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-ipython",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-crystal",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-css",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-less",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-php",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-sass",
+      "code": 0,
+      "missing": []
+    },
+    {
+      "repo": "language-cython",
+      "code": 0,
+      "missing": []
+    }
+  ],
+  "coreValidation": {
+    "runtimeTests": 428,
+    "rendererSpecs": 90
+  }
+}

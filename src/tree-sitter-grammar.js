@@ -944,6 +944,7 @@ module.exports = class TreeSitterGrammar {
    * @param {Boolean} [injectionPoint.newlinesBetween=false] - controlling whether the injection range should include any newline characters that may exist in between injection ranges. Defaults to `false`. Grammars like ERB and EJS need this so that they do not interpret two different embedded code sections on different lines as occurring on the same line.
    * @param {Boolean|Function} [injectionPoint.combined=false] - Share child language layers between matching owner nodes per injection point and resolved language name. Defaults to `false`. A function is called synchronously with the owner node after its language and content resolve; returning `false` keeps that owner in an independent layer. Owner and content ranges are tracked individually, so local edits rediscover only affected owners. By default the owners form one shared document. Independent contexts such as Markdown inline blocks should keep separate layers.
    * @param {Number} [injectionPoint.combinedMaxMembers] - An optional positive safe integer limiting the number of owner nodes in each combined child layer. Omit it to keep one unbounded combined document. Use a limit only when splitting the combined document preserves the meaning of its independent owners. An owner returning multiple content nodes counts as one member and is never split across layers.
+   * @param {String} [injectionPoint.contentEditPolicy] - A named policy from the parent grammar's `treeSitter.contentEditPolicies`. Every callback injection capable of indentation must opt in before cached ownership can bypass syntax preparation; all its policies must approve the edit.
    * @param {Boolean} [injectionPoint.coverShallowerScopes=false] - controlling whether the injection should prevent the parent grammar (and any of its ancestors) from applying scope boundaries within its injection range(s). Defaults to `false`.
    * @param {String|null|Function} [injectionPoint.languageScope] - A value that determines what scope, if any, is added to the injection as its “base” scope name. Can be a `String`, `null`, or a `Function` that returns either of these values. The base language scope that should be used by this injection. Defaults to the grammar's own `scopeName` property. Set this to a string to override the default scope name, or `null` to omit a base scope name altogether. Set this to a function if the scope name to be applied varies based on the grammar; the function will be called with a grammar instance as its only argument.
    * @param {Boolean} [injectionPoint.excludeChildrenLines=false] - When children are excluded, subtract their complete physical rows from the injection range.
@@ -951,6 +952,12 @@ module.exports = class TreeSitterGrammar {
    * @returns {void}
    */
   addInjectionPoint(injectionPoint) {
+    if (
+      injectionPoint.contentEditPolicy !== undefined &&
+      (typeof injectionPoint.contentEditPolicy !== "string" ||
+        !/^[a-z][a-z0-9-]*$/.test(injectionPoint.contentEditPolicy))
+    )
+      throw new TypeError("contentEditPolicy must name a content edit policy");
     if (
       injectionPoint.combinedMaxMembers !== undefined &&
       (!Number.isSafeInteger(injectionPoint.combinedMaxMembers) ||

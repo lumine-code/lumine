@@ -114,7 +114,13 @@ function everyGrammar(mode, accept, rootGrammar = mode.grammar) {
     if (!grammar || visited.has(grammar)) return true;
     visited.add(grammar);
     if (!accept(grammar)) return false;
-    if (Object.keys(grammar.injectionPointsByType ?? {}).length) return false;
+    for (const points of Object.values(grammar.injectionPointsByType ?? {}))
+      for (const point of points)
+        if (
+          typeof point.language !== "string" ||
+          !visit(mode.grammarForLanguageString(point.language))
+        )
+          return false;
     if (grammar.queryPaths?.injectionsQuery) {
       const descriptors = grammar.queryCache.get("injectionsQuery")?.injectionDescriptors;
       if (!descriptors) return false;
@@ -128,7 +134,7 @@ function everyGrammar(mode, accept, rootGrammar = mode.grammar) {
 }
 
 function forGrammar(grammar) {
-  if (!grammar.queryPaths?.indentsQuery) return [];
+  if (!hasOwnIndentation(grammar)) return [];
   const query = grammar.queryCache.get("indentsQuery");
   if (!query) return null;
   if (!Object.hasOwn(query, "typingIndentationRules"))
@@ -155,7 +161,11 @@ function usesSyntaxIndentation(mode) {
   // Inspect possible injections, not just layers present in this revision:
   // the newline itself can introduce a new embedded language. Dynamic or
   // unloaded injection queries cannot prove that indentation is plain.
-  return !everyGrammar(mode, (grammar) => !grammar.queryPaths?.indentsQuery);
+  return !everyGrammar(mode, (grammar) => !hasOwnIndentation(grammar));
+}
+
+function hasOwnIndentation(grammar) {
+  return Boolean(grammar.queryPaths?.indentsQuery || grammar.queryCache?.get("indentsQuery"));
 }
 
 function mayMatch(rules, text) {
@@ -172,4 +182,11 @@ function mayMatch(rules, text) {
   );
 }
 
-module.exports = { compile, forGrammar, forMode, mayMatch, usesSyntaxIndentation };
+module.exports = {
+  compile,
+  forGrammar,
+  forMode,
+  hasOwnIndentation,
+  mayMatch,
+  usesSyntaxIndentation,
+};
