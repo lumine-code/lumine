@@ -540,6 +540,112 @@ test("typing filter proves ordinary Python text cannot dedent and retains keywor
   }
 });
 
+test("IPython typing proves local no-ops without parsing its combined Python injection", async (t) => {
+  const text =
+    "# %%\nresult = fn(\n    section = r'label',\n    \n)\n" +
+    "value = 1\n".repeat(300) +
+    "# %%\n%%html\n<div>\n    </div>\n# %%\nif ready:\n    pass\n    els\n";
+  const { host, data } = await setup({
+    files: [
+      "language-ipython/grammars/ipython.json",
+      "language-python/grammars/python.json",
+      "language-html/grammars/html.json",
+    ],
+    text,
+  });
+  try {
+    assert.equal((await host.dispatch("settle", data)).value.typingIndentationRules, null);
+    const parse = LanguageMode.prototype.parseAsync;
+    const parsed = [];
+    t.mock.method(LanguageMode.prototype, "parseAsync", function (...args) {
+      if (this.indentationOnly) parsed.push(args[3]?.scopeName);
+      return parse.apply(this, args);
+    });
+    const install = host.installMode;
+    let reference = false;
+    t.mock.method(host, "installMode", function (session) {
+      if (reference) session.editedIndentationRows = null;
+      return install.call(this, session);
+    });
+    for (const [name, offset, inserted, edited, skips] of [
+      ["inside a string", text.indexOf("label") + 2, "a", true, true],
+      ["after a comma", text.indexOf("label',") + 7, "a", true, true],
+      ["closing delimiter", text.indexOf("    \n") + 4, ")", true, false],
+      ["dedent keyword", text.indexOf("    els") + 7, "e", true, false],
+      ["newline", text.indexOf("label',") + 7, "\n", false, false],
+      ["embedded HTML", text.indexOf("</div>") + 2, "a", true, false],
+    ]) {
+      const row = text.slice(0, offset).split("\n").length - 1 + Number(!edited);
+      const request = {
+        ...data,
+        changes: [{ startIndex: offset, oldEndIndex: offset, text: inserted }],
+        ranges: [[row, row]],
+        tabLength: 4,
+        inline: true,
+        options: {
+          isPastedText: false,
+          rowOptions: new Map([
+            [
+              row,
+              edited
+                ? { edited: true }
+                : { preserveLeadingWhitespace: true, skipBlankLines: false },
+            ],
+          ]),
+        },
+      };
+      reference = true;
+      const expected = await host.dispatch("prepared-indent", { ...request, target: 2 });
+      reference = false;
+      parsed.length = 0;
+      const actual = await host.dispatch("prepared-indent", { ...request, target: 3 });
+      assert.deepEqual(actual.value, expected.value, name);
+      assert.equal(
+        parsed.some((scope) => scope !== "source.python.ipy"),
+        !skips,
+        name,
+      );
+      if (skips)
+        assert.ok(
+          actual.value.levels.every(([, level]) => level === null || level === 1),
+          name,
+        );
+      assert.equal(host.sessions.size, 1);
+      assert.equal(host.sessions.get(1).buffer.getText(), text);
+    }
+  } finally {
+    host.close();
+  }
+});
+
+test("forking text neither waits for parent syntax nor seeds a stale root tree", async (t) => {
+  const { host, data } = await setup();
+  try {
+    const parent = host.sessions.get(1);
+    t.mock.method(parent.mode, "atGrammarSettlement", () =>
+      assert.fail("Fork must not wait for syntax"),
+    );
+    await host.dispatch("fork", { ...data, target: 2 });
+    assert.ok(host.sessions.get(2).initialSyntaxTree);
+    host.closeSession(2);
+    const previousTree = parent.mode.rootLanguageLayer.backgroundTree;
+    await host.dispatch("edit", {
+      session: 1,
+      beforeRevision: 9,
+      revision: 10,
+      changes: [{ startIndex: 13, oldEndIndex: 13, text: "\n" }],
+    });
+    parent.mode.rootLanguageLayer.backgroundTree = previousTree;
+    await host.dispatch("fork", { ...data, revision: 10, target: 3 });
+    assert.equal(host.sessions.get(3).buffer.getText(), "class Record:\n");
+    assert.equal(host.sessions.get(3).initialSyntaxTree, undefined);
+    host.closeSession(3);
+    assert.equal(host.sessions.size, 1);
+  } finally {
+    host.close();
+  }
+});
+
 test("obsolete compact preparation cannot publish or leave a speculative document behind", async () => {
   const { host, data } = await setup();
   try {

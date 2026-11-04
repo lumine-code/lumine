@@ -649,7 +649,15 @@ class SyntaxWorkerService {
           },
         );
         check();
-        await client.request("initialize", { session: id, indentationRanges: ranges }, { signal });
+        await client.request(
+          "initialize",
+          {
+            session: id,
+            indentationRanges: ranges,
+            indentationOptions: { rowOptions: options.rowOptions },
+          },
+          { signal },
+        );
         check();
         const { signal: _signal, isCurrent: _isCurrent, ...parameters } = options;
         const result = await client.request(

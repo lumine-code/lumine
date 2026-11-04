@@ -222,12 +222,14 @@ class TreeSitterLanguageMode {
     initialSyntaxChanges,
     indentationOnly = false,
     indentationRanges = null,
+    editedIndentationRows = null,
   }) {
     this.buffer = buffer;
     this.document = new TreeSitterDocument(buffer);
     for (const batch of initialSyntaxChanges ?? []) this.document.apply(batch);
     this.indentationOnly = indentationOnly;
     this.indentationRanges = indentationOnly ? indentationRanges : null;
+    this.editedIndentationRows = indentationOnly ? editedIndentationRows : null;
     this.highlightCache = new HighlightCache({ maxEvents: 128000 });
     this.backgroundSnapshots = new WeakSet();
     this.parseDetails = new WeakMap();
@@ -5405,9 +5407,48 @@ class LanguageLayer {
     return { range, nodeRangeSet };
   }
 
-  _performPopulateInjections(range, nodeRangeSet) {
+  canSkipEditedIndentation(grammars) {
+    const filter = require("./typing-indentation-rules");
+    const rules = [filter.forGrammar(this.grammar)];
+    for (const grammar of grammars) rules.push(filter.forMode(this.languageMode, grammar));
+    return (
+      rules.every(Boolean) &&
+      this.languageMode.editedIndentationRows.every((row) => {
+        if (this.buffer.lineLengthForRow(row) > 4096) return false;
+        const text = this.buffer.lineForRow(row);
+        return rules.every((rule) => !filter.mayMatch(rule, text));
+      })
+    );
+  }
+
+  _performPopulateInjections(range, nodeRangeSet, skipEditedProbe = false) {
     if (!this.tree || this.destroyed || this.languageMode.grammarRegistry?.windowUnloading) {
       return;
+    }
+
+    // Resolve the prospective root's local ownership before parsing embedded
+    // languages. A no-op proof needs only the edited rows; a real correction
+    // falls back to full discovery, including distant combined members.
+    if (
+      !skipEditedProbe &&
+      this.depth === 0 &&
+      this.languageMode.editedIndentationRows?.length &&
+      this.childLayerMarkers.size === 0 &&
+      this.queries.injectionsQuery?.injectionDescriptors &&
+      Object.keys(this.grammar.injectionPointsByType).length === 0
+    ) {
+      const tree = this.tree,
+        version = this.injectionPointVersion;
+      return this._collectIndentationInjectionCandidates(tree, range, version).then((records) => {
+        if (!records || !this._injectionCandidateScanIsCurrent(tree, version)) return;
+        const grammars = new Set(
+          records
+            .map(({ languageName }) => this.languageMode.grammarForLanguageString(languageName))
+            .filter(Boolean),
+        );
+        if (this.canSkipEditedIndentation(grammars)) return;
+        return this._performPopulateInjections(range, nodeRangeSet, true);
+      });
     }
 
     // We won't touch _all_ injections, but we will touch any injection that

@@ -242,6 +242,7 @@ class SyntaxWorkerHost {
       initialSyntaxChanges: session.initialSyntaxChanges,
       indentationOnly: Boolean(session.parent),
       indentationRanges: session.indentationRanges,
+      editedIndentationRows: session.editedIndentationRows,
     });
     session.initialSyntaxTree = null;
     session.initialSyntaxChanges = null;
@@ -400,7 +401,7 @@ class SyntaxWorkerHost {
         );
         await this.dispatch(
           "initialize",
-          { session: target, indentationRanges: data.ranges },
+          { session: target, indentationRanges: data.ranges, indentationOptions: data.options },
           { signal },
         );
         const result = await this.dispatch(
@@ -589,6 +590,17 @@ class SyntaxWorkerHost {
           }
         }
         session.indentationRanges = contexts;
+        const editedRows = [];
+        for (const [start, last] of data.indentationRanges) {
+          if (last - start + 1 + editedRows.length > INLINE_INDENT_ROWS) break;
+          for (let row = start; row <= last; row++) editedRows.push(row);
+        }
+        if (
+          editedRows.length ===
+            data.indentationRanges.reduce((count, [first, last]) => count + last - first + 1, 0) &&
+          editedRows.every((row) => data.indentationOptions?.rowOptions?.get(row)?.edited)
+        )
+          session.editedIndentationRows = editedRows;
       }
       session.initialized = true;
       this.installMode(session);
@@ -645,6 +657,47 @@ class SyntaxWorkerHost {
     }
     try {
       if (!session.initialized) throw new Error("Syntax document is not initialized");
+      // A fork consumes immutable text, not semantic results. Waiting for the
+      // parent's complete injection parse serializes every typed character
+      // behind highlighting. Reuse a current root tree when one is available;
+      // otherwise the private candidate parses its own current source.
+      if (operation === "fork") {
+        if (!Number.isSafeInteger(data.target) || this.sessions.has(data.target))
+          throw new Error("Invalid speculative syntax session");
+        const copy = new TextBuffer({ text: buffer.getTextSnapshot() });
+        copy.getPath = () => buffer.getPath();
+        const fork = {
+          id: data.target,
+          parent: session.id,
+          buffer: copy,
+          scopeName: session.scopeName,
+          revision: 0,
+          generation: 0,
+          initialized: false,
+          jobs: new Set(),
+          initialSyntaxChanges: [],
+        };
+        this.sessions.set(fork.id, fork);
+        (session.forks ??= new Set()).add(fork.id);
+        try {
+          runtime.registerBuffer(copy, () => this.contextFor(fork));
+          const policy = this.grammars.rootLanguageRangesByBuffer.get(buffer)?.descriptor;
+          if (policy) fork.rootRanges = this.grammars.setRootLanguageRanges(copy, policy);
+          const tree = mode.rootLanguageLayer?.backgroundTree;
+          if (tree?.revision === buffer.getTextRevision())
+            fork.initialSyntaxTree = require("./tree-sitter-parser").copySnapshot(
+              tree,
+              copy.getTextRevision(),
+            );
+          fork.captureInitialChanges = copy.onDidApplyChanges((batch) =>
+            fork.initialSyntaxChanges.push(batch),
+          );
+          return { revision, generation, value: { id: fork.id } };
+        } catch (error) {
+          this.closeSession(fork.id);
+          throw error;
+        }
+      }
       let transaction;
       try {
         const settlement = mode.atGrammarSettlement();
@@ -703,43 +756,7 @@ class SyntaxWorkerHost {
         throw aborted("Syntax analysis is unavailable");
       }
       let value;
-      if (operation === "fork") {
-        if (!Number.isSafeInteger(data.target) || this.sessions.has(data.target))
-          throw new Error("Invalid speculative syntax session");
-        const copy = new TextBuffer({ text: buffer.getTextSnapshot() });
-        copy.getPath = () => buffer.getPath();
-        const fork = {
-          id: data.target,
-          parent: session.id,
-          buffer: copy,
-          scopeName: session.scopeName,
-          revision: 0,
-          generation: 0,
-          initialized: false,
-          jobs: new Set(),
-          initialSyntaxChanges: [],
-        };
-        this.sessions.set(fork.id, fork);
-        (session.forks ??= new Set()).add(fork.id);
-        try {
-          runtime.registerBuffer(copy, () => this.contextFor(fork));
-          const policy = this.grammars.rootLanguageRangesByBuffer.get(buffer)?.descriptor;
-          if (policy) fork.rootRanges = this.grammars.setRootLanguageRanges(copy, policy);
-          const tree = mode.rootLanguageLayer?.backgroundTree;
-          if (tree?.revision === buffer.getTextRevision())
-            fork.initialSyntaxTree = require("./tree-sitter-parser").copySnapshot(
-              tree,
-              copy.getTextRevision(),
-            );
-          fork.captureInitialChanges = copy.onDidApplyChanges((batch) =>
-            fork.initialSyntaxChanges.push(batch),
-          );
-          value = { id: fork.id };
-        } catch (error) {
-          this.closeSession(fork.id);
-          throw error;
-        }
-      } else if (operation === "prepared-indent") {
+      if (operation === "prepared-indent") {
         const { IndentationLevels } = require("./tree-sitter-indentation-stream");
         const history = new IndentationLevels();
         const levels = data.inline && canInlineIndentation(data.ranges) ? [] : null;

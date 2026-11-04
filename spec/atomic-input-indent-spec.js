@@ -109,6 +109,41 @@ describe("Atomic input indentation", () => {
     );
   });
 
+  for (const scenario of [
+    {
+      name: "ordinary text",
+      source: "result = fn(\n    value = 'text',",
+      input: "a",
+      expected: "result = fn(\n    value = 'text',a",
+    },
+    {
+      name: "a closing delimiter",
+      source: "result = fn(\n    ",
+      input: ")",
+      expected: "result = fn(\n)",
+    },
+  ])
+    it(`publishes IPython ${scenario.name} together with its final indentation`, async () => {
+      await lumine.packages.activatePackage("language-ipython");
+      await start(scenario.source, "source.python.ipy");
+      editor.setCursorBufferPosition([1, Infinity]);
+      const changes = [];
+      editor.getBuffer().onDidApplyChanges(() => changes.push(editor.getText()));
+      const pending = hold();
+      const inserted = editor.insertText(scenario.input);
+      await pending.ready;
+      expect(editor.getText()).toBe(scenario.source);
+      expect(changes).toEqual([]);
+      pending.release();
+      await inserted;
+      await editor.whenGrammarSettled();
+      expect(changes).toEqual([scenario.expected]);
+      editor.undo();
+      expect(editor.getText()).toBe(scenario.source);
+      editor.redo();
+      expect(editor.getText()).toBe(scenario.expected);
+    });
+
   it("lets a live insertion observer cancel prepared input once without creating history", async () => {
     await start("class Record:");
     editor.moveToEndOfLine();

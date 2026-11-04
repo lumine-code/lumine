@@ -108,7 +108,7 @@ function compile(query, source) {
   }
 }
 
-function everyGrammar(mode, accept) {
+function everyGrammar(mode, accept, rootGrammar = mode.grammar) {
   const visited = new Set();
   const visit = (grammar) => {
     if (!grammar || visited.has(grammar)) return true;
@@ -124,22 +124,30 @@ function everyGrammar(mode, accept) {
     }
     return true;
   };
-  return visit(mode.grammar);
+  return visit(rootGrammar);
 }
 
-function forMode(mode) {
+function forGrammar(grammar) {
+  if (!grammar.queryPaths?.indentsQuery) return [];
+  const query = grammar.queryCache.get("indentsQuery");
+  if (!query) return null;
+  if (!Object.hasOwn(query, "typingIndentationRules"))
+    query.typingIndentationRules = compile(query, grammar.indentsQuery);
+  return query.typingIndentationRules;
+}
+
+function forMode(mode, grammar = mode.grammar) {
   const rules = [];
-  const complete = everyGrammar(mode, (grammar) => {
-    if (!grammar.queryPaths?.indentsQuery) return true;
-    const query = grammar.queryCache.get("indentsQuery");
-    if (!query) return false;
-    if (!Object.hasOwn(query, "typingIndentationRules"))
-      query.typingIndentationRules = compile(query, grammar.indentsQuery);
-    const own = query.typingIndentationRules;
-    if (!own) return false;
-    rules.push(...own);
-    return true;
-  });
+  const complete = everyGrammar(
+    mode,
+    (grammar) => {
+      const own = forGrammar(grammar);
+      if (!own) return false;
+      rules.push(...own);
+      return true;
+    },
+    grammar,
+  );
   return complete ? rules : null;
 }
 
@@ -164,4 +172,4 @@ function mayMatch(rules, text) {
   );
 }
 
-module.exports = { compile, forMode, mayMatch, usesSyntaxIndentation };
+module.exports = { compile, forGrammar, forMode, mayMatch, usesSyntaxIndentation };
