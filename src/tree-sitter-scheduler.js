@@ -49,7 +49,10 @@ class TreeSitterScheduler {
   }
 
   hasBudget(timeoutMicros) {
-    return this.now() < this.deadline(timeoutMicros);
+    // Establish the deadline before sampling the remaining time. An earlier
+    // clock read can otherwise admit work after expiry, even for a zero budget.
+    const deadline = this.deadline(timeoutMicros);
+    return this.now() < deadline;
   }
 
   // A callback performs one synchronous, resumable step and returns an

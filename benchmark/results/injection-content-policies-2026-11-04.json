@@ -276,7 +276,8 @@
           "policyDeclarations": 5
         }
       ],
-      "revision": "82f11d2c58a443f7ce4cbdc3bb04722408cf3fc4"
+      "revision": "87c101c6bbfeb52e8507e2142fca15580e0733cd",
+      "runtimeRevision": "82f11d2c58a443f7ce4cbdc3bb04722408cf3fc4"
     },
     {
       "name": "language-c",
@@ -302,7 +303,8 @@
           "policyDeclarations": 2
         }
       ],
-      "revision": "1c955709c1380e3257103058846ec6cacc178b27"
+      "revision": "efdf1f23645aabf574fc46a6c8e7285ac8d84494",
+      "runtimeRevision": "1c955709c1380e3257103058846ec6cacc178b27"
     },
     {
       "name": "language-cmake",
@@ -323,7 +325,8 @@
       "staticRules": 8,
       "staticPolicies": 4,
       "callbacks": [],
-      "revision": "18d4fc722ed2ca2655666d5599f839798b11601d"
+      "revision": "3ceebc836ef9ef82951b38cfa5757b8c598010da",
+      "runtimeRevision": "18d4fc722ed2ca2655666d5599f839798b11601d"
     },
     {
       "name": "language-crystal",
@@ -432,7 +435,8 @@
       "staticRules": 3,
       "staticPolicies": 1,
       "callbacks": [],
-      "revision": "e6cda642a297b8dfdecec83b608e4ad958ae0d4e"
+      "revision": "ce3a0c83d6a5bf027dc69c6f3025ca8750d52eec",
+      "runtimeRevision": "e6cda642a297b8dfdecec83b608e4ad958ae0d4e"
     },
     {
       "name": "language-erlang",
@@ -468,7 +472,8 @@
           "policyDeclarations": 1
         }
       ],
-      "revision": "0d9ceb917ba134ab9d81f52516389868051cb672"
+      "revision": "077cbde00deb03e9e59a8d7a6865ae2167e2d182",
+      "runtimeRevision": "0d9ceb917ba134ab9d81f52516389868051cb672"
     },
     {
       "name": "language-git",
@@ -501,7 +506,8 @@
       "staticRules": 13,
       "staticPolicies": 1,
       "callbacks": [],
-      "revision": "da463095d92ec160c7aafeac000118c1d9fffeec"
+      "revision": "a427cd3325e4db5b5f41a476ac995104beb2a87e",
+      "runtimeRevision": "da463095d92ec160c7aafeac000118c1d9fffeec"
     },
     {
       "name": "language-graphql",
@@ -552,7 +558,8 @@
       "staticRules": 9,
       "staticPolicies": 6,
       "callbacks": [],
-      "revision": "c1a01484fbb8ffcbc9bb5a8bfb682782a483fbba"
+      "revision": "017c724acbe642f4c5d4c55c83dd824073061ebd",
+      "runtimeRevision": "c1a01484fbb8ffcbc9bb5a8bfb682782a483fbba"
     },
     {
       "name": "language-hyperlink",
@@ -592,7 +599,8 @@
       "staticRules": 16,
       "staticPolicies": 14,
       "callbacks": [],
-      "revision": "c3a2b3abc68d2b5401097f4eef4f41c859c60a96"
+      "revision": "3d23f89876c59cd4699e649c9d6cb92f6555cd7c",
+      "runtimeRevision": "c3a2b3abc68d2b5401097f4eef4f41c859c60a96"
     },
     {
       "name": "language-java",
@@ -618,7 +626,8 @@
           "policyDeclarations": 0
         }
       ],
-      "revision": "86a8cc841d6ed15b760b1ad92dc3e6d53833699e"
+      "revision": "14bdc4a0d4f52dee4899ca43abf0658467787329",
+      "runtimeRevision": "86a8cc841d6ed15b760b1ad92dc3e6d53833699e"
     },
     {
       "name": "language-json",
@@ -649,7 +658,8 @@
       "staticRules": 7,
       "staticPolicies": 4,
       "callbacks": [],
-      "revision": "c8177f58a766a586d9314c9535f91a0397177f0b"
+      "revision": "7b655e98f42694f06d1c06f9c55cad27ac854971",
+      "runtimeRevision": "c8177f58a766a586d9314c9535f91a0397177f0b"
     },
     {
       "name": "language-just",
@@ -762,7 +772,8 @@
       "staticRules": 4,
       "staticPolicies": 1,
       "callbacks": [],
-      "revision": "f07fe0fecd709383768ab4379d79929461a4f054"
+      "revision": "52f99faf47f2aafca3307217f7514157c4f33a35",
+      "runtimeRevision": "f07fe0fecd709383768ab4379d79929461a4f054"
     },
     {
       "name": "language-nginx",
@@ -783,7 +794,8 @@
       "staticRules": 6,
       "staticPolicies": 4,
       "callbacks": [],
-      "revision": "baa45d3c086fbc0385f7119c9f69d58d63da097f"
+      "revision": "cc6e9388bd2ed859f11c79fdd4c10252e28fcf13",
+      "runtimeRevision": "baa45d3c086fbc0385f7119c9f69d58d63da097f"
     },
     {
       "name": "language-objective-c",
@@ -910,7 +922,8 @@
       "staticRules": 4,
       "staticPolicies": 4,
       "callbacks": [],
-      "revision": "9050d05c8d776e53330d8357813a1a4aa18c877e"
+      "revision": "19781effe82bc6ed3e3589f9208bd285d952ef10",
+      "runtimeRevision": "9050d05c8d776e53330d8357813a1a4aa18c877e"
     },
     {
       "name": "language-rust",
@@ -1099,7 +1112,8 @@
           "policyDeclarations": 0
         }
       ],
-      "revision": "e0701f609ec1a659a33bba87d2ea240284131425"
+      "revision": "bff33715e7249b70cd9aaeaa781a86b210e6bbfe",
+      "runtimeRevision": "e0701f609ec1a659a33bba87d2ea240284131425"
     },
     {
       "name": "language-typst",
@@ -1125,7 +1139,8 @@
           "policyDeclarations": 2
         }
       ],
-      "revision": "af80d7d7bf9468661db6160a5ecf120f3781c31f"
+      "revision": "f6fc3b7415d67ce5c5e4d2565eac8af9af739518",
+      "runtimeRevision": "af80d7d7bf9468661db6160a5ecf120f3781c31f"
     },
     {
       "name": "language-xml",
@@ -1266,7 +1281,284 @@
     }
   ],
   "coreValidation": {
-    "runtimeTests": 428,
-    "rendererSpecs": 90
-  }
+    "runtimeTests": 429,
+    "rendererSpecs": 90,
+    "highlightConfigurationSpecs": 10
+  },
+  "workerPolicyResults": [
+    {
+      "repo": "language-html",
+      "code": 0,
+      "summary": "2 specs, 0 failures"
+    },
+    {
+      "repo": "language-gfm",
+      "code": 0,
+      "summary": "2 specs, 0 failures"
+    },
+    {
+      "repo": "language-javascript",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-typescript",
+      "code": 0,
+      "summary": "2 specs, 0 failures"
+    },
+    {
+      "repo": "language-vue",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-blade",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-coffee-script",
+      "code": 0,
+      "summary": "2 specs, 0 failures"
+    },
+    {
+      "repo": "language-go",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-mustache",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-ruby-on-rails",
+      "code": 0,
+      "summary": "2 specs, 0 failures"
+    },
+    {
+      "repo": "language-julia",
+      "code": 0,
+      "summary": "2 specs, 0 failures"
+    },
+    {
+      "repo": "language-nix",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-elixir",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-clojure",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-ipython",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    }
+  ],
+  "nativePolicyResults": [
+    {
+      "repo": "language-html",
+      "code": 0,
+      "summary": "2 specs, 0 failures"
+    },
+    {
+      "repo": "language-gfm",
+      "code": 0,
+      "summary": "2 specs, 0 failures"
+    },
+    {
+      "repo": "language-javascript",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-typescript",
+      "code": 0,
+      "summary": "2 specs, 0 failures"
+    },
+    {
+      "repo": "language-vue",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-blade",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-coffee-script",
+      "code": 0,
+      "summary": "2 specs, 0 failures"
+    },
+    {
+      "repo": "language-go",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-mustache",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-ruby-on-rails",
+      "code": 0,
+      "summary": "2 specs, 0 failures"
+    },
+    {
+      "repo": "language-julia",
+      "code": 0,
+      "summary": "2 specs, 0 failures"
+    },
+    {
+      "repo": "language-nix",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-elixir",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-clojure",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    },
+    {
+      "repo": "language-ipython",
+      "code": 0,
+      "summary": "1 spec, 0 failures"
+    }
+  ],
+  "followupInputCases": [
+    {
+      "name": "CSS root",
+      "scope": "source.css",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 2.600000023841858,
+        "p95": 37,
+        "max": 286.39999997615814
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 8.800000011920929,
+        "p95": 130.69999998807907,
+        "max": 355.5
+      }
+    },
+    {
+      "name": "CSS in HTML",
+      "scope": "text.html.basic",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 1.7000000476837158,
+        "p95": 9,
+        "max": 24.69999998807907
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 8.699999988079071,
+        "p95": 42.5,
+        "max": 42.90000003576279
+      }
+    },
+    {
+      "name": "CSS in JavaScript",
+      "scope": "source.js",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 2.299999952316284,
+        "p95": 28.899999976158142,
+        "max": 34.60000002384186
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 11.199999988079071,
+        "p95": 57.60000002384186,
+        "max": 62.5
+      }
+    },
+    {
+      "name": "CSS in Vue",
+      "scope": "text.html.vue",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 1.9000000357627869,
+        "p95": 23.80000001192093,
+        "max": 31.399999976158142
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 9.599999964237213,
+        "p95": 85.60000002384186,
+        "max": 198.69999998807907
+      }
+    },
+    {
+      "name": "Python root",
+      "scope": "source.python",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 1.899999976158142,
+        "p95": 21.80000001192093,
+        "max": 25.399999976158142
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 8.800000011920929,
+        "p95": 92.60000002384186,
+        "max": 135.5999999642372
+      }
+    },
+    {
+      "name": "Python in Markdown",
+      "scope": "source.gfm",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 2.399999976158142,
+        "p95": 19.5,
+        "max": 28
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 17.599999964237213,
+        "p95": 92.59999996423721,
+        "max": 106
+      }
+    },
+    {
+      "name": "Python in IPython",
+      "scope": "source.python.ipy",
+      "packages": 247,
+      "inputToInsert": {
+        "count": 30,
+        "median": 1.800000011920929,
+        "p95": 18.80000001192093,
+        "max": 20.400000035762787
+      },
+      "inputToFrame": {
+        "count": 30,
+        "median": 13.5,
+        "p95": 67.5,
+        "max": 89.5
+      }
+    }
+  ],
+  "followupSchedulerSha256": "89411cef2f4f75386de909a8195ca3f4a7c9eada38bb530620f0f8812b76a11f"
 }

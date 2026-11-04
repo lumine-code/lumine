@@ -31,6 +31,18 @@ function clock(options = {}) {
   };
 }
 
+test("an advancing clock cannot create time inside a zero or expired allowance", () => {
+  for (const timeoutMicros of [0, 500]) {
+    let tick = 0;
+    const scheduler = new TreeSitterScheduler(2, { now: () => tick++, defer() {} });
+    assert.equal(scheduler.hasBudget(timeoutMicros), false);
+  }
+  const readings = [0, 3, 5];
+  const scheduler = new TreeSitterScheduler(2, { now: () => readings.shift(), defer() {} });
+  assert.equal(scheduler.deadline(4000), 4);
+  assert.equal(scheduler.hasBudget(4000), false);
+});
+
 test("a newly focused third document runs before two large parses complete", async () => {
   const time = clock();
   const { scheduler } = time;
