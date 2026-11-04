@@ -95,12 +95,51 @@ The child grammar must accept the captured source, including its delimiters. To 
 | `injection.combined-max-members`        | Bound a combined layer to this positive safe integer number of owners.                                  |
 | `injection.language-scope`              | Override the child grammar's base scope; `"none"` suppresses it.                                        |
 | `injection.cover-shallower-scopes`      | Cover scopes supplied by shallower language layers.                                                     |
+| `injection.content-edit-policy`         | Name an optional parent-owned policy proving that a local content edit preserves injection ownership.   |
 
 Boolean properties accept `"true"`, `"false"`, or a directive without a value, which means true. Unknown properties and captures beginning with `injection.`, custom predicates and directives, and `#is?` or `#is-not?` assertions fail validation. The implemented text predicates are `#eq?`, `#not-eq?`, `#any-eq?`, `#any-not-eq?`, `#match?`, `#not-match?`, `#any-match?`, `#any-not-match?`, `#any-of?` and `#not-any-of?`. A pattern cannot combine a fixed language property with a language capture.
 
 Matches from the same pattern, owner and language accumulate content fragments into one injection. The runtime deduplicates repeated captures across scan windows and preserves each pattern's identity for layer reuse. Separate patterns remain separate injections, even when they capture the same owner and select the same language. `combined` then groups these owners using the same range and parser lifecycle as JavaScript injection points; a member limit counts owners, rather than content fragments.
 
 Static queries and `lumine.grammars.addInjectionPoint()` registrations are additive. Port a rule by removing its JavaScript registration when its query is ready, so both mechanisms do not create the same child document. Keep dynamic registrations for configuration changes, semantic eligibility checks and synthetic content ranges, and dispose them with the package or service edge that owns them. Removing or reloading a static query rebuilds its injections without removing unrelated dynamic registrations.
+
+### Stable content edits
+
+An injected language should use the same typing-indentation rules as a root language whenever the parent can prove that an edit leaves its language boundaries intact. A parent grammar may declare named CommonJS policy modules in `treeSitter.contentEditPolicies`, with paths relative to its grammar descriptor, and select one through `injection.content-edit-policy` on a static injection pattern:
+
+```json
+"contentEditPolicies": {
+  "python-words": "../lib/python-content-edit-policy.js"
+}
+```
+
+```scheme
+((python_cell_body) @injection.owner @injection.content
+  (#set! injection.language "python")
+  (#set! injection.content-edit-policy "python-words")
+  (#set! injection.include-children))
+```
+
+The module exports a synchronous function with this contract:
+
+```ts
+type ContentEditPolicy = (
+  edit: Readonly<{
+    before: string;
+    oldText: string;
+    newText: string;
+    after: string;
+  }>,
+) => boolean;
+```
+
+`before + oldText + after` is the previous complete buffer line; `before + newText + after` is the proposed line. Returning exactly `true` guarantees that this edit preserves the parent grammar's immediate injection topology, language choices, ownership and excluded holes, apart from ordinary coordinate shifts caused by the changed text length. The guarantee covers overlapping rules too. It is stronger than saying that a character usually does not affect indentation. Delimiters, string-prefix changes, language selectors and constructs that change lexical state must be rejected unless the policy proves them stable. Policy tests should compare the parser's actual ownership before and after accepted edits, including malformed source.
+
+Policies run on the renderer's input path. They must be pure, bounded, synchronous and free of I/O, registrations and mutable parser state. The supplied object is frozen and contains only line strings. Missing modules, exceptions, promises and values other than `true` fall back to exact preparation. No syntax node or worker-owned tree crosses this API.
+
+The worker publishes revisioned ownership ranges and the child grammar's conservative indentation rules. Core accepts a policy only for a same-line edit strictly inside an owned content range that also contains the line's first non-whitespace character. Boundaries, excluded holes, unknown or overlapping unsupported languages and long rows retain the complete prepared path. Accepted edits rebase the ownership snapshot; other edits discard it. Grammar changes, worker recovery and replacement invalidate the snapshot. A valid policy does not itself choose indentation: if the root or child's rules might dedent the new line, core still prepares and publishes text and whitespace atomically.
+
+The initial implementation accelerates direct static injections from a root with no callback injections, retains at most 128 content ranges and bounds the line context to 4096 UTF-16 units. Descendant languages are included conservatively in the child's indentation rules. Unsupported shapes remain correct through the existing worker path. These bounds limit cached work, not document size or language support.
 
 An injection target can declare a top-level `injectionContentRegex` in its grammar descriptor when a cheap text check can rule out owners that have nothing for it to parse:
 

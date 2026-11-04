@@ -109,6 +109,54 @@ describe("Atomic input indentation", () => {
     );
   });
 
+  it("uses a grammar-owned content policy for synchronous injected typing across unsettled edits", async () => {
+    const path = require("node:path");
+    const file = require.resolve("language-python/grammars/python.json");
+    const definition = require("@lumine-code/season").readFileSync(file);
+    const root = new (require("../src/tree-sitter-grammar"))(lumine.grammars, file, {
+      ...definition,
+      scopeName: "source.typing-context-test",
+      injectionNames: [],
+      treeSitter: {
+        grammar: definition.treeSitter.grammar,
+        injectionsQuery: path.relative(
+          path.dirname(file),
+          path.join(__dirname, "fixtures/typing-context-injections.scm"),
+        ),
+        contentEditPolicies: { words: require.resolve("./fixtures/syntax-content-edit-policy") },
+      },
+    });
+    const registration = lumine.grammars.addGrammar(root);
+    try {
+      const source = "result = fn(\n    value = 'text',\n)\n";
+      const mode = await start(source, root.scopeName);
+      expect(mode.typingIndentationRules).toBeNull();
+      expect(mode.typingContext).not.toBeNull();
+      editor.setCursorBufferPosition([1, Infinity]);
+      const request = spyOn(service.client, "request").and.callThrough();
+      for (const letter of "abcdefghijklmnopqrst") {
+        expect(Boolean(editor.insertText(letter)?.then)).toBe(false);
+        expect(mode.typingContextRevision).toBe(editor.getBuffer().getTextRevision());
+        expect(mode.typingContext).not.toBeNull();
+      }
+      expect(request.calls.allArgs().some(([operation]) => operation === "prepared-indent")).toBe(
+        false,
+      );
+      expect(editor.lineTextForBufferRow(1)).toBe("    value = 'text',abcdefghijklmnopqrst");
+      await editor.whenGrammarSettled();
+      const boundary = editor.insertText("'");
+      expect(Boolean(boundary?.then)).toBe(true);
+      await boundary;
+      await editor.whenGrammarSettled();
+      editor.undo();
+      expect(editor.lineTextForBufferRow(1)).toBe("    value = 'text',abcdefghijklmnopqrst");
+    } finally {
+      editor.destroy();
+      registration.dispose();
+      root.deactivate();
+    }
+  });
+
   for (const scenario of [
     {
       name: "ordinary text",

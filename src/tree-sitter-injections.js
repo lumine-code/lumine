@@ -69,6 +69,10 @@ function compileInjectionQuery(query, source) {
         if (typeof value !== "string" || !value.trim())
           fail("injection.language-scope must name a scope or none");
         descriptor.languageScope = value === "none" ? null : value;
+      } else if (name === "injection.content-edit-policy") {
+        if (typeof value !== "string" || !/^[a-z][a-z0-9-]*$/.test(value))
+          fail("injection.content-edit-policy must name a content edit policy");
+        descriptor.contentEditPolicy = value;
       } else if (name === "injection.combined-max-members") {
         const limit = Number(value);
         if (

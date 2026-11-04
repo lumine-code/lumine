@@ -155,6 +155,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       return;
     }
     if (event.event === "recovering") {
+      this.typingContext = null;
       this.warmupPaused = false;
       this.presentationVersion++;
       this.paintRetries?.clear();
@@ -168,6 +169,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       this.initializeSyntax();
     } else if (event.event === "failure") this.failed(event.error ?? new Error(event.message));
     else if (event.event === "pending" || event.event === "invalidate") {
+      this.typingContext = null;
       this.warmupPaused = false;
       this.presentationVersion++;
       this.paintRetries?.clear();
@@ -286,6 +288,17 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   }
 
   bufferDidChange(change) {
+    this.typingContext =
+      this.typingContextRevision === this.buffer.getTextRevision() - 1 &&
+      this.typingIndentationEpoch === this.getSyntaxRequestEpoch()
+        ? require("./syntax-typing-context").advance(
+            this.typingContext,
+            this.service.grammars,
+            change,
+            this.buffer,
+          )
+        : null;
+    this.typingContextRevision = this.buffer.getTextRevision();
     this.warmupPaused = false;
     this.presentationVersion++;
     this.paintRetries.clear();
@@ -462,6 +475,14 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     this.usedGrammarScopes = result.grammars;
     this.softTabsHint = result.softTabs;
     this.typingIndentationRules = result.typingIndentationRules;
+    if (
+      result.syntaxReady ||
+      result.typingContext ||
+      this.typingContextRevision !== result.typingContextRevision ||
+      this.typingIndentationEpoch !== this.getSyntaxRequestEpoch()
+    )
+      this.typingContext = result.typingContext;
+    this.typingContextRevision = result.typingContextRevision;
     this.usesSyntaxIndentation = result.usesSyntaxIndentation;
     this.typingIndentationEpoch = this.getSyntaxRequestEpoch();
     if (this.tokenized && previous !== this.softTabsHint) this.emitter.emit("did-tokenize");
@@ -490,6 +511,17 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     const candidate = source.slice(first, start) + text + source.slice(end, last);
     if (!/^[\t ]/.test(candidate)) return false;
     if (this.typingIndentationEpoch !== this.getSyntaxRequestEpoch()) return true;
+    if (
+      this.typingContextRevision === this.buffer.getTextRevision() &&
+      require("./syntax-typing-context").permits(
+        this.typingContext,
+        this.service.grammars,
+        range,
+        text,
+        source.slice(first, last),
+      )
+    )
+      return false;
     return require("./typing-indentation-rules").mayMatch(this.typingIndentationRules, candidate);
   }
 

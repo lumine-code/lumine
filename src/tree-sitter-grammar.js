@@ -114,6 +114,12 @@ module.exports = class TreeSitterGrammar {
 
     this.grammarFilePath = grammarPath;
     this.queryPaths = params.treeSitter;
+    this.contentEditPolicies = new Map();
+    for (const [name, file] of Object.entries(params.treeSitter.contentEditPolicies ?? {})) {
+      if (!/^[a-z][a-z0-9-]*$/.test(name) || typeof file !== "string" || !file)
+        throw new TypeError("Content edit policies require a name and a module path");
+      this.contentEditPolicies.set(name, path.resolve(path.dirname(grammarPath), file));
+    }
     this.languageSegment = params.treeSitter.languageSegment ?? null;
     if (typeof params.treeSitter.grammar !== "string") {
       throw new Error(`WASM Tree-sitter grammar ${grammarPath} must specify treeSitter.grammar`);

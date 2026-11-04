@@ -960,6 +960,8 @@ class SyntaxWorkerHost {
       softTabs: session.softTabs,
       syntaxReady: !mode.publicationPending,
       typingIndentationRules: require("./typing-indentation-rules").forMode(mode),
+      typingContext: require("./syntax-typing-context").capture(mode),
+      typingContextRevision: session.revision,
       usesSyntaxIndentation: require("./typing-indentation-rules").usesSyntaxIndentation(mode),
     };
   }
