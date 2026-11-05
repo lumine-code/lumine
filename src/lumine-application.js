@@ -13,6 +13,7 @@ const XdgShellInvoker = require("./xdg-shell-invoker");
 const applicationLauncher = require("./application-launcher");
 const StartupTime = require("./startup-time");
 const ipcHelpers = require("./ipc-helpers");
+const windowZoom = require("./window-zoom");
 const { getConfigFilePath } = require("./get-app-details.js");
 const {
   BrowserWindow,
@@ -331,11 +332,25 @@ const handleWindowAction = async (event, action, ...args) => {
       "setFullScreen",
       "openDevTools",
       "toggleDevTools",
+      "zoomIn",
+      "zoomOut",
+      "resetZoom",
     ].includes(action)
   )
     return;
 
   switch (action) {
+    case "getZoomState":
+      return windowZoom.getZoomState(lumineWindow, window.webContents);
+    case "getZoomFactor":
+    case "zoomIn":
+    case "zoomOut":
+      return windowZoom[action](window.webContents);
+    case "resetZoom":
+      return windowZoom.resetZoom(
+        window.webContents,
+        windowZoom.getDefaultZoomFactor(lumineWindow),
+      );
     case "getState": {
       const [x, y] = window.getPosition();
       const [width, height] = window.getSize();
@@ -1469,6 +1484,14 @@ module.exports = class LumineApplication extends EventEmitter {
       this.config.resetUserSettings(settings);
     });
 
+    this.disposable.add(
+      this.config.onDidChange("core.zoomFactor", ({ newValue }) => {
+        for (const window of this.getAllWindows()) {
+          if (!window.isSpec) window.applyDefaultZoomFactor(newValue);
+        }
+      }),
+    );
+
     this.configFile.onDidError((message) => {
       const window = this.focusedWindow() || this.getLastFocusedWindow();
       if (window) {
@@ -1718,7 +1741,7 @@ module.exports = class LumineApplication extends EventEmitter {
       ),
     );
 
-    this.disposable.add(this.disableZoomOnDisplayChange());
+    this.disposable.add(this.disableVisualZoomOnDisplayChange());
   }
 
   // Performs one Promise-based Electron 44 clipboard operation on behalf of a
@@ -2874,14 +2897,13 @@ module.exports = class LumineApplication extends EventEmitter {
     app.quit();
   }
 
-  disableZoomOnDisplayChange() {
+  disableVisualZoomOnDisplayChange() {
     const callback = () => {
-      this.getAllWindows().map((window) => window.disableZoom());
+      this.getAllWindows().forEach((window) => window.disableVisualZoom());
     };
 
     // Set the limits every time a display is added or removed, otherwise the
-    // configuration gets reset to the default, which allows zooming the
-    // webframe.
+    // configuration gets reset to the default, which allows pinch zooming.
     screen.on("display-added", callback);
     screen.on("display-removed", callback);
     return new Disposable(() => {

@@ -9,13 +9,15 @@ module.exports = class AuxiliaryWindowService {
     this.persistentId = descriptor.persistentId;
     this.state = descriptor.state;
     this.emitter = new Emitter();
-    this.subscription = applicationDelegate.onAuxiliaryWindowEvent(({ id, type, state }) => {
-      if (id === this.id) {
-        if (type === "closed") this.closed = true;
-        if (state) this.state = state;
-        this.emitter.emit(type);
-      }
-    });
+    this.subscription = applicationDelegate.onAuxiliaryWindowEvent(
+      ({ id, type, state, zoomFactor, zoomState }) => {
+        if (id === this.id && !this.closed) {
+          if (type === "closed") this.closed = true;
+          if (state) this.state = state;
+          this.emitter.emit(type, type === "did-change-zoom-state" ? zoomState : zoomFactor);
+        }
+      },
+    );
   }
 
   getId() {
@@ -37,6 +39,9 @@ module.exports = class AuxiliaryWindowService {
           "unmaximize",
           "setFullScreen",
           "setBounds",
+          "zoomIn",
+          "zoomOut",
+          "resetZoom",
           "openDevTools",
           "closeDevTools",
           "toggleDevTools",
@@ -52,6 +57,27 @@ module.exports = class AuxiliaryWindowService {
   }
   getState() {
     return this.invoke("getState");
+  }
+  getZoomFactor() {
+    return this.invoke("getZoomFactor");
+  }
+  getZoomState() {
+    return this.invoke("getZoomState");
+  }
+  onDidChangeZoomState(callback) {
+    return this.emitter.on("did-change-zoom-state", callback);
+  }
+  onDidChangeZoomFactor(callback) {
+    return this.emitter.on("did-change-zoom-factor", callback);
+  }
+  zoomIn() {
+    return this.invoke("zoomIn");
+  }
+  zoomOut() {
+    return this.invoke("zoomOut");
+  }
+  resetZoom() {
+    return this.invoke("resetZoom");
   }
   focus() {
     return this.invoke("focus");

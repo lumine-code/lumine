@@ -1,6 +1,44 @@
 const ApplicationDelegate = require("../src/application-delegate");
 
 describe("ApplicationDelegate", function () {
+  it("forwards applied zoom state and removes its IPC listener on disposal", () => {
+    const { ipcRenderer } = require("electron");
+    const delegate = new ApplicationDelegate();
+    const callback = jasmine.createSpy("zoom state changed");
+    const existing = new Set(ipcRenderer.listeners("did-change-zoom-state"));
+    const subscription = delegate.onDidChangeZoomState(callback);
+    const listener = ipcRenderer
+      .listeners("did-change-zoom-state")
+      .find((candidate) => !existing.has(candidate));
+    try {
+      listener({}, { factor: 1.2, defaultFactor: 1.2 });
+      expect(callback).toHaveBeenCalledOnceWith({ factor: 1.2, defaultFactor: 1.2 });
+      subscription.dispose();
+      expect(ipcRenderer.listeners("did-change-zoom-state")).not.toContain(listener);
+    } finally {
+      subscription.dispose();
+    }
+  });
+
+  it("forwards the applied zoom factor and removes its IPC listener on disposal", () => {
+    const { ipcRenderer } = require("electron");
+    const delegate = new ApplicationDelegate();
+    const callback = jasmine.createSpy("zoom changed");
+    const existing = new Set(ipcRenderer.listeners("did-change-zoom-factor"));
+    const subscription = delegate.onDidChangeZoomFactor(callback);
+    const listener = ipcRenderer
+      .listeners("did-change-zoom-factor")
+      .find((candidate) => !existing.has(candidate));
+    try {
+      listener({}, 1.25);
+      expect(callback).toHaveBeenCalledOnceWith(1.25);
+      subscription.dispose();
+      expect(ipcRenderer.listeners("did-change-zoom-factor")).not.toContain(listener);
+    } finally {
+      subscription.dispose();
+    }
+  });
+
   describe("shell failures", () => {
     it("reconstructs an Error while preserving the main-process code", async () => {
       const delegate = new ApplicationDelegate();

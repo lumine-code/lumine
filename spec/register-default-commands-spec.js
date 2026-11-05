@@ -114,6 +114,62 @@ describe("registerDefaultCommands", () => {
     }
   });
 
+  describe("window zoom commands", () => {
+    const actions = [
+      ["window:zoom-in", "zoomIn"],
+      ["window:zoom-out", "zoomOut"],
+      ["window:reset-zoom", "resetZoom"],
+    ];
+
+    it("registers each zoom action once on every platform without font-size aliases", () => {
+      for (const platform of ["win32", "linux", "darwin"]) {
+        const commands = commandsRegisteredOn(platform);
+        for (const [command] of actions) expect(commands.get(command).length).toBe(1);
+        for (const command of [
+          "window:increase-font-size",
+          "window:decrease-font-size",
+          "window:reset-font-size",
+        ]) {
+          expect(commands.has(command)).toBe(false);
+        }
+      }
+    });
+
+    for (const [command, method] of actions) {
+      it(`dispatches ${command} to the saved window after focus changes`, async () => {
+        const main = { [method]: jasmine.createSpy("main zoom").and.resolveTo(1.2) };
+        const detached = { [method]: jasmine.createSpy("detached zoom").and.resolveTo(1.5) };
+        const workspace = {
+          getFocusedWindow: jasmine.createSpy("getFocusedWindow").and.returnValue(detached),
+        };
+        const [listener] = commandsRegisteredOn("win32").get(command);
+
+        const mainEvent = { context: { window: main } };
+        expect(await listener.didDispatch.call({ getModel: () => workspace }, mainEvent)).toBe(1.2);
+        expect(main[method]).toHaveBeenCalledOnceWith();
+        expect(detached[method]).not.toHaveBeenCalled();
+
+        main[method].calls.reset();
+        workspace.getFocusedWindow.and.returnValue(main);
+        const detachedEvent = { context: { window: detached } };
+        expect(await listener.didDispatch.call({ getModel: () => workspace }, detachedEvent)).toBe(
+          1.5,
+        );
+        expect(detached[method]).toHaveBeenCalledOnceWith();
+        expect(main[method]).not.toHaveBeenCalled();
+        expect(workspace.getFocusedWindow).not.toHaveBeenCalled();
+      });
+    }
+
+    it("does nothing when the captured command context has no window", () => {
+      const commands = commandsRegisteredOn("win32");
+      for (const [command] of actions) {
+        const [listener] = commands.get(command);
+        expect(listener.didDispatch({ context: { window: null } })).toBeUndefined();
+      }
+    });
+  });
+
   for (const rejection of [null, "Copy provider failed"]) {
     it(`reports a ${rejection === null ? "null" : "string"} provider rejection at the pane command boundary`, async () => {
       const addError = jasmine.createSpy("addError");

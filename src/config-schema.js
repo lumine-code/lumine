@@ -176,6 +176,16 @@ const configSchema = {
         minimum: 0,
         default: 50,
       },
+      zoomFactor: {
+        title: "Zoom Factor",
+        description:
+          "Default scale for all windows, including the interface and editor text. A value of 1 means 100%, and 1.2 means 120%. Zoom commands change the current window's factor by 0.05. Changing this setting updates open windows, and Reset Zoom restores this default.",
+        type: "number",
+        allowLocal: false,
+        minimum: 0.25,
+        maximum: 5,
+        default: 1,
+      },
       colorProfile: {
         title: "Color Profile",
         description:
@@ -430,14 +440,6 @@ const configSchema = {
       fontSize: {
         title: "Font Size",
         description: "Height in pixels of editor text.",
-        type: "integer",
-        minimum: 1,
-        maximum: 100,
-        default: 14,
-      },
-      defaultFontSize: {
-        title: "Default Font Size",
-        description: "Default height in pixels of the editor text. Useful when resetting font size",
         type: "integer",
         minimum: 1,
         maximum: 100,

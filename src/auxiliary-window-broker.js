@@ -3,6 +3,7 @@ const { BrowserWindow, screen, dialog } = require("electron");
 const attachEmbeddedKeyboardIpc = require("./embedded-keyboard-ipc");
 const attachNativeWindowInput = require("./native-window-input");
 const { windowStateOptions } = require("./window-state-persistence");
+const windowZoom = require("./window-zoom");
 
 function assertBounds(bounds) {
   if (!bounds || typeof bounds !== "object") throw new TypeError("Window bounds are required.");
@@ -104,7 +105,12 @@ module.exports = class AuxiliaryWindowBroker {
         show: false,
         ...(this.owner.presentationIcon && { icon: this.owner.presentationIcon }),
         // Presentations share the opener's models and DOM constructors.
-        webPreferences: { backgroundThrottling: false, sandbox: false },
+        webPreferences: {
+          backgroundThrottling: false,
+          sandbox: false,
+          zoomMode: "isolated",
+          zoomFactor: windowZoom.getDefaultZoomFactor(this.owner),
+        },
       },
     };
   }
@@ -117,9 +123,19 @@ module.exports = class AuxiliaryWindowBroker {
       return;
     }
     // Auxiliary IDs occupy a separate range from ordinary LumineWindow IDs.
-    const id = -window.webContents.id;
+    const contents = window.webContents;
+    const id = -contents.id;
     const record = { id, window, persistentId: request.persistentId, closeApproved: false };
     this.windows.set(id, record);
+    record.lastZoomState = windowZoom.getZoomState(this.owner, contents);
+    const didChangeZoomFactor = (zoomFactor) => {
+      this.send(id, "did-change-zoom-factor", { zoomFactor });
+      this.publishZoomState(record);
+    };
+    contents.on("lumine-did-change-zoom-factor", didChangeZoomFactor);
+    // The default may have changed after the constructor options were issued.
+    windowZoom.resetZoom(window.webContents, windowZoom.getDefaultZoomFactor(this.owner));
+    windowZoom.disableVisualZoom(window.webContents);
     this.owner.lumineApplication.taskProgress?.refresh(this.owner);
     attachNativeWindowInput(window, (position) =>
       this.owner.sendToRenderer("did-mouse-down-in-window", {
@@ -153,6 +169,7 @@ module.exports = class AuxiliaryWindowBroker {
       }
     });
     window.on("closed", () => {
+      contents.removeListener("lumine-did-change-zoom-factor", didChangeZoomFactor);
       record.keyboard.dispose();
       this.windows.delete(id);
       this.owner.lumineApplication.taskProgress?.refresh(this.owner);
@@ -194,12 +211,28 @@ module.exports = class AuxiliaryWindowBroker {
     }
   }
 
-  send(id, type) {
+  send(id, type, detail) {
     if (!this.destroyed) {
       const record = this.windows.get(id);
       const state = record && !record.window.isDestroyed() ? this.state(record) : undefined;
-      this.owner.sendToRenderer("auxiliary-window-event", { id, type, ...(state && { state }) });
+      this.owner.sendToRenderer("auxiliary-window-event", {
+        id,
+        type,
+        ...(state && { state }),
+        ...detail,
+      });
     }
+  }
+
+  publishZoomState(record) {
+    const state = windowZoom.getZoomState(this.owner, record.window.webContents);
+    if (
+      state.factor === record.lastZoomState?.factor &&
+      state.defaultFactor === record.lastZoomState?.defaultFactor
+    )
+      return;
+    record.lastZoomState = state;
+    this.send(record.id, "did-change-zoom-state", { zoomState: state });
   }
 
   getFocusedRecord() {
@@ -262,10 +295,24 @@ module.exports = class AuxiliaryWindowBroker {
         "setFullScreen",
         "openDevTools",
         "toggleDevTools",
+        "zoomIn",
+        "zoomOut",
+        "resetZoom",
       ].includes(action)
     )
       return;
     switch (action) {
+      case "getZoomState":
+        return windowZoom.getZoomState(this.owner, window.webContents);
+      case "getZoomFactor":
+      case "zoomIn":
+      case "zoomOut":
+        return windowZoom[action](window.webContents);
+      case "resetZoom":
+        return windowZoom.resetZoom(
+          window.webContents,
+          windowZoom.getDefaultZoomFactor(this.owner),
+        );
       case "updateEmbeddedKeyboard":
         return record.keyboard.update(args[0]);
       case "getState":

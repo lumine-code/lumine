@@ -72,7 +72,7 @@ Contributions to core menus use `group` and `order` instead of written separator
 | `File > External`           | `actions`, `extensions`                                                                                               |
 | `Edit`                      | `history`, `clipboard`, `editing`, `insert`, `format`, `refactor`, `diagnostics`, `annotations`, `mode`, `extensions` |
 | `Edit > Text`               | `case`, `transform`, `whitespace`, `insert`, `delete`, `extensions`                                                   |
-| `View`                      | `commands`, `window`, `panels`, `font`, `appearance`, `extensions`                                                    |
+| `View`                      | `commands`, `window`, `panels`, `zoom`, `appearance`, `extensions`                                                    |
 | `View > Appearance`         | `theme`, `mode`, `chrome`, `extensions`                                                                               |
 | `View > Toggle View`        | `panels`, `docks`, `extensions`                                                                                       |
 | `View > Jupyter`            | `reveal`, `toggle`, `extensions`                                                                                      |

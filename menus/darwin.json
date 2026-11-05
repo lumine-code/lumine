@@ -824,21 +824,21 @@
           "type": "separator"
         },
         {
-          "label": "Increase Font Size",
-          "command": "window:increase-font-size",
-          "group": "font",
+          "label": "Zoom In",
+          "command": "window:zoom-in",
+          "group": "zoom",
           "order": 10
         },
         {
-          "label": "Decrease Font Size",
-          "command": "window:decrease-font-size",
-          "group": "font",
+          "label": "Zoom Out",
+          "command": "window:zoom-out",
+          "group": "zoom",
           "order": 20
         },
         {
-          "label": "Reset Font Size",
-          "command": "window:reset-font-size",
-          "group": "font",
+          "label": "Reset Zoom",
+          "command": "window:reset-zoom",
+          "group": "zoom",
           "order": 30
         },
         {
@@ -865,7 +865,7 @@
           "groupOrder": ["reveal", "toggle", "extensions"]
         }
       ],
-      "groupOrder": ["commands", "window", "panels", "font", "appearance", "extensions"]
+      "groupOrder": ["commands", "window", "panels", "zoom", "appearance", "extensions"]
     },
     {
       "label": "Go",

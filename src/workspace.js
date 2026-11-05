@@ -1207,9 +1207,6 @@ module.exports = class Workspace extends Model {
   }
 
   initialize({ configDirPath }) {
-    // we set originalFontSize to avoid breaking packages that might have relied on it
-    this.originalFontSize = this.config.get("defaultFontSize");
-
     this.itemLocationStore.initialize({ configDirPath });
 
     this.subscribeToAddedItems();
@@ -4661,24 +4658,6 @@ module.exports = class Workspace extends Model {
         window && !window.isMain() ? "core.closeEmptyDetachedWindows" : "core.closeEmptyWindows";
       if (this.config.get(setting)) return (window ?? this.windowService).close();
     }
-  }
-
-  // Increase the editor font size by 1px.
-  increaseFontSize() {
-    this.config.set("editor.fontSize", this.config.get("editor.fontSize") + 1);
-  }
-
-  // Decrease the editor font size by 1px.
-  decreaseFontSize() {
-    const fontSize = this.config.get("editor.fontSize");
-    if (fontSize > 1) {
-      this.config.set("editor.fontSize", fontSize - 1);
-    }
-  }
-
-  // Restore to the window's default editor font size.
-  resetFontSize() {
-    this.config.set("editor.fontSize", this.config.get("editor.defaultFontSize"));
   }
 
   // Removes the item's uri from the list of potential items to reopen.

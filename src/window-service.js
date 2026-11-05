@@ -186,6 +186,89 @@ class WindowService {
     return this.applicationDelegate.invokeWindow("getState");
   }
 
+  /** @category Window Zoom */
+
+  /**
+   * @public
+   * @status public
+   *
+   * Get the zoom factor of the current window's interface and content.
+   * @returns {Promise<Number>} The zoom factor, where `1` means 100 percent.
+   */
+  getZoomFactor() {
+    return this.applicationDelegate.invokeWindow("getZoomFactor");
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Get the current window's applied zoom and configured default together.
+   * @returns {Promise<Object>} A snapshot with `factor` and `defaultFactor`, where `1` means 100 percent.
+   */
+  getZoomState() {
+    return this.applicationDelegate.invokeWindow("getZoomState");
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe applied changes to the current window's zoom or its default.
+   * @param {Function} callback - Receives a snapshot with `factor` and `defaultFactor`, where `1` means 100 percent.
+   * @returns {Disposable} Dispose to unsubscribe.
+   * @category Event Subscription
+   */
+  onDidChangeZoomState(callback) {
+    return this.applicationDelegate.onDidChangeZoomState(callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe changes to the current window's applied zoom factor.
+   * @param {Function} callback - Receives the new factor, where `1` means 100 percent.
+   * @returns {Disposable} Dispose to unsubscribe.
+   * @category Event Subscription
+   */
+  onDidChangeZoomFactor(callback) {
+    return this.applicationDelegate.onDidChangeZoomFactor(callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Increase the current window's scale by five percentage points.
+   * @returns {Promise<Number>} The applied zoom factor, limited to `5`.
+   */
+  zoomIn() {
+    return this.applicationDelegate.invokeWindow("zoomIn");
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Decrease the current window's scale by five percentage points.
+   * @returns {Promise<Number>} The applied zoom factor, limited to `0.25`.
+   */
+  zoomOut() {
+    return this.applicationDelegate.invokeWindow("zoomOut");
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Restore the current window's zoom to the configured `core.zoomFactor`.
+   * @returns {Promise<Number>} The applied default zoom factor.
+   */
+  resetZoom() {
+    return this.applicationDelegate.invokeWindow("resetZoom");
+  }
+
   /** @category Window Geometry */
 
   /**

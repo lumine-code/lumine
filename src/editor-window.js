@@ -443,6 +443,89 @@ module.exports = class EditorWindow {
     return this.windowService.getState();
   }
 
+  /** @category Window Zoom */
+
+  /**
+   * @public
+   * @status public
+   *
+   * Get the zoom factor of this window's interface and content.
+   * @returns {Promise<Number>} The zoom factor, where `1` means 100 percent.
+   */
+  getZoomFactor() {
+    return this.windowService.getZoomFactor();
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Get this window's applied zoom and configured default together.
+   * @returns {Promise<Object>} A snapshot with `factor` and `defaultFactor`, where `1` means 100 percent.
+   */
+  getZoomState() {
+    return this.windowService.getZoomState();
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe applied changes to this window's zoom or its default.
+   * @param {Function} callback - Receives a snapshot with `factor` and `defaultFactor`, where `1` means 100 percent.
+   * @returns {Disposable} Dispose to unsubscribe.
+   * @category Event Subscription
+   */
+  onDidChangeZoomState(callback) {
+    return this.windowService.onDidChangeZoomState(callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe changes to this window's applied zoom factor.
+   * @param {Function} callback - Receives the new factor, where `1` means 100 percent.
+   * @returns {Disposable} Dispose to unsubscribe.
+   * @category Event Subscription
+   */
+  onDidChangeZoomFactor(callback) {
+    return this.windowService.onDidChangeZoomFactor(callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Increase this window's scale by five percentage points.
+   * @returns {Promise<Number>} The applied zoom factor, limited to `5`.
+   */
+  zoomIn() {
+    return this.windowService.zoomIn();
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Decrease this window's scale by five percentage points.
+   * @returns {Promise<Number>} The applied zoom factor, limited to `0.25`.
+   */
+  zoomOut() {
+    return this.windowService.zoomOut();
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Restore this window's zoom to the configured `core.zoomFactor`.
+   * @returns {Promise<Number>} The applied default zoom factor.
+   */
+  resetZoom() {
+    return this.windowService.resetZoom();
+  }
+
   /** @category Window Management */
 
   /**

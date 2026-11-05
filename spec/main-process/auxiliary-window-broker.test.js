@@ -2,12 +2,20 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const AuxiliaryWindowBroker = require("../../src/auxiliary-window-broker");
+const windowZoom = require("../../src/window-zoom");
+
+function assertZoomFactor(factor, expectedFactor) {
+  assert.ok(Math.abs(factor - expectedFactor) < 0.0000000001);
+}
 
 function fixture(dialogService) {
   const events = [];
   const owner = {
     unloading: false,
-    lumineApplication: { quitting: false },
+    lumineApplication: {
+      quitting: false,
+      config: { get: () => owner.defaultZoomFactor ?? 1 },
+    },
     sendToRenderer: (...event) => events.push(event),
   };
   const broker = new AuxiliaryWindowBroker(owner, {
@@ -32,6 +40,15 @@ function fixture(dialogService) {
     },
     setWindowOpenHandler(handler) {
       this.openHandler = handler;
+    },
+    setVisualZoomLevelLimits(minimum, maximum) {
+      this.visualZoomLimits = [minimum, maximum];
+    },
+    getZoomFactor() {
+      return this.zoomFactor ?? 1;
+    },
+    setZoomFactor(factor) {
+      this.zoomFactor = factor;
     },
   });
   window.isDestroyed = () => Boolean(window.destroyed);
@@ -58,6 +75,8 @@ test("only prepared workspace presentations can open a native child", () => {
   const result = broker.windowOpenHandler({ url: "about:blank", frameName: token });
   assert.equal(result.action, "allow");
   assert.equal(result.overrideBrowserWindowOptions.webPreferences.sandbox, false);
+  assert.equal(result.overrideBrowserWindowOptions.webPreferences.zoomMode, "isolated");
+  assert.equal(result.overrideBrowserWindowOptions.webPreferences.zoomFactor, 1);
   assert.equal(
     broker.windowOpenHandler({ url: "https://example.com", frameName: token }).action,
     "deny",
@@ -68,6 +87,134 @@ test("only prepared workspace presentations can open a native child", () => {
   );
   assert.throws(() => broker.prepare({ bounds: { width: -10 } }), /Invalid width/);
   broker.destroy();
+});
+
+test("zoom commands affect only the addressed presentation and preserve the owner's scale", () => {
+  const { broker, owner, window: first } = fixture();
+  const second = fixture().window;
+  second.webContents.id = 18;
+  owner.browserWindow = {
+    webContents: {
+      isDestroyed: () => false,
+      getBackgroundThrottling: () => true,
+      setBackgroundThrottling() {},
+      getZoomFactor: () => 1.6,
+    },
+  };
+  broker.didCreateWindow(first, { frameName: broker.prepare() });
+  broker.didCreateWindow(second, { frameName: broker.prepare() });
+  try {
+    assert.deepEqual(first.webContents.visualZoomLimits, [1, 1]);
+    assertZoomFactor(broker.invoke(-17, "zoomIn"), 1.05);
+    assertZoomFactor(broker.invoke(-17, "getZoomFactor"), 1.05);
+    assertZoomFactor(broker.invoke(-17, "zoomIn"), 1.1);
+    assertZoomFactor(broker.invoke(-17, "zoomOut"), 1.05);
+    assert.equal(broker.invoke(-18, "getZoomFactor"), 1);
+    assertZoomFactor(broker.invoke(-18, "zoomOut"), 0.95);
+    owner.defaultZoomFactor = 0.5;
+    assert.equal(broker.invoke(-17, "resetZoom"), 0.5);
+    assertZoomFactor(broker.invoke(-18, "getZoomFactor"), 0.95);
+    assert.equal(owner.browserWindow.webContents.getZoomFactor(), 1.6);
+    assert.throws(() => broker.invoke(-19, "zoomIn"), /does not belong to the workspace/);
+    assert.throws(() => broker.invoke(-17, "setZoomFactor", 2), /Unsupported/);
+  } finally {
+    broker.destroy();
+  }
+});
+
+test("new auxiliary presentations use the global default instead of the opener's temporary zoom", () => {
+  const { broker, owner, window } = fixture();
+  owner.defaultZoomFactor = 1.25;
+  try {
+    const token = broker.prepare();
+    const { overrideBrowserWindowOptions } = broker.windowOpenHandler({
+      url: "about:blank",
+      frameName: token,
+    });
+    assert.equal(overrideBrowserWindowOptions.webPreferences.zoomFactor, 1.25);
+    owner.defaultZoomFactor = 0.75;
+    broker.didCreateWindow(window, { frameName: token });
+    assert.equal(broker.invoke(-17, "getZoomFactor"), 0.75);
+    owner.isSpec = true;
+    const specToken = broker.prepare();
+    const spec = broker.windowOpenHandler({ url: "about:blank", frameName: specToken });
+    assert.equal(spec.overrideBrowserWindowOptions.webPreferences.zoomFactor, 1);
+  } finally {
+    broker.destroy();
+  }
+});
+
+test("zoom changes are routed to their own auxiliary window and stop after it closes", () => {
+  const { broker, events, window: first } = fixture();
+  const firstContents = first.webContents;
+  const second = fixture().window;
+  second.webContents.id = 18;
+  broker.didCreateWindow(first, { frameName: broker.prepare() });
+  broker.didCreateWindow(second, { frameName: broker.prepare() });
+  try {
+    broker.invoke(-17, "zoomIn");
+    windowZoom.setZoomFactor(second.webContents, 1.25);
+    broker.invoke(-17, "resetZoom");
+    broker.invoke(-17, "resetZoom");
+    const changes = events
+      .filter(
+        ([channel, event]) =>
+          channel === "auxiliary-window-event" && event.type === "did-change-zoom-factor",
+      )
+      .map(([, { id, zoomFactor }]) => ({ id, zoomFactor }));
+    assert.deepEqual(changes, [
+      { id: -17, zoomFactor: 1.05 },
+      { id: -18, zoomFactor: 1.25 },
+      { id: -17, zoomFactor: 1 },
+    ]);
+    assert.equal(firstContents.listenerCount("lumine-did-change-zoom-factor"), 1);
+    Object.defineProperty(first, "webContents", {
+      get() {
+        if (first.destroyed) throw new Error("Object has been destroyed");
+        return firstContents;
+      },
+    });
+    first.destroy();
+    assert.equal(firstContents.listenerCount("lumine-did-change-zoom-factor"), 0);
+    const eventCount = events.length;
+    firstContents.emit("lumine-did-change-zoom-factor", 2);
+    assert.equal(events.length, eventCount);
+  } finally {
+    broker.destroy();
+  }
+});
+
+test("auxiliary zoom state applies a changed default atomically and reports a default-only change", () => {
+  const { broker, owner, events, window } = fixture();
+  broker.didCreateWindow(window, { frameName: broker.prepare() });
+  const record = broker.windows.get(-17);
+  try {
+    assert.deepEqual(broker.invoke(-17, "getZoomState"), { factor: 1, defaultFactor: 1 });
+    owner.defaultZoomFactor = 1.2;
+    windowZoom.setZoomFactor(window.webContents, 1.2);
+    broker.publishZoomState(record);
+    broker.invoke(-17, "zoomIn");
+    owner.defaultZoomFactor = 1.25;
+    windowZoom.setZoomFactor(window.webContents, 1.25);
+    broker.publishZoomState(record);
+    broker.publishZoomState(record);
+    const changes = events
+      .filter(
+        ([channel, event]) =>
+          channel === "auxiliary-window-event" && event.type === "did-change-zoom-state",
+      )
+      .map(([, { id, zoomState }]) => ({ id, zoomState }));
+    assert.deepEqual(changes, [
+      { id: -17, zoomState: { factor: 1.2, defaultFactor: 1.2 } },
+      { id: -17, zoomState: { factor: 1.25, defaultFactor: 1.2 } },
+      { id: -17, zoomState: { factor: 1.25, defaultFactor: 1.25 } },
+    ]);
+    assert.deepEqual(broker.invoke(-17, "getZoomState"), { factor: 1.25, defaultFactor: 1.25 });
+    const factorChanges = events.filter(([, event]) => event.type === "did-change-zoom-factor");
+    assert.equal(factorChanges.length, 2);
+  } finally {
+    broker.destroy();
+  }
 });
 
 test("hiding committed-close presentations preserves their models and native windows for cleanup", () => {

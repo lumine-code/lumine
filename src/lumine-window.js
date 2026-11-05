@@ -17,6 +17,7 @@ const AuxiliaryWindowBroker = require("./auxiliary-window-broker");
 const StartupTime = require("./startup-time");
 const attachEmbeddedKeyboardIpc = require("./embedded-keyboard-ipc");
 const attachNativeWindowInput = require("./native-window-input");
+const windowZoom = require("./window-zoom");
 const {
   isWindowStatePersistenceEnabled,
   windowStateOptions,
@@ -98,6 +99,10 @@ module.exports = class LumineWindow extends EventEmitter {
       title: getAppName(),
       tabbingIdentifier: "lumine",
       webPreferences: {
+        // Detached presentations share this renderer's origin, but each native
+        // window owns its page scale independently.
+        zoomMode: "isolated",
+        zoomFactor: windowZoom.getDefaultZoomFactor(this),
         // Isolate package routes by workspace while retaining browser-backed
         // caches when the same desktop session is reopened.
         partition: this.persistWindowState
@@ -217,7 +222,7 @@ module.exports = class LumineWindow extends EventEmitter {
       this.unloadApproved = false;
       this.closeCommitted = false;
       this.unloading = false;
-      this.disableZoom();
+      this.disableVisualZoom();
       this.emit("window:loaded");
       this.resolveLoadedPromise();
     });
@@ -302,6 +307,14 @@ module.exports = class LumineWindow extends EventEmitter {
   }
 
   handleEvents() {
+    const contents = this.browserWindow.webContents;
+    this.lastZoomState = windowZoom.getZoomState(this, contents);
+    const didChangeZoomFactor = (factor) => {
+      this.sendToRenderer("did-change-zoom-factor", factor);
+      this.publishZoomState();
+    };
+    contents.on("lumine-did-change-zoom-factor", didChangeZoomFactor);
+
     this.browserWindow.on("close", (event) => {
       if (this.isSpecWindow()) return;
       if (this.unloadApproved) {
@@ -322,6 +335,7 @@ module.exports = class LumineWindow extends EventEmitter {
     });
 
     this.browserWindow.on("closed", () => {
+      contents.removeListener("lumine-did-change-zoom-factor", didChangeZoomFactor);
       this.auxiliaryWindowBroker.destroy();
       this.embeddedKeyboardIpc?.dispose();
       void this.lumineApplication
@@ -893,8 +907,36 @@ module.exports = class LumineWindow extends EventEmitter {
     return this.browserWindow.copy();
   }
 
-  disableZoom() {
-    return this.browserWindow.webContents.setVisualZoomLevelLimits(1, 1);
+  disableVisualZoom() {
+    windowZoom.disableVisualZoom(this.browserWindow.webContents);
+    for (const { window } of this.auxiliaryWindowBroker.windows.values()) {
+      if (!window.isDestroyed()) windowZoom.disableVisualZoom(window.webContents);
+    }
+  }
+
+  applyDefaultZoomFactor(factor) {
+    if (this.isSpec || this.isClosing()) return;
+    if (!this.browserWindow.isDestroyed()) {
+      windowZoom.setZoomFactor(this.browserWindow.webContents, factor);
+      this.publishZoomState();
+    }
+    for (const record of this.auxiliaryWindowBroker.windows.values()) {
+      if (!record.window.isDestroyed()) {
+        windowZoom.setZoomFactor(record.window.webContents, factor);
+        this.auxiliaryWindowBroker.publishZoomState(record);
+      }
+    }
+  }
+
+  publishZoomState() {
+    const state = windowZoom.getZoomState(this, this.browserWindow.webContents);
+    if (
+      state.factor === this.lastZoomState.factor &&
+      state.defaultFactor === this.lastZoomState.defaultFactor
+    )
+      return;
+    this.lastZoomState = state;
+    this.sendToRenderer("did-change-zoom-state", state);
   }
 
   getLoadedPromise() {

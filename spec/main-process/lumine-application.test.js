@@ -1068,6 +1068,62 @@ describe("LumineApplication", function () {
         .callsFake((_type, callback, defaultPath) => callback([defaultPath]));
     });
 
+    it("reapplies an edited global default to ordinary windows while leaving spec windows alone", () => {
+      w2.isSpec = true;
+      app.config.set("core.zoomFactor", 1.25, { save: false });
+      assert.isTrue(w0.applyDefaultZoomFactor.calledOnceWithExactly(1.25));
+      assert.isTrue(w1.applyDefaultZoomFactor.calledOnceWithExactly(1.25));
+      assert.isFalse(w2.applyDefaultZoomFactor.called);
+      app.config.set("editor.fontSize", 17, { local: true });
+      assert.isTrue(w0.applyDefaultZoomFactor.calledOnce);
+      assert.isTrue(w1.applyDefaultZoomFactor.calledOnce);
+    });
+
+    it("resets only the requesting window to the current global default without rewriting it", async () => {
+      app.config.set("core.zoomFactor", 1.25, { save: false });
+      w0.browserWindow.webContents.setZoomFactor(0.75);
+      w1.browserWindow.webContents.setZoomFactor(3.25);
+      const event = { sender: w1.browserWindow.webContents };
+      const increasedFactor = await LumineApplication.handleWindowAction(event, "zoomIn");
+      assert.ok(Math.abs(increasedFactor - 3.3) < 0.0000000001);
+      const restoredFactor = await LumineApplication.handleWindowAction(event, "zoomOut");
+      assert.ok(Math.abs(restoredFactor - 3.25) < 0.0000000001);
+      assert.strictEqual(await LumineApplication.handleWindowAction(event, "resetZoom"), 1.25);
+      assert.strictEqual(await LumineApplication.handleWindowAction(event, "getZoomFactor"), 1.25);
+      assert.deepEqual(await LumineApplication.handleWindowAction(event, "getZoomState"), {
+        factor: 1.25,
+        defaultFactor: 1.25,
+      });
+      assert.strictEqual(w0.browserWindow.webContents.getZoomFactor(), 0.75);
+      assert.strictEqual(app.config.get("core.zoomFactor"), 1.25);
+      w1.isSpec = true;
+      assert.deepEqual(await LumineApplication.handleWindowAction(event, "getZoomState"), {
+        factor: 1.25,
+        defaultFactor: 1,
+      });
+      assert.strictEqual(await LumineApplication.handleWindowAction(event, "resetZoom"), 1);
+    });
+
+    it("accepts the current window factor directly as a new global default", async () => {
+      const event = { sender: w1.browserWindow.webContents };
+      const currentFactor = await LumineApplication.handleWindowAction(event, "zoomIn");
+      assert.strictEqual(currentFactor, 1.05);
+      assert.strictEqual(app.config.get("core.zoomFactor"), 1);
+      app.config.set("core.zoomFactor", currentFactor, { save: false });
+      assert.strictEqual(app.config.get("core.zoomFactor"), currentFactor);
+      assert.isTrue(w0.applyDefaultZoomFactor.calledOnceWithExactly(currentFactor));
+      assert.isTrue(w1.applyDefaultZoomFactor.calledOnceWithExactly(currentFactor));
+      assert.strictEqual(await LumineApplication.handleWindowAction(event, "zoomIn"), 1.1);
+      assert.strictEqual(
+        await LumineApplication.handleWindowAction(event, "resetZoom"),
+        currentFactor,
+      );
+      assert.strictEqual(
+        await LumineApplication.handleWindowAction(event, "getZoomFactor"),
+        currentFactor,
+      );
+    });
+
     it("showWindow focuses only the requested window on Windows", function () {
       w1.preserveFocus = false;
       w1.browserWindow.show = w1.show;
@@ -2647,7 +2703,8 @@ class StubWindow extends EventEmitter {
     };
 
     this.replaceEnvironment = sinon.spy();
-    this.disableZoom = sinon.spy();
+    this.disableVisualZoom = sinon.spy();
+    this.applyDefaultZoomFactor = sinon.spy();
 
     this.isFocused = sinon
       .stub()
@@ -2670,6 +2727,11 @@ class StubWindow extends EventEmitter {
     this.browserWindow = new EventEmitter();
     this.browserWindow.isDestroyed = () => this.closed;
     this.browserWindow.webContents = new EventEmitter();
+    this.browserWindow.webContents.zoomFactor = 1;
+    this.browserWindow.webContents.getZoomFactor = () => this.browserWindow.webContents.zoomFactor;
+    this.browserWindow.webContents.setZoomFactor = (factor) => {
+      this.browserWindow.webContents.zoomFactor = factor;
+    };
     this.browserWindow.webContents.mainFrame = { isDestroyed: () => false };
     this.browserWindow.webContents.send = sinon.spy();
     // Broadcast handlers such as the accent-color listener identify a window
@@ -3037,6 +3099,7 @@ class LaunchScenario {
     });
     this.sinon.stub(app, "createWindow").callsFake((loadSettings) => {
       const newWindow = new StubWindow(this.sinon, loadSettings, options);
+      newWindow.lumineApplication = app;
       this.windows.add(newWindow);
       return newWindow;
     });

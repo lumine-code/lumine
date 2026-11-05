@@ -59,6 +59,16 @@ module.exports = class ApplicationDelegate {
     return ipcHelpers.on(ipcRenderer, "did-blur-window", callback);
   }
 
+  onDidChangeZoomFactor(callback) {
+    return ipcHelpers.on(ipcRenderer, "did-change-zoom-factor", (_event, factor) =>
+      callback(factor),
+    );
+  }
+
+  onDidChangeZoomState(callback) {
+    return ipcHelpers.on(ipcRenderer, "did-change-zoom-state", (_event, state) => callback(state));
+  }
+
   onWillReloadWindow(callback) {
     return ipcHelpers.on(ipcRenderer, "will-reload-window", callback);
   }

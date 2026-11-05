@@ -736,14 +736,18 @@ async function shot({ positional, options }) {
     );
   }
 
+  // DOM rectangles use CSS pixels; screenshot clips use device-independent
+  // pixels. Page zoom changes their ratio independently of display scaling.
+  const { visualViewport } = await client.send("Page.getLayoutMetrics");
+  const zoom = visualViewport.zoom ?? 1;
   const { data } = await client.send("Page.captureScreenshot", {
     format: "png",
     captureBeyondViewport: false,
     clip: {
-      x: rect.x,
-      y: rect.y,
-      width: rect.width,
-      height: rect.height,
+      x: rect.x * zoom,
+      y: rect.y * zoom,
+      width: rect.width * zoom,
+      height: rect.height * zoom,
       scale: Number(options.scale || 1),
     },
   });

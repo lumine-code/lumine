@@ -30,7 +30,6 @@ describe("Workspace", () => {
     fsOpenSyncSpy = spyOn(fs, "openSync").and.callThrough();
 
     workspace = lumine.workspace;
-    workspace.resetFontSize();
     spyOn(lumine.applicationDelegate, "confirm");
     setDocumentEdited = spyOn(lumine.applicationDelegate, "setWindowDocumentEdited");
     lumine.project.setPaths([lumine.project.getDirectories()[0].resolve("dir")]);
@@ -89,6 +88,7 @@ describe("Workspace", () => {
       textEditorFactory: lumine.textEditorFactory,
     });
     workspace.initializeEditorWindows(lumine.window, window);
+    workspace.editorWindowHost = lumine.auxiliaryWindowHost;
     workspace.initialize({ configDirPath: lumine.getConfigDirPath() });
     workspace.deserialize(workspaceState, lumine.deserializers);
     lumine.repositories.attachWorkspace(workspace);
@@ -2339,64 +2339,6 @@ describe("Workspace", () => {
       await workspace.reopenItem();
 
       expect(workspace.getActivePaneItem().getURI()).toBe(firstDirectory.resolve("file1"));
-    });
-  });
-
-  describe("::increase/decreaseFontSize()", () => {
-    it("increases/decreases the font size without going below 1", () => {
-      lumine.config.set("editor.fontSize", 1);
-      workspace.increaseFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(2);
-      workspace.increaseFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(3);
-      workspace.decreaseFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(2);
-      workspace.decreaseFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(1);
-      workspace.decreaseFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(1);
-    });
-  });
-
-  describe("::resetFontSize()", () => {
-    it("resets the font size to the window's default font size", () => {
-      const defaultFontSize = lumine.config.get("editor.defaultFontSize");
-
-      workspace.increaseFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(defaultFontSize + 1);
-      workspace.resetFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(defaultFontSize);
-      workspace.decreaseFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(defaultFontSize - 1);
-      workspace.resetFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(defaultFontSize);
-    });
-
-    it("resets the font size the default font size when it is changed", () => {
-      const defaultFontSize = lumine.config.get("editor.defaultFontSize");
-      workspace.increaseFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(defaultFontSize + 1);
-      lumine.config.set("editor.defaultFontSize", 14);
-      workspace.resetFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(14);
-    });
-
-    it("does nothing if the font size has not been changed", () => {
-      const originalFontSize = lumine.config.get("editor.fontSize");
-
-      workspace.resetFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(originalFontSize);
-    });
-
-    it("resets the font size when the editor's font size changes", () => {
-      const originalFontSize = lumine.config.get("editor.fontSize");
-
-      lumine.config.set("editor.fontSize", originalFontSize + 1);
-      workspace.resetFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(originalFontSize);
-      lumine.config.set("editor.fontSize", originalFontSize - 1);
-      workspace.resetFontSize();
-      expect(lumine.config.get("editor.fontSize")).toBe(originalFontSize);
     });
   });
 

@@ -222,14 +222,23 @@ module.exports = function ({
           return paneForCommand(this.getModel(), event).togglePendingItem();
         },
       },
-      "window:increase-font-size": function () {
-        return this.getModel().increaseFontSize();
+      "window:zoom-in": {
+        description: "Scale up the interface and content of this window.",
+        didDispatch(event) {
+          return event.context?.window?.zoomIn();
+        },
       },
-      "window:decrease-font-size": function () {
-        return this.getModel().decreaseFontSize();
+      "window:zoom-out": {
+        description: "Scale down the interface and content of this window.",
+        didDispatch(event) {
+          return event.context?.window?.zoomOut();
+        },
       },
-      "window:reset-font-size": function () {
-        return this.getModel().resetFontSize();
+      "window:reset-zoom": {
+        description: "Restore this window's zoom to the configured default.",
+        didDispatch(event) {
+          return event.context?.window?.resetZoom();
+        },
       },
       "application:about": function () {
         return ipcRenderer.send("command", "application:about");

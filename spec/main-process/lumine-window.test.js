@@ -14,6 +14,7 @@ const LumineWindow = require("../../src/lumine-window");
 const LumineApplication = require("../../src/lumine-application");
 const FileWatchService = require("../../src/file-watch-service");
 const TaskProgressManager = require("../../src/task-progress-manager");
+const windowZoom = require("../../src/window-zoom");
 const { scanBundledPackageNames } = require("../../src/bundled-packages");
 const { emitterEventPromise, conditionPromise } = require("../helpers/async-spec-helpers");
 
@@ -30,6 +31,146 @@ describe("LumineWindow", function () {
     app.taskProgress.dispose();
     await app.fileWatchService.close();
     sinon.restore();
+  });
+
+  it("starts new and reopened windows at the configured fractional global zoom", async function () {
+    app.config["core.zoomFactor"] = 1.25;
+    const settings = {
+      browserWindowConstructor: StubBrowserWindow,
+      resourcePath: path.resolve(__dirname, "../.."),
+    };
+    const first = new LumineWindow(app, service, settings);
+    assert.strictEqual(first.browserWindow.options.webPreferences.zoomMode, "isolated");
+    assert.strictEqual(first.browserWindow.options.webPreferences.zoomFactor, 1.25);
+    first.browserWindow.webContents.setZoomFactor(3.25);
+    first.browserWindow.emit("closed");
+    await first.closedPromise;
+    const reopened = new LumineWindow(app, service, {
+      ...settings,
+      windowStateId: first.windowStateId,
+    });
+    try {
+      assert.strictEqual(reopened.windowStateId, first.windowStateId);
+      assert.strictEqual(reopened.browserWindow.webContents.getZoomFactor(), 1.25);
+    } finally {
+      reopened.browserWindow.emit("closed");
+      await reopened.closedPromise;
+    }
+  });
+
+  it("keeps spec windows at the schema default instead of the user's zoom", async function () {
+    app.config["core.zoomFactor"] = 1.25;
+    const window = new LumineWindow(app, service, {
+      isSpec: true,
+      browserWindowConstructor: StubBrowserWindow,
+      resourcePath: path.resolve(__dirname, "../.."),
+    });
+    try {
+      assert.strictEqual(window.browserWindow.options.webPreferences.zoomFactor, 1);
+      window.applyDefaultZoomFactor(2);
+      assert.strictEqual(window.browserWindow.webContents.getZoomFactor(), 1);
+    } finally {
+      window.browserWindow.emit("closed");
+      await window.closedPromise;
+    }
+  });
+
+  it("forwards applied zoom changes and removes its native subscription when closed", async function () {
+    const window = new LumineWindow(app, service, {
+      browserWindowConstructor: StubBrowserWindow,
+      resourcePath: path.resolve(__dirname, "../.."),
+    });
+    const contents = window.browserWindow.webContents;
+    try {
+      windowZoom.zoomIn(contents);
+      window.applyDefaultZoomFactor(1.25);
+      window.applyDefaultZoomFactor(1.25);
+      windowZoom.resetZoom(contents, 1);
+      assert.deepEqual(
+        window.browserWindow.sent.filter(([channel]) => channel === "did-change-zoom-factor"),
+        [
+          ["did-change-zoom-factor", 1.05],
+          ["did-change-zoom-factor", 1.25],
+          ["did-change-zoom-factor", 1],
+        ],
+      );
+      assert.strictEqual(contents.listenerCount("lumine-did-change-zoom-factor"), 1);
+    } finally {
+      window.browserWindow.emit("closed");
+      await window.closedPromise;
+    }
+    assert.strictEqual(contents.listenerCount("lumine-did-change-zoom-factor"), 0);
+    const messageCount = window.browserWindow.sent.length;
+    contents.emit("lumine-did-change-zoom-factor", 2);
+    assert.strictEqual(window.browserWindow.sent.length, messageCount);
+  });
+
+  it("publishes global zoom changes as applied pairs including a default-only change", async function () {
+    const window = new LumineWindow(app, service, {
+      browserWindowConstructor: StubBrowserWindow,
+      resourcePath: path.resolve(__dirname, "../.."),
+    });
+    try {
+      app.config["core.zoomFactor"] = 1.2;
+      window.applyDefaultZoomFactor(1.2);
+      windowZoom.zoomIn(window.browserWindow.webContents);
+      app.config["core.zoomFactor"] = 1.25;
+      window.applyDefaultZoomFactor(1.25);
+      window.applyDefaultZoomFactor(1.25);
+      assert.deepEqual(
+        window.browserWindow.sent.filter(([channel]) => channel === "did-change-zoom-state"),
+        [
+          ["did-change-zoom-state", { factor: 1.2, defaultFactor: 1.2 }],
+          ["did-change-zoom-state", { factor: 1.25, defaultFactor: 1.2 }],
+          ["did-change-zoom-state", { factor: 1.25, defaultFactor: 1.25 }],
+        ],
+      );
+      assert.strictEqual(
+        window.browserWindow.sent.filter(([channel]) => channel === "did-change-zoom-factor")
+          .length,
+        2,
+      );
+    } finally {
+      window.browserWindow.emit("closed");
+      await window.closedPromise;
+    }
+  });
+
+  it("applies a changed global default to the main and every live auxiliary presentation", async function () {
+    const window = new LumineWindow(app, service, {
+      browserWindowConstructor: StubBrowserWindow,
+      resourcePath: path.resolve(__dirname, "../.."),
+    });
+    let childFactor = 0.9;
+    window.auxiliaryWindowBroker.windows.set(-1, {
+      window: {
+        isDestroyed: () => false,
+        webContents: Object.assign(new EventEmitter(), {
+          setZoomFactor: (value) => {
+            childFactor = value;
+          },
+          getZoomFactor: () => childFactor,
+        }),
+      },
+    });
+    window.auxiliaryWindowBroker.windows.set(-2, {
+      window: {
+        isDestroyed: () => true,
+        get webContents() {
+          return assert.fail("A destroyed presentation must not receive the new zoom");
+        },
+      },
+    });
+    try {
+      window.browserWindow.webContents.setZoomFactor(3);
+      window.applyDefaultZoomFactor(0.75);
+      assert.strictEqual(window.browserWindow.webContents.getZoomFactor(), 0.75);
+      assert.strictEqual(childFactor, 0.75);
+    } finally {
+      window.auxiliaryWindowBroker.windows.clear();
+      window.browserWindow.emit("closed");
+      await window.closedPromise;
+    }
   });
 
   it("retires native frame keyboard listeners when its window closes", async function () {
@@ -1715,6 +1856,11 @@ class StubBrowserWindow extends EventEmitter {
     };
 
     this.webContents = new EventEmitter();
+    this.webContents.zoomFactor = options.webPreferences?.zoomFactor ?? 1;
+    this.webContents.getZoomFactor = () => this.webContents.zoomFactor;
+    this.webContents.setZoomFactor = (factor) => {
+      this.webContents.zoomFactor = factor;
+    };
     this.webContents.setVisualZoomLevelLimits = () => {};
     this.webContents.setFrameRate = sandbox.spy();
     this.webContents.startPainting = sandbox.spy();
