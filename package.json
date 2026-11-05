@@ -67,7 +67,7 @@
     "language-css": "github:lumine-code/language-css#b1064c5e681c012beaee767ca9597377621f5f28",
     "language-csv": "github:lumine-code/language-csv#cf9aab5b1f3d013e7e114663ef9564b8062c142a",
     "language-diff": "github:lumine-code/language-diff#b7114e419899a37d71a9dff755753895c7009faf",
-    "language-gfm": "github:lumine-code/language-gfm#077cbde00deb03e9e59a8d7a6865ae2167e2d182",
+    "language-gfm": "github:lumine-code/language-gfm#dbdfa0d7eb55a25a9cd6e4b7f8b388bc5d99dc6f",
     "language-git": "github:lumine-code/language-git#0f989820366bc6cc9ae4c31f472b981fd7a6e07f",
     "language-html": "github:lumine-code/language-html#017c724acbe642f4c5d4c55c83dd824073061ebd",
     "language-hyperlink": "github:lumine-code/language-hyperlink#dd3ffa709e95a26e2db4190034955e1685d1ffd7",
