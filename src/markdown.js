@@ -627,7 +627,7 @@ function convertLumineEditorToStandardElement(editor, preElement) {
           // Build from the display model rather than the editor DOM. A public
           // HTMLFragment may still be detached, in which case the component
           // deliberately does not render.
-          editor.update({ maxScreenLineLength: Infinity });
+          editor.update({ unwrappedLineLengthLimit: Infinity });
           editor.displayLayer.clearSpatialIndex();
           const replacement = document.createDocumentFragment();
           for (let row = 0; row < editor.getScreenLineCount(); row++) {

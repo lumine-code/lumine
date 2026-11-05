@@ -500,23 +500,33 @@ const configSchema = {
         scopeResolution: "grammar",
         title: "Soft Wrap",
         description:
-          "Wraps lines that exceed the width of the window. When `Soft Wrap At Preferred Line Length` is set, it will wrap to the number of characters defined by the `Preferred Line Length` setting.",
+          "Wrap lines to the editor's width, bounded by Soft Wrap Minimum Column and Soft Wrap Maximum Column when set. Wrapped lines can scroll horizontally when the minimum exceeds the editor's width.",
         type: "boolean",
         default: true,
       },
-      softWrapAtPreferredLineLength: {
+      softWrapMinColumn: {
         scopeResolution: "grammar",
-        title: "Soft Wrap At Preferred Line Length",
+        title: "Soft Wrap Minimum Column",
         description:
-          "Instead of wrapping lines to the window's width, wrap lines to the number of characters defined by the `Preferred Line Length` setting. This will only take effect when the soft wrap config setting is enabled globally or for the current grammar.",
-        type: "boolean",
-        default: false,
+          "Minimum visual column for soft wrapping. Narrower editors scroll horizontally. Set to 0 for no minimum. Soft Wrap Maximum Column takes precedence if it is smaller.",
+        type: "integer",
+        minimum: 0,
+        default: 0,
+      },
+      softWrapMaxColumn: {
+        scopeResolution: "grammar",
+        title: "Soft Wrap Maximum Column",
+        description:
+          "Maximum visual column for soft wrapping. Set to 0 for no maximum. Set both soft wrap column limits to the same value to wrap at a fixed width.",
+        type: "integer",
+        minimum: 0,
+        default: 0,
       },
       preferredLineLength: {
         scopeResolution: "grammar",
         title: "Preferred Line Length",
         description:
-          "Identifies the length of a line which is used when wrapping text with the `Soft Wrap At Preferred Line Length` setting enabled, in number of characters.",
+          "Preferred line length for formatting and wrap guides, in columns. Soft wrapping uses its own minimum and maximum column settings.",
         type: "integer",
         minimum: 1,
         default: 80,
@@ -545,11 +555,11 @@ const configSchema = {
         type: "boolean",
         default: true,
       },
-      maxScreenLineLength: {
+      unwrappedLineLengthLimit: {
         scopeResolution: "grammar",
-        title: "Max Screen Line Length",
+        title: "Unwrapped Line Length Limit",
         description:
-          "Defines the maximum width of the editor window before soft wrapping is enforced, in number of characters.",
+          "Safety limit for displayed line width when soft wrap is disabled, in columns. Larger documents use a separate unwrapped projection.",
         type: "integer",
         minimum: 500,
         default: 500,

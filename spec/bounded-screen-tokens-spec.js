@@ -10,7 +10,7 @@ describe("Bounded tokens for auxiliary renderers", () => {
     expect(editor.getRenderedBufferRanges()).toEqual([]);
     expect(editor.component).toBeUndefined();
     editor.setText("x".repeat(1000000));
-    editor.update({ autoHeight: false, softWrapped: false, maxScreenLineLength: Infinity });
+    editor.update({ autoHeight: false, softWrapped: false, unwrappedLineLengthLimit: Infinity });
     const element = editor.element;
     element.style.cssText = "width:800px;height:200px";
     jasmine.attachToDOM(element);
@@ -31,7 +31,7 @@ describe("Bounded tokens for auxiliary renderers", () => {
 
   it("does not materialize a very long row to draw its small visible prefix", () => {
     editor.setText("x".repeat(1000000));
-    editor.update({ softWrapped: false, maxScreenLineLength: Infinity });
+    editor.update({ softWrapped: false, unwrappedLineLengthLimit: Infinity });
     const full = spyOn(editor.displayLayer, "getScreenLine").and.callThrough();
     const window = spyOn(editor.displayLayer, "getScreenLineWindow").and.callThrough();
     const tokens = editor.tokensForScreenRow(0, { maxTokens: 10, maxColumns: 120 });
@@ -60,7 +60,7 @@ describe("Bounded tokens for auxiliary renderers", () => {
 
   it("a pre-requested column read cannot replace its owner's larger viewport", () => {
     editor.setText("x".repeat(20000));
-    editor.update({ softWrapped: false, maxScreenLineLength: Infinity });
+    editor.update({ softWrapped: false, unwrappedLineLengthLimit: Infinity });
     const prepare = spyOn(
       editor.displayLayer,
       "prepareHighlightingForScreenRows",
@@ -71,7 +71,7 @@ describe("Bounded tokens for auxiliary renderers", () => {
 
   it("column preparation does not query a folded interior between two long visible fragments", () => {
     editor.setText("x".repeat(20000) + "\n" + "hidden\n".repeat(1000) + "y".repeat(20000));
-    editor.update({ softWrapped: false, maxScreenLineLength: Infinity });
+    editor.update({ softWrapped: false, unwrappedLineLengthLimit: Infinity });
     editor.foldBufferRange([
       [0, 100],
       [1001, 100],

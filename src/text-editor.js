@@ -312,21 +312,16 @@ module.exports = class TextEditor {
       params.softWrapDebounceInterval != null ? params.softWrapDebounceInterval : 0;
     this.editorWidthInChars = params.editorWidthInChars;
     this.invisibles = params.invisibles;
-    this.softWrapped = params.softWrapped;
-    this.softWrapAtPreferredLineLength = params.softWrapAtPreferredLineLength;
-    this.preferredLineLength = params.preferredLineLength;
-    this.maxScreenLineLength = params.maxScreenLineLength;
     this.softTabs = params.softTabs != null ? params.softTabs : true;
     this.autoIndent = params.autoIndent != null ? params.autoIndent : true;
     this.autoIndentOnPaste = params.autoIndentOnPaste != null ? params.autoIndentOnPaste : true;
     this.undoGroupingInterval =
       params.undoGroupingInterval != null ? params.undoGroupingInterval : 300;
     this.softWrapped = params.softWrapped != null ? params.softWrapped : false;
-    this.softWrapAtPreferredLineLength =
-      params.softWrapAtPreferredLineLength != null ? params.softWrapAtPreferredLineLength : false;
+    this.softWrapMinColumn = params.softWrapMinColumn ?? 0;
+    this.softWrapMaxColumn = params.softWrapMaxColumn ?? 0;
     this.preferredLineLength = params.preferredLineLength != null ? params.preferredLineLength : 80;
-    this.maxScreenLineLength =
-      params.maxScreenLineLength != null ? params.maxScreenLineLength : 500;
+    this.unwrappedLineLengthLimit = params.unwrappedLineLengthLimit ?? 500;
     this.showLineNumbers = params.showLineNumbers != null ? params.showLineNumbers : true;
     this.overtypeMode = params.overtypeMode != null ? params.overtypeMode : false;
     const { tabLength = 2 } = params;
@@ -576,16 +571,20 @@ module.exports = class TextEditor {
           this.updateSoftWrapHangingIndentLength(value, false, displayLayerParams);
           break;
 
-        case "softWrapAtPreferredLineLength":
-          this.updateSoftWrapAtPreferredLineLength(value, false, displayLayerParams);
+        case "softWrapMinColumn":
+          this.updateSoftWrapMinColumn(value, false, displayLayerParams);
+          break;
+
+        case "softWrapMaxColumn":
+          this.updateSoftWrapMaxColumn(value, false, displayLayerParams);
           break;
 
         case "preferredLineLength":
           this.updatePreferredLineLength(value, false, displayLayerParams);
           break;
 
-        case "maxScreenLineLength":
-          this.updateMaxScreenLineLength(value, false, displayLayerParams);
+        case "unwrappedLineLengthLimit":
+          this.updateUnwrappedLineLengthLimit(value, false, displayLayerParams);
           break;
 
         case "mini":
@@ -655,10 +654,21 @@ module.exports = class TextEditor {
     // screen-row geometry (e.g. soft-wrap toggle, tab width, or a width-driven
     // rewrap during resize). The component restores it in didResetDisplayLayer
     // once the new geometry is in place, so the viewport stays visually stable.
-    if (this.component) this.component.willResetDisplayLayer();
+    const changedParams = Object.keys(displayLayerParams);
+    const wrapColumn = displayLayerParams.softWrapColumn;
+    const normalizedWrapColumn = wrapColumn != null ? Math.max(1, wrapColumn) : Infinity;
+    const canResetGeometry =
+      changedParams.length > 0 &&
+      (changedParams.length !== 1 ||
+        changedParams[0] !== "softWrapColumn" ||
+        normalizedWrapColumn !== this.displayLayer.softWrapColumn);
+    if (this.component && canResetGeometry) this.component.willResetDisplayLayer();
     this.displayLayer.reset(displayLayerParams);
 
-    if (this.component) {
+    // An unchanged wrapping column can leave the view entirely idle. Waiting
+    // for a new frame in that case would never resolve; synchronous views may
+    // also have already completed the update while handling the reset.
+    if (this.component && (this.component.updateScheduled || this.component.nextUpdatePromise)) {
       return this.component.getNextUpdatePromise();
     } else {
       return Promise.resolve();
@@ -759,9 +769,17 @@ module.exports = class TextEditor {
     if (finish) this.finishUpdate(displayLayerParams);
   }
 
-  updateSoftWrapAtPreferredLineLength(value, finish, displayLayerParams = {}) {
-    if (value !== this.softWrapAtPreferredLineLength) {
-      this.softWrapAtPreferredLineLength = value;
+  updateSoftWrapMinColumn(value, finish, displayLayerParams = {}) {
+    if (value !== this.softWrapMinColumn) {
+      this.softWrapMinColumn = value;
+      displayLayerParams.softWrapColumn = this.getSoftWrapColumn();
+    }
+    if (finish) this.finishUpdate(displayLayerParams);
+  }
+
+  updateSoftWrapMaxColumn(value, finish, displayLayerParams = {}) {
+    if (value !== this.softWrapMaxColumn) {
+      this.softWrapMaxColumn = value;
       displayLayerParams.softWrapColumn = this.getSoftWrapColumn();
     }
     if (finish) this.finishUpdate(displayLayerParams);
@@ -770,14 +788,13 @@ module.exports = class TextEditor {
   updatePreferredLineLength(value, finish, displayLayerParams = {}) {
     if (value !== this.preferredLineLength) {
       this.preferredLineLength = value;
-      displayLayerParams.softWrapColumn = this.getSoftWrapColumn();
     }
     if (finish) this.finishUpdate(displayLayerParams);
   }
 
-  updateMaxScreenLineLength(value, finish, displayLayerParams = {}) {
-    if (value !== this.maxScreenLineLength) {
-      this.maxScreenLineLength = value;
+  updateUnwrappedLineLengthLimit(value, finish, displayLayerParams = {}) {
+    if (value !== this.unwrappedLineLengthLimit) {
+      this.unwrappedLineLengthLimit = value;
       displayLayerParams.softWrapColumn = this.getSoftWrapColumn();
     }
     if (finish) this.finishUpdate(displayLayerParams);
@@ -941,14 +958,15 @@ module.exports = class TextEditor {
       largeFileOptimizations: this.largeFileOptimizations,
       largeDocumentWrapEnabled: this.largeDocumentWrapEnabled,
       largeDocumentCostActive: this.largeDocumentCostActive,
-      softWrapAtPreferredLineLength: this.softWrapAtPreferredLineLength,
+      softWrapMinColumn: this.softWrapMinColumn,
+      softWrapMaxColumn: this.softWrapMaxColumn,
       preferredLineLength: this.preferredLineLength,
       mini: this.mini,
       readOnly2: this.readOnly, // readOnly encompassed both readOnly and keyboardInputEnabled
       keyboardInputEnabled: this.keyboardInputEnabled,
       editorWidthInChars: this.editorWidthInChars,
       width: this.width,
-      maxScreenLineLength: this.maxScreenLineLength,
+      unwrappedLineLengthLimit: this.unwrappedLineLengthLimit,
       invisibles: this.invisibles,
       showInvisibles: this.showInvisibles,
       scrollPastEnd: this.scrollPastEnd,
@@ -1036,7 +1054,12 @@ module.exports = class TextEditor {
           this.mergeIntersectingSelections();
       }),
     );
-    this.disposables.add(this.buffer.onDidChangeText(() => this.notifySoftWrapState()));
+    this.disposables.add(
+      this.buffer.onDidChangeText(() => {
+        this.notifySoftWrapState();
+        this.notifySoftWrapColumn();
+      }),
+    );
     this.disposables.add(
       this.buffer.onDidChangeLanguageMode(this.handleLanguageModeChange.bind(this)),
     );
@@ -1070,8 +1093,10 @@ module.exports = class TextEditor {
   }
 
   subscribeToDisplayLayer() {
+    this.lastNotifiedSoftWrapColumn = this.displayLayer.softWrapColumn;
     this.disposables.add(
       this.displayLayer.onDidChange((changes) => {
+        this.notifySoftWrapColumn();
         if (!changes.every((change) => change.origin === "highlight"))
           this.mergeIntersectingSelections();
         if (this.component) this.component.didChangeDisplayLayer(changes);
@@ -1083,6 +1108,7 @@ module.exports = class TextEditor {
     );
     this.disposables.add(
       this.displayLayer.onDidReset(() => {
+        this.notifySoftWrapColumn();
         this.mergeIntersectingSelections();
         if (this.component) this.component.didResetDisplayLayer();
         this.emitter.emit("did-change", {});
@@ -1271,6 +1297,22 @@ module.exports = class TextEditor {
    */
   onDidChangeSoftWrapped(callback) {
     return this.emitter.on("did-change-soft-wrapped", callback);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Calls your `callback` when the effective soft-wrap column changes, after
+   * the display layer has adopted the new column. Unwrapped large documents
+   * report `Infinity`.
+   *
+   * @param {Function} callback
+   * @param {Number} callback.column - The new wrapping column.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   */
+  onDidChangeSoftWrapColumn(callback) {
+    return this.emitter.on("did-change-soft-wrap-column", callback);
   }
 
   /**
@@ -1654,11 +1696,12 @@ module.exports = class TextEditor {
       // otherwise it would unwrap on first render and land at a wrong scroll
       // position even though the copied display layer was wrapped.
       softWrapped: this.softWrapped,
-      softWrapAtPreferredLineLength: this.softWrapAtPreferredLineLength,
+      softWrapMinColumn: this.softWrapMinColumn,
+      softWrapMaxColumn: this.softWrapMaxColumn,
       largeFileOptimizations: this.largeFileOptimizations,
       largeDocumentWrapEnabled: this.largeDocumentWrapEnabled,
       largeDocumentCostActive: this.largeDocumentCostActive,
-      maxScreenLineLength: this.maxScreenLineLength,
+      unwrappedLineLengthLimit: this.unwrappedLineLengthLimit,
       preferredLineLength: this.preferredLineLength,
     });
   }
@@ -6274,6 +6317,40 @@ module.exports = class TextEditor {
     this.emitter.emit("did-change-soft-wrapped", current);
   }
 
+  notifySoftWrapColumn() {
+    const column = this.displayLayer.softWrapColumn;
+    if (column === this.lastNotifiedSoftWrapColumn) return;
+    // Large-document projection can change before the buffer commits an edit.
+    // Publish only once the model and its display layer describe the same text.
+    if (column !== this.getSoftWrapColumn()) return;
+    this.lastNotifiedSoftWrapColumn = column;
+    this.emitter.emit("did-change-soft-wrap-column", column);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Get the minimum wrapping column. Zero leaves the minimum unrestricted.
+   *
+   * @returns {Number}
+   */
+  getSoftWrapMinColumn() {
+    return this.softWrapMinColumn;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Get the maximum wrapping column. Zero leaves the maximum unrestricted.
+   *
+   * @returns {Number}
+   */
+  getSoftWrapMaxColumn() {
+    return this.softWrapMaxColumn;
+  }
+
   getPreferredLineLength() {
     return this.preferredLineLength;
   }
@@ -6381,13 +6458,11 @@ module.exports = class TextEditor {
     const largeDocument = this.usesLargeDocumentView(documentSize);
     const softWrapped = largeDocument ? this.largeDocumentWrapEnabled : this.softWrapped;
     if (softWrapped && !this.mini && !this.getAutoWidth()) {
-      if (this.softWrapAtPreferredLineLength) {
-        return Math.min(this.getEditorWidthInChars(), this.preferredLineLength);
-      } else {
-        return this.getEditorWidthInChars();
-      }
+      let column = Math.max(this.getEditorWidthInChars() ?? Infinity, this.softWrapMinColumn);
+      if (this.softWrapMaxColumn > 0) column = Math.min(column, this.softWrapMaxColumn);
+      return Math.max(1, column);
     } else {
-      return largeDocument ? Infinity : this.maxScreenLineLength;
+      return largeDocument ? Infinity : this.unwrappedLineLengthLimit;
     }
   }
 

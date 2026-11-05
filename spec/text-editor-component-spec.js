@@ -637,6 +637,75 @@ describe("TextEditorComponent", () => {
       expect(lineNumberNodeForScreenRow(component, 4).classList.contains("foldable")).toBe(false);
     });
 
+    for (const scrollbarLayout of ["gutter", "overlay"]) {
+      it(`scrolls fixed-column wrapped text horizontally in ${scrollbarLayout} layout`, async () => {
+        const { component, editor } = buildComponent({
+          text: "abcdefghij".repeat(24),
+          softWrapped: true,
+          softWrapMinColumn: 80,
+          softWrapMaxColumn: 80,
+          scrollbarLayout,
+          height: 100,
+        });
+        await setEditorWidthInCharacters(component, 40);
+
+        expect(editor.getSoftWrapColumn()).toBe(80);
+        expect(editor.getScreenLineCount()).toBe(3);
+        expect(component.canScrollHorizontally()).toBe(true);
+        expect(component.getMaxScrollLeft()).toBeGreaterThan(0);
+        await setScrollLeft(component, component.getMaxScrollLeft());
+        expect(component.getScrollRight()).toBeGreaterThanOrEqual(component.getContentWidth());
+        expect(component.refs.horizontalScrollbar.element.classList.contains("is-scrollable")).toBe(
+          true,
+        );
+
+        await setEditorWidthInCharacters(component, 100);
+        expect(editor.getScreenLineCount()).toBe(3);
+        expect(component.canScrollHorizontally()).toBe(false);
+        expect(component.getMaxScrollLeft()).toBe(0);
+        expect(component.getScrollLeft()).toBe(0);
+
+        await editor.update({ softWrapMinColumn: 0 });
+        await setEditorWidthInCharacters(component, 40);
+        expect(editor.getSoftWrapColumn()).toBeLessThanOrEqual(40);
+        expect(component.canScrollHorizontally()).toBe(false);
+      });
+
+      it(`does not scroll short text just because its wrap minimum exceeds the ${scrollbarLayout} viewport`, async () => {
+        const { component, editor } = buildComponent({
+          text: "short",
+          softWrapped: true,
+          softWrapMinColumn: 80,
+          scrollbarLayout,
+        });
+        await setEditorWidthInCharacters(component, 20);
+        expect(editor.getSoftWrapColumn()).toBe(80);
+        expect(component.canScrollHorizontally()).toBe(false);
+        expect(component.getMaxScrollLeft()).toBe(0);
+      });
+    }
+
+    it("keeps wrap geometry and its scroll anchor while resizing below the minimum", async () => {
+      const { component, editor } = buildComponent({
+        text: "abcdefghij".repeat(100),
+        softWrapped: true,
+        softWrapMinColumn: 20,
+      });
+      await setEditorWidthInCharacters(component, 10);
+      const reset = jasmine.createSpy("did-reset");
+      editor.displayLayer.onDidReset(reset);
+      const capture = spyOn(component, "captureScrollAnchor").and.callThrough();
+      const screenLine = editor.screenLineForScreenRow(0);
+
+      for (const width of [15, 19, 12]) await setEditorWidthInCharacters(component, width);
+
+      expect(editor.getSoftWrapColumn()).toBe(20);
+      expect(editor.screenLineForScreenRow(0)).toBe(screenLine);
+      expect(reset).not.toHaveBeenCalled();
+      expect(capture).not.toHaveBeenCalled();
+      expect(component.canScrollHorizontally()).toBe(true);
+    });
+
     it("renders viewport-sized overlay rails without native scroll containers", async () => {
       const { component, editor } = buildComponent({
         scrollbarLayout: "overlay",
@@ -1258,7 +1327,7 @@ describe("TextEditorComponent", () => {
       });
       await component.getNextUpdatePromise();
 
-      expect(editor.displayLayer.softWrapColumn).toBe(editor.maxScreenLineLength);
+      expect(editor.displayLayer.softWrapColumn).toBe(editor.unwrappedLineLengthLimit);
       expect(editor.getScreenLineCount()).toBe(1);
       expect(component.getScrollWidth()).toBe(component.getContentWidth());
       expect(component.getScrollContainerClientWidth()).toBe(component.getContentWidth());
@@ -10718,6 +10787,8 @@ function buildEditor(params = {}) {
     "showLineNumbers",
     "placeholderText",
     "softWrapped",
+    "softWrapMinColumn",
+    "softWrapMaxColumn",
     "wheelScrollMultiplier",
     "smoothScrolling",
     "wheelScrollDuration",

@@ -17,13 +17,13 @@ const packedChecksum = (value) =>
     .update(Buffer.from(value.buffer, value.byteOffset, value.byteLength))
     .digest("hex");
 
-function build(buffer, maxScreenLineLength = 500) {
+function build(buffer, unwrappedLineLengthLimit = 500) {
   const editor = new TextEditor({
     buffer,
     autoHeight: false,
     autoWidth: false,
     softWrapped: false,
-    maxScreenLineLength,
+    unwrappedLineLengthLimit,
   });
   const component = new TextEditorComponent({ model: editor, updatedSynchronously: false });
   component.element.style.width = "1000px";

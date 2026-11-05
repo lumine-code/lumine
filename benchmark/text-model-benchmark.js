@@ -86,7 +86,7 @@ function createState(text, withEditor) {
       autoIndent: false,
       autoIndentOnPaste: false,
       softWrapped: false,
-      maxScreenLineLength: 500,
+      unwrappedLineLengthLimit: 500,
       undoGroupingInterval: 0,
     });
     // Populate the spatial index before editing, as for an already-open file.

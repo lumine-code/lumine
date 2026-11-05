@@ -469,7 +469,7 @@ describe("Snapshot-backed editor operations", () => {
   it("corrects every cursor inside a grouped long-row block comment", async () => {
     const text = "x".repeat(1048577);
     const buffer = new TextBuffer(text);
-    editor = new TextEditor({ buffer, autoHeight: false, maxScreenLineLength: Infinity });
+    editor = new TextEditor({ buffer, autoHeight: false, unwrappedLineLengthLimit: Infinity });
     editor.setSelectedBufferRanges([
       [
         [0, 0],

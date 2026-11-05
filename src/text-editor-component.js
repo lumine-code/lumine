@@ -470,9 +470,9 @@ module.exports = class TextEditorComponent {
 
   updateOffscreenAutoHeightLayout() {
     const { model } = this.props;
-    // Wrapped, externally sized editors need no longest-line DOM measurement
-    // or scrollbar space to determine their height. Rich block content and
-    // auto-width/unwrapped editors retain the complete measurement path.
+    // Wrapping within the viewport needs no longest-line DOM measurement or
+    // horizontal scrollbar space. A minimum/fixed column wider than the view
+    // retains the full measurement path, including its horizontal rail.
     if (!model.isSoftWrapped() || model.getAutoWidth() || this.blockDecorationElements.size > 0) {
       return false;
     }
@@ -494,6 +494,7 @@ module.exports = class TextEditorComponent {
 
     this.derivedDimensionsCache = {};
     this.updateModelSoftWrapColumn();
+    if (!this.softWrapFitsViewport()) return false;
     // Auto-height is part of the parent's layout, so its full wrapped extent
     // must be exact even though none of its lines needs to paint yet.
     model.getScreenLineCount();
@@ -778,6 +779,10 @@ module.exports = class TextEditorComponent {
 
     this.stabilizeHorizontalWindows();
     this.measureLongestLineWidth();
+    // Fixed/minimum wrapping can outlive the horizontal overflow that allowed
+    // scrolling. A wider viewport need not reset its unchanged text geometry.
+    if (this.props.model.isSoftWrapped() && this.getScrollLeft() > 0)
+      this.setScrollLeft(this.getScrollLeft());
     this.measureHorizontalPositions();
     this.updateAbsolutePositionedDecorations();
 
@@ -5461,8 +5466,16 @@ module.exports = class TextEditorComponent {
   canScrollHorizontally() {
     const { model } = this.props;
     if ((model.isMini() || model.getAutoWidth()) && !model.usesBoundedAutoSize()) return false;
-    if (model.isSoftWrapped()) return false;
+    if (this.softWrapFitsViewport()) return false;
     return this.getContentWidth() > this.getContentViewportWidth();
+  }
+
+  softWrapFitsViewport() {
+    return (
+      this.props.model.isSoftWrapped() &&
+      this.props.model.getSoftWrapColumn() <=
+        Math.max(1, this.getScrollContainerClientWidthInBaseCharacters())
+    );
   }
 
   getAutoSizedContentHeight() {
@@ -5532,7 +5545,7 @@ module.exports = class TextEditorComponent {
           ? this.getVerticalScrollbarWidth()
           : 0;
       return this.getContentWidth() + inset;
-    } else if (model.isSoftWrapped()) {
+    } else if (this.softWrapFitsViewport()) {
       return this.getScrollContainerClientWidth();
     } else {
       const inset = this.getScrollbarLayout() === "overlay" ? this.getVerticalScrollbarWidth() : 0;

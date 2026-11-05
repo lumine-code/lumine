@@ -12,9 +12,9 @@ describe("TextEditor horizontal windows", () => {
       buffer: new TextBuffer(text),
       softWrapped: false,
       autoHeight: false,
-      maxScreenLineLength: Infinity,
+      unwrappedLineLengthLimit: Infinity,
     });
-    editor.maxScreenLineLength = Infinity;
+    editor.unwrappedLineLengthLimit = Infinity;
     editor.displayLayer.reset({ softWrapColumn: Infinity });
     const element = editor.getElement();
     element.style.width = "700px";

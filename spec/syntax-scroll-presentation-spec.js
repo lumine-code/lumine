@@ -27,7 +27,7 @@ describe("Scrolling while syntax is unavailable", () => {
     await mode.ready;
     editor.update({
       softWrapped: false,
-      maxScreenLineLength: Infinity,
+      unwrappedLineLengthLimit: Infinity,
       wheelScrollMultiplier: 1,
       wheelScrollDuration: 120,
     });

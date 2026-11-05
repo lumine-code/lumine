@@ -42,7 +42,7 @@ function buildEditor(buffer) {
     lineNumberGutterVisible: true,
     showLineNumbers: true,
     softWrapped: false,
-    maxScreenLineLength: 500,
+    unwrappedLineLengthLimit: 500,
   });
 }
 
@@ -215,7 +215,7 @@ describe("Text editor long-line input benchmark", () => {
           sampleCount: SAMPLE_COUNT,
           editorWidth: EDITOR_WIDTH,
           editorHeight: EDITOR_HEIGHT,
-          maxScreenLineLength: 500,
+          unwrappedLineLengthLimit: 500,
           layerMode: LAYER_MODE,
           operation: "alternating one-character insert/delete",
         },

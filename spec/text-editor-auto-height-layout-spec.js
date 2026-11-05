@@ -18,7 +18,8 @@ describe("TextEditor auto-height layout outside the viewport", () => {
       autoHeight: true,
       autoWidth: false,
       softWrapped: true,
-      softWrapAtPreferredLineLength: false,
+      softWrapMinColumn: 0,
+      softWrapMaxColumn: 0,
       showInvisibles: false,
     });
     editor.setText("a long example with enough words to wrap ".repeat(16));
@@ -83,6 +84,31 @@ describe("TextEditor auto-height layout outside the viewport", () => {
     await conditionPromise(() => editor.getElement().offsetHeight > wrappedHeight);
     expectFullContentHeight();
   });
+
+  for (const layout of ["gutter", "overlay"]) {
+    it(`includes horizontal overflow when fixed-column content expands offscreen with ${layout} scrollbars`, () => {
+      editor.getElement().dataset.scrollbarLayout = layout;
+      editor.update({ softWrapMinColumn: 80, softWrapMaxColumn: 80 });
+      host.style.width = "220px";
+      expandHost();
+      component.updateSync();
+
+      expect(component.visible).toBe(false);
+      expect(editor.getSoftWrapColumn()).toBe(80);
+      expect(component.canScrollHorizontally()).toBe(true);
+      const height =
+        editor.getScreenLineCount() * component.getLineHeight() +
+        component.getHorizontalScrollbarHeight();
+      expect(editor.getElement().offsetHeight).toBeCloseTo(height, 0);
+      expect(component.getMaxScrollLeft()).toBeGreaterThan(0);
+      component.setScrollLeft(component.getMaxScrollLeft());
+      expect(component.getScrollRight()).toBeGreaterThanOrEqual(component.getContentWidth());
+
+      const offscreenHeight = host.scrollHeight;
+      component.didShow();
+      expect(host.scrollHeight).toBe(offscreenHeight);
+    });
+  }
 
   it("shrinks previously rendered content without painting it again offscreen", async () => {
     expandHost();

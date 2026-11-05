@@ -13,6 +13,7 @@ const TextEditor = require("../src/text-editor");
 const TextBuffer = require("../src/text-buffer");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 const NullLanguageMode = require("../src/null-language-mode");
+const { LARGE_DOCUMENT_ROWS } = require("../src/document-cost-policy");
 
 async function languageModeReady(editor) {
   let languageMode = editor.getBuffer().getLanguageMode();
@@ -208,7 +209,8 @@ describe("TextEditor", () => {
         atomicSoftTabs: false,
         tabLength: 12,
         softWrapped: true,
-        softWrapAtPreferredLineLength: true,
+        softWrapMinColumn: 20,
+        softWrapMaxColumn: 80,
         softWrapHangingIndentLength: 8,
         invisibles: { space: "S" },
         showInvisibles: true,
@@ -231,6 +233,8 @@ describe("TextEditor", () => {
       expect(editor2.hasAtomicSoftTabs()).toBe(editor.hasAtomicSoftTabs());
       expect(editor2.getTabLength()).toBe(editor.getTabLength());
       expect(editor2.getSoftWrapColumn()).toBe(editor.getSoftWrapColumn());
+      expect(editor2.getSoftWrapMinColumn()).toBe(20);
+      expect(editor2.getSoftWrapMaxColumn()).toBe(80);
       expect(editor2.getSoftWrapHangingIndentLength()).toBe(
         editor.getSoftWrapHangingIndentLength(),
       );
@@ -385,7 +389,7 @@ describe("TextEditor", () => {
         lineNumberGutterVisible: false,
         scrollPastEnd: true,
         autoHeight: false,
-        maxScreenLineLength: 1000,
+        unwrappedLineLengthLimit: 1000,
       });
 
       expect(returnedPromise).toBe(element.component.getNextUpdatePromise());
@@ -10625,13 +10629,12 @@ describe("TextEditor", () => {
     });
   });
 
-  describe("softWrapAtPreferredLineLength", () => {
-    it("soft wraps the editor at the preferred line length unless the editor is narrower or the editor is mini", () => {
+  describe("soft-wrap column limits", () => {
+    it("wraps at the viewport width up to the maximum unless the editor is mini", () => {
       editor.update({
         editorWidthInChars: 30,
         softWrapped: true,
-        softWrapAtPreferredLineLength: true,
-        preferredLineLength: 20,
+        softWrapMaxColumn: 20,
       });
 
       expect(editor.lineTextForScreenRow(0)).toBe("var quicksort = ");
@@ -10643,18 +10646,106 @@ describe("TextEditor", () => {
       expect(editor.lineTextForScreenRow(0)).toBe("var quicksort = function () {");
     });
 
+    it("keeps the minimum in a narrow editor and treats zero limits as unrestricted", () => {
+      editor.update({
+        editorWidthInChars: 10,
+        softWrapped: true,
+        softWrapMinColumn: 20,
+      });
+      expect(editor.getSoftWrapColumn()).toBe(20);
+      expect(editor.lineTextForScreenRow(0)).toBe("var quicksort = ");
+
+      editor.update({ softWrapMinColumn: 0, softWrapMaxColumn: 0 });
+      expect(editor.getSoftWrapColumn()).toBe(10);
+      editor.update({ editorWidthInChars: 120 });
+      expect(editor.getSoftWrapColumn()).toBe(120);
+    });
+
+    it("keeps a fixed width when both limits match and lets the maximum win conflicts", () => {
+      editor.update({
+        editorWidthInChars: 10,
+        softWrapped: true,
+        softWrapMinColumn: 80,
+        softWrapMaxColumn: 80,
+      });
+      expect(editor.getSoftWrapColumn()).toBe(80);
+      editor.update({ editorWidthInChars: 120 });
+      expect(editor.getSoftWrapColumn()).toBe(80);
+
+      editor.update({ softWrapMinColumn: 100, softWrapMaxColumn: 40 });
+      expect(editor.getSoftWrapColumn()).toBe(40);
+      editor.setSoftWrapped(false);
+      expect(editor.getSoftWrapColumn()).toBe(editor.unwrappedLineLengthLimit);
+    });
+
+    it("keeps formatting preferences independent and copies the column limits", () => {
+      editor.update({
+        editorWidthInChars: 120,
+        softWrapped: true,
+        softWrapMinColumn: 20,
+        softWrapMaxColumn: 80,
+      });
+      editor.update({ preferredLineLength: 40 });
+      expect(editor.getSoftWrapColumn()).toBe(80);
+      expect(editor.getPreferredLineLength()).toBe(40);
+
+      const copy = editor.copy();
+      expect(copy.getSoftWrapMinColumn()).toBe(20);
+      expect(copy.getSoftWrapMaxColumn()).toBe(80);
+      expect(copy.getSoftWrapColumn()).toBe(80);
+      copy.destroy();
+    });
+
+    it("publishes effective column changes after the display layer updates", () => {
+      editor.update({
+        editorWidthInChars: 120,
+        softWrapped: true,
+        softWrapMinColumn: 20,
+        softWrapMaxColumn: 80,
+      });
+      const columns = [];
+      const subscription = editor.onDidChangeSoftWrapColumn((column) => {
+        expect(editor.displayLayer.softWrapColumn).toBe(column);
+        columns.push(column);
+      });
+
+      editor.update({ editorWidthInChars: 100, preferredLineLength: 40 });
+      editor.update({ softWrapMaxColumn: 70 });
+      editor.update({ editorWidthInChars: 10 });
+      editor.update({ editorWidthInChars: 15 });
+      editor.setSoftWrapped(false);
+      editor.update({ softWrapMinColumn: 30 });
+      editor.setSoftWrapped(true);
+      expect(columns).toEqual([70, 20, editor.unwrappedLineLengthLimit, 30]);
+      subscription.dispose();
+    });
+
+    it("publishes large-document projection changes after the buffer commits", () => {
+      editor.update({ editorWidthInChars: 80, softWrapped: true });
+      const columns = [];
+      const subscription = editor.onDidChangeSoftWrapColumn((column) => {
+        expect(editor.getSoftWrapColumn()).toBe(column);
+        expect(editor.displayLayer.softWrapColumn).toBe(column);
+        columns.push(column);
+      });
+
+      editor.setText("x\n".repeat(LARGE_DOCUMENT_ROWS - 1));
+      editor.setText("small");
+      expect(columns).toEqual([Infinity, 80]);
+      subscription.dispose();
+    });
+
     it("lets auto-width content determine its width instead of wrapping to the viewport", () => {
       const fullLine = editor.lineTextForBufferRow(0);
       editor.update({
         editorWidthInChars: 10,
         softWrapped: true,
-        softWrapAtPreferredLineLength: true,
-        preferredLineLength: 20,
+        softWrapMaxColumn: 20,
       });
       expect(editor.lineTextForScreenRow(0)).not.toBe(fullLine);
 
       editor.update({ autoWidth: true });
-      expect(editor.displayLayer.softWrapColumn).toBe(editor.maxScreenLineLength);
+      expect(editor.displayLayer.softWrapColumn).toBe(editor.unwrappedLineLengthLimit);
       expect(editor.lineTextForScreenRow(0)).toBe(fullLine);
 
       editor.update({ autoWidth: false });
@@ -10682,12 +10773,12 @@ describe("TextEditor", () => {
     it("returns an element", () => expect(editor.getElement() instanceof HTMLElement).toBe(true));
   });
 
-  describe("setMaxScreenLineLength", () => {
+  describe("unwrappedLineLengthLimit", () => {
     it("sets the maximum line length in the editor before soft wrapping is forced", () => {
       editor.setSoftWrapped(false);
       expect(editor.getSoftWrapColumn()).toBe(500);
       editor.update({
-        maxScreenLineLength: 1500,
+        unwrappedLineLengthLimit: 1500,
       });
       expect(editor.getSoftWrapColumn()).toBe(1500);
     });

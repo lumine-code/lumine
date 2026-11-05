@@ -15,7 +15,7 @@ describe("Decoration screen-range batches", () => {
 
   function build(markers = 80, text = "alpha beta/gamma delta ".repeat(100)) {
     buffer = new TextBuffer({ text });
-    editor = new TextEditor({ buffer, maxScreenLineLength: 50 });
+    editor = new TextEditor({ buffer, unwrappedLineLengthLimit: 50 });
     const layer = editor.addMarkerLayer();
     const result = [];
     for (let index = 0; index < markers; index++) {
@@ -131,7 +131,7 @@ describe("Decoration screen-range batches", () => {
 
   it("does not bless stale marker points when cold CJK layout reenters a marker move", () => {
     buffer = new TextBuffer({ text: "a".repeat(100) + "\n我" + "a".repeat(100) });
-    editor = new TextEditor({ buffer, maxScreenLineLength: 5 });
+    editor = new TextEditor({ buffer, unwrappedLineLengthLimit: 5 });
     component = new TextEditorComponent({ model: editor, updatedSynchronously: false });
     const markers = [];
     const decorations = new Map();

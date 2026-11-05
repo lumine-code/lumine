@@ -586,36 +586,44 @@ describe("TextEditorRegistry", function () {
       expect(editor.getSoftWrapHangingIndentLength()).toBe(4);
     });
 
-    it("enables or disables preferred line length-based soft wrap based on the config", async function () {
+    it("applies scoped soft-wrap limits independently of formatting preferences", async function () {
       editor.update({
         softWrapped: true,
-        preferredLineLength: 80,
         editorWidthInChars: 120,
-        softWrapAtPreferredLineLength: true,
+        softWrapMinColumn: 20,
+        softWrapMaxColumn: 80,
       });
 
       expect(editor.getSoftWrapColumn()).toBe(80);
 
       lumine.config.set("editor.softWrap", true);
-      lumine.config.set("editor.softWrapAtPreferredLineLength", false);
+      lumine.config.set("editor.softWrapMinColumn", 20);
+      lumine.config.set("editor.softWrapMaxColumn", 0);
       factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftWrapColumn()).toBe(120);
 
-      lumine.config.set("editor.softWrapAtPreferredLineLength", true);
+      lumine.config.set("editor.softWrapMaxColumn", 80);
       expect(editor.getSoftWrapColumn()).toBe(80);
+
+      editor.update({ editorWidthInChars: 10 });
+      expect(editor.getSoftWrapColumn()).toBe(20);
+      lumine.config.set("editor.softWrapMinColumn", 30);
+      expect(editor.getSoftWrapColumn()).toBe(30);
+      lumine.config.set("editor.preferredLineLength", 60);
+      expect(editor.getSoftWrapColumn()).toBe(30);
     });
 
     it("allows for custom definition of maximum soft wrap based on config", async function () {
       editor.update({
         softWrapped: false,
-        maxScreenLineLength: 1500,
+        unwrappedLineLengthLimit: 1500,
       });
 
       expect(editor.getSoftWrapColumn()).toBe(1500);
 
       lumine.config.set("editor.softWrap", false);
-      lumine.config.set("editor.maxScreenLineLength", 500);
+      lumine.config.set("editor.unwrappedLineLengthLimit", 500);
       factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftWrapColumn()).toBe(500);

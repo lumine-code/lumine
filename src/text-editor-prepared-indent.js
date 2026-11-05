@@ -215,7 +215,7 @@ async function prepare(editor, data, options, queue) {
       // This editor plans buffer edits and never paints. The ordinary line
       // safety-wrap would index every preceding row to position a distant
       // cursor. Use the exact unwrapped projection, including folds and tabs.
-      maxScreenLineLength: Infinity,
+      unwrappedLineLengthLimit: Infinity,
       autoIndent: false,
     });
     staged.emitWillPublishTextInsertion = (event) =>

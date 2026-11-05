@@ -63,7 +63,7 @@ describe("Large document view policy", () => {
     const original = build({
       buffer: new TextBuffer("界".repeat(15000)),
       softWrapped: false,
-      maxScreenLineLength: Infinity,
+      unwrappedLineLengthLimit: Infinity,
     });
     original.setDefaultCharWidth(10, 20, 10, 20);
     const copy = own(original.copy());
@@ -169,7 +169,7 @@ describe("Large document view policy", () => {
       const editor = build({
         buffer: new TextBuffer(pattern.repeat(15000)),
         softWrapped: false,
-        maxScreenLineLength: Infinity,
+        unwrappedLineLengthLimit: Infinity,
       });
       const element = editor.getElement();
       element.style.width = "700px";

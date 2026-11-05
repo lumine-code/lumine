@@ -21,7 +21,7 @@ describe("Viewport column syntax", () => {
       element.style.cssText = "width:800px;height:200px";
       try {
         await mode.ready;
-        editor.update({ softWrapped: wrapped, maxScreenLineLength: Infinity });
+        editor.update({ softWrapped: wrapped, unwrappedLineLengthLimit: Infinity });
         jasmine.attachToDOM(element);
         element.setUpdatedSynchronously(true);
         const c = element.component;
