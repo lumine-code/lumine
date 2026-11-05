@@ -632,6 +632,8 @@ describe("TextEditorRegistry", function () {
     it("sets the preferred line length based on the config", async function () {
       editor.update({ preferredLineLength: 80 });
       expect(editor.getPreferredLineLength()).toBe(80);
+      const columns = [];
+      const subscription = editor.onDidChangePreferredLineLength((column) => columns.push(column));
 
       lumine.config.set("editor.preferredLineLength", 110);
       factory.maintainConfig(editor);
@@ -640,6 +642,8 @@ describe("TextEditorRegistry", function () {
 
       lumine.config.set("editor.preferredLineLength", 80);
       expect(editor.getPreferredLineLength()).toBe(80);
+      expect(columns).toEqual([110, 80]);
+      subscription.dispose();
     });
 
     it("enables or disables auto-indent based on the config", async function () {

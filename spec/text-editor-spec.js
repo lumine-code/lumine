@@ -10720,6 +10720,36 @@ describe("TextEditor", () => {
       copy.destroy();
     });
 
+    it("publishes preferred length changes without changing soft wrap or document text", () => {
+      editor.update({
+        preferredLineLength: 80,
+        editorWidthInChars: 120,
+        softWrapped: true,
+        softWrapMaxColumn: 100,
+      });
+      const text = editor.getText();
+      const columns = [];
+      const softWrapChanged = jasmine.createSpy("softWrapChanged");
+      const wrapSubscription = editor.onDidChangeSoftWrapColumn(softWrapChanged);
+      const subscription = editor.onDidChangePreferredLineLength((column) => {
+        expect(editor.getPreferredLineLength()).toBe(column);
+        columns.push(column);
+      });
+
+      editor.update({ preferredLineLength: 60 });
+      editor.update({ preferredLineLength: 60 });
+      editor.update({ preferredLineLength: 90 });
+      expect(columns).toEqual([60, 90]);
+      expect(editor.getSoftWrapColumn()).toBe(100);
+      expect(softWrapChanged).not.toHaveBeenCalled();
+      expect(editor.getText()).toBe(text);
+
+      subscription.dispose();
+      editor.update({ preferredLineLength: 70 });
+      expect(columns).toEqual([60, 90]);
+      wrapSubscription.dispose();
+    });
+
     it("publishes effective column changes after the display layer updates", () => {
       editor.update({
         editorWidthInChars: 120,

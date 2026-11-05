@@ -806,6 +806,7 @@ module.exports = class TextEditor {
   updatePreferredLineLength(value, finish, displayLayerParams = {}) {
     if (value !== this.preferredLineLength) {
       this.preferredLineLength = value;
+      this.emitter.emit("did-change-preferred-line-length", value);
     }
     if (finish) this.finishUpdate(displayLayerParams);
   }
@@ -1333,6 +1334,20 @@ module.exports = class TextEditor {
    */
   onDidChangeSoftWrapColumn(callback) {
     return this.emitter.on("did-change-soft-wrap-column", callback);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Calls your `callback` when the preferred formatting and guide column changes.
+   *
+   * @param {Function} callback
+   * @param {Number} callback.column - The new preferred line length.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   */
+  onDidChangePreferredLineLength(callback) {
+    return this.emitter.on("did-change-preferred-line-length", callback);
   }
 
   /**
@@ -6371,6 +6386,14 @@ module.exports = class TextEditor {
     return this.softWrapMaxColumn;
   }
 
+  /**
+   * @public
+   * @status extended
+   *
+   * Get the preferred column for formatting and wrap guides, independent of soft wrap.
+   *
+   * @returns {Number}
+   */
   getPreferredLineLength() {
     return this.preferredLineLength;
   }

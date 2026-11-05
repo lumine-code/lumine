@@ -18,6 +18,8 @@ The minimum is applied first and a positive maximum is applied last. If the mini
 
 `editor.preferredLineLength` is a separate formatting preference used by paragraph reflow and the default wrap guide. It does not constrain soft wrap. `editor.softWrapHangingIndent` adds indentation to continuation rows, and `editor.softWrapDebounceInterval` controls reflow during continuous layout resizing.
 
+The editor owns the preferred line length, defaulting to 80 columns. Users can configure it globally or for a grammar; language packages do not supply their own defaults. Packages read the effective value with `TextEditor.getPreferredLineLength()` and observe `onDidChangePreferredLineLength(callback)`, which receives the new column. Custom wrap guide columns are independent visual markers and do not change this preference.
+
 ## Model integration
 
 `TextEditor.getSoftWrapColumn()` reports the effective wrapping column. `getSoftWrapMinColumn()` and `getSoftWrapMaxColumn()` report the configured constraints. Editors accept `softWrapMinColumn` and `softWrapMaxColumn` in their construction and `update()` parameters; copies and session restoration preserve them.
