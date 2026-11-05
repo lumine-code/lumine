@@ -2,11 +2,7 @@ const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const KeymapManager = require("./keymap-manager");
 
-const buildMetadata = require("../package.json");
-var bundledKeymaps;
-if (buildMetadata != null) {
-  bundledKeymaps = buildMetadata._lumineKeymaps;
-}
+const bundledKeymaps = require("../package.json").lumineMetadata?.keymaps;
 
 KeymapManager.prototype.onDidLoadBundledKeymaps = function (callback) {
   return this.emitter.on("did-load-bundled-keymaps", callback);

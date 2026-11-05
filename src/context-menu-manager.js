@@ -7,15 +7,7 @@ const MenuHelpers = require("./menu-helpers");
 const { sortMenuItems } = require("./menu-sort-helpers");
 const menuLayout = require("./menu-layout");
 
-const buildMetadata = require("../package.json");
-var platformContextMenu;
-if (
-  buildMetadata != null &&
-  buildMetadata._lumineMenu != null &&
-  buildMetadata._lumineMenu["context-menu"]
-) {
-  platformContextMenu = buildMetadata._lumineMenu["context-menu"];
-}
+const platformContextMenu = require("../package.json").lumineMetadata?.menu?.["context-menu"];
 
 /**
  * @public

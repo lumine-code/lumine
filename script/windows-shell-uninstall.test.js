@@ -8,6 +8,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { runNativeFixture } = require("./native-process-fixture");
+const { whatToBuild } = require("./electron-builder");
 
 const root = path.resolve(__dirname, "..");
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -100,10 +101,32 @@ test(
     });
     assert.equal(query().status, 1, "Never reuse an existing registry fixture.");
     assert.ok(!process.env.ELECTRON_BUILDER_NSIS_DIR, "Use the checksum-managed NSIS toolset.");
-    const { getMakeNsisPath } = require("app-builder-lib/out/toolsets/windows");
+    // This toolset helper has no package subpath export in the pinned builder.
+    // Resolve its exported function relative to the supported package entry.
+    const builderDirectory = path.dirname(require.resolve("app-builder-lib"));
+    const builderManifest = JSON.parse(
+      fs.readFileSync(path.join(builderDirectory, "..", "package.json"), "utf8"),
+    );
+    assert.equal(
+      builderManifest.version,
+      require("../package.json").devDependencies["electron-builder"],
+      "Use the toolset implementation belonging to the pinned builder.",
+    );
+    const toolsetModule = path.join(builderDirectory, "toolsets", "nsis.js");
+    const { getMakeNsisPath } = require(toolsetModule);
     // The same default toolset as the actual builder configuration. Its official
     // archive checksum and cache/download handling belong to electron-builder.
-    const compiler = await getMakeNsisPath("0.0.0");
+    const compiler = await getMakeNsisPath(
+      whatToBuild().toolsets?.nsis,
+      path.join(root, "resources"),
+    );
+    if (path.extname(compiler.path).toLowerCase() === ".cmd") {
+      // The official wrapper sets NSISDIR and invokes windows/makensis.exe.
+      // Run that native child directly so cancellation cannot orphan a shell.
+      const nsisDirectory = path.join(path.dirname(compiler.path), "windows");
+      compiler.path = path.join(nsisDirectory, "makensis.exe");
+      compiler.env = { ...compiler.env, NSISDIR: nsisDirectory };
+    }
     t.signal.throwIfAborted();
     const macro = shellRemovalMacro();
     const executableName = "Lumine.exe";

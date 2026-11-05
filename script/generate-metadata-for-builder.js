@@ -14,9 +14,11 @@ function isObjectFile(filePath) {
 
 module.exports = function (packageJSON) {
   return {
-    _luminePackages: buildBundledPackagesMetadata(),
-    _lumineMenu: buildPlatformMenuMetadata(packageJSON),
-    _lumineKeymaps: buildPlatformKeymapsMetadata(packageJSON),
+    lumineMetadata: {
+      packages: buildBundledPackagesMetadata(),
+      menu: buildPlatformMenuMetadata(packageJSON),
+      keymaps: buildPlatformKeymapsMetadata(packageJSON),
+    },
   };
 };
 

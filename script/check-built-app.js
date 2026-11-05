@@ -171,7 +171,6 @@ function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(fi
     "description",
     "engines",
     "dependencies",
-    "devDependencies",
     "license",
     "repository",
   ]) {
@@ -180,6 +179,10 @@ function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(fi
       `Packaged package.json changed ${field}`,
     );
   }
+  expect(
+    !Object.hasOwn(manifest, "devDependencies"),
+    "Packaged package.json retains devDependencies",
+  );
   requireFile(path.posix.normalize(manifest.main || "src/main.js"));
   for (const asset of RUNTIME_ASSETS) {
     requireFile(asset);
@@ -231,15 +234,17 @@ function checkBuiltApp(file, { repoRoot = ROOT, platform = platformForArchive(fi
     }
   }
 
-  const metadata = {
-    packages: manifest._luminePackages,
-    menu: manifest._lumineMenu,
-    keymaps: manifest._lumineKeymaps,
-  };
-  for (const field of ["_luminePackages", "_lumineMenu", "_lumineKeymaps"]) {
+  const metadata = manifest.lumineMetadata ?? {};
+  expect(
+    manifest.lumineMetadata &&
+      typeof manifest.lumineMetadata === "object" &&
+      !Array.isArray(manifest.lumineMetadata),
+    "Packaged package.json lacks lumineMetadata",
+  );
+  for (const field of ["packages", "menu", "keymaps"]) {
     expect(
-      manifest[field] && typeof manifest[field] === "object",
-      `Packaged package.json lacks ${field}`,
+      metadata[field] && typeof metadata[field] === "object" && !Array.isArray(metadata[field]),
+      `Packaged package.json lacks lumineMetadata.${field}`,
     );
   }
   const menuFile = ["json", "jsonc"]

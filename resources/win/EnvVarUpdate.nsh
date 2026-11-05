@@ -35,20 +35,14 @@
 !include "WinMessages.NSH"
 !include "StrFunc.nsh"
 
-; ---- Fix for conflict if StrFunc.nsh is already includes in main file -----------------------
-!macro _IncludeStrFunction StrFuncName
-  !ifndef ${StrFuncName}_INCLUDED
-    ${${StrFuncName}}
-  !endif
-  !ifndef Un${StrFuncName}_INCLUDED
-    ${Un${StrFuncName}}
-  !endif
-  !define un.${StrFuncName} "${Un${StrFuncName}}"
-!macroend
-
-!insertmacro _IncludeStrFunction StrTok
-!insertmacro _IncludeStrFunction StrStr
-!insertmacro _IncludeStrFunction StrRep
+; Register the supported installer and uninstaller macros. StrFunc owns their
+; inclusion guards and call syntax; do not copy its macro expansion into aliases.
+${Using:StrFunc} StrTok
+${Using:StrFunc} StrStr
+${Using:StrFunc} StrRep
+${Using:StrFunc} UnStrTok
+${Using:StrFunc} UnStrStr
+${Using:StrFunc} UnStrRep
 
 ; ---------------------------------- Macro Definitions ----------------------------------------
 !macro _EnvVarUpdateConstructor ResultVar EnvVarName Action Regloc PathString
@@ -76,7 +70,7 @@
 !define hklm_all_users     'HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"'
 !define hkcu_current_user  'HKCU "Environment"'
 
-!macro EnvVarUpdate UN
+!macro EnvVarUpdate UN STRFUNC_PREFIX
 
 Function ${UN}EnvVarUpdate
 
@@ -183,25 +177,25 @@ Function ${UN}EnvVarUpdate
   ; after the last one are not removed here but instead in Step 3)
   ${If} $0 != ""                           ; If EnvVar is not empty ...
     ${Do}
-      ${${UN}StrStr} $7 $0 " ;"
+      ${${STRFUNC_PREFIX}StrStr} $7 $0 " ;"
       ${If} $7 == ""
         ${ExitDo}
       ${EndIf}
-      ${${UN}StrRep} $0  $0 " ;" ";"         ; Remove '<space>;'
+      ${${STRFUNC_PREFIX}StrRep} $0  $0 " ;" ";"         ; Remove '<space>;'
     ${Loop}
     ${Do}
-      ${${UN}StrStr} $7 $0 "; "
+      ${${STRFUNC_PREFIX}StrStr} $7 $0 "; "
       ${If} $7 == ""
         ${ExitDo}
       ${EndIf}
-      ${${UN}StrRep} $0  $0 "; " ";"         ; Remove ';<space>'
+      ${${STRFUNC_PREFIX}StrRep} $0  $0 "; " ";"         ; Remove ';<space>'
     ${Loop}
     ${Do}
-      ${${UN}StrStr} $7 $0 ";;"
+      ${${STRFUNC_PREFIX}StrStr} $7 $0 ";;"
       ${If} $7 == ""
         ${ExitDo}
       ${EndIf}
-      ${${UN}StrRep} $0  $0 ";;" ";"
+      ${${STRFUNC_PREFIX}StrRep} $0  $0 ";;" ";"
     ${Loop}
 
     ; Remove a leading or trailing semicolon from EnvVar
@@ -232,7 +226,7 @@ Function ${UN}EnvVarUpdate
     StrCpy $6 0
 
     ${Do}
-      ${${UN}StrTok} $7 $9 ";" $8 "0"      ; $7 = next entry, $8 = entry counter
+      ${${STRFUNC_PREFIX}StrTok} $7 $9 ";" $8 "0" ; $7 = next entry, $8 = entry counter
 
       ${If} $7 == ""                       ; If we've run out of entries,
         ${ExitDo}                          ;    were done
@@ -341,9 +335,9 @@ Function ${UN}EnvVarUpdate
 
 FunctionEnd
 
-!macroend   ; EnvVarUpdate UN
-!insertmacro EnvVarUpdate ""
-!insertmacro EnvVarUpdate "un."
+!macroend   ; EnvVarUpdate UN STRFUNC_PREFIX
+!insertmacro EnvVarUpdate "" ""
+!insertmacro EnvVarUpdate "un." "Un"
 ;----------------------------------- EnvVarUpdate end----------------------------------------
 
 !verbose pop

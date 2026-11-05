@@ -71,7 +71,7 @@ jobs:
       - name: Test headless dependency preparation
         run: node --test script/install-headless-dependencies.test.js
       - name: Test application packaging
-        run: node --test script/check-built-app.test.js
+        run: node --test script/check-built-app.test.js script/generate-metadata-for-builder.test.js
       - name: Test demo capture validation
         run: node --test script/demo.test.js
       - name: Audit production dependencies

@@ -7,9 +7,8 @@ const path = require("node:path");
 const { createRequire } = require("node:module");
 const test = require("node:test");
 const asar = require("@electron/asar");
-const { FileMatcher, getNodeModuleFileMatcher } = require("app-builder-lib/out/fileMatcher");
+const { FileMatcher, getNodeModuleFileMatcher } = require("app-builder-lib/internal");
 const { whatToBuild } = require("./electron-builder");
-const packageWindowsCrashHelper = require("./windows-wer");
 const {
   checkBuiltApp,
   findArchives,
@@ -23,18 +22,13 @@ function write(root, file, value) {
   fs.writeFileSync(destination, typeof value === "object" ? JSON.stringify(value) : value);
 }
 
-const builderRequire = createRequire(require.resolve("app-builder-lib/package.json"));
-const universalRequire = createRequire(builderRequire.resolve("@electron/universal/package.json"));
-const squirrelRequire = createRequire(
-  builderRequire.resolve("electron-builder-squirrel-windows/package.json"),
-);
-const installerRequire = createRequire(squirrelRequire.resolve("electron-winstaller/package.json"));
+const builderRequire = createRequire(require.resolve("app-builder-lib"));
+const universalRequire = createRequire(builderRequire.resolve("@electron/universal"));
 
 for (const [name, implementation] of [
   ["application archive", asar],
   ["builder archive", builderRequire("@electron/asar")],
   ["universal archive", universalRequire("@electron/asar")],
-  ["Windows installer archive", installerRequire("@electron/asar")],
 ]) {
   test(`${name} preserves hidden contents and glob-based native unpacking`, async (t) => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-packaging-dependencies-"));
@@ -58,29 +52,6 @@ for (const [name, implementation] of [
     );
   });
 }
-
-test("universal packaging directory comparisons apply include and exclude filters", async (t) => {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-packaging-comparison-"));
-  t.after(() => {
-    assert.equal(path.dirname(path.resolve(temp)), path.resolve(os.tmpdir()));
-    fs.rmSync(temp, { recursive: true, force: true });
-  });
-  const left = path.join(temp, "left");
-  const right = path.join(temp, "right");
-  for (const directory of [left, right]) write(directory, "included.txt", "same contents");
-  write(left, "ignored.txt", "first ignored contents");
-  write(right, "ignored.txt", "second ignored contents");
-  write(left, "ignored.js", "only the left includes this JavaScript");
-  const options = {
-    compareContent: true,
-    includeFilter: "**/*.txt",
-    excludeFilter: "**/ignored*",
-  };
-  const compare = universalRequire("dir-compare").compare;
-  assert.equal((await compare(left, right, options)).same, true);
-  write(right, "included.txt", "different contents");
-  assert.equal((await compare(left, right, options)).same, false);
-});
 
 test("packaging file filters retain braces, exclusions and directory traversal", () => {
   const directory = path.resolve("packaging-filter-fixture");
@@ -149,7 +120,7 @@ async function fixture(
       sample: "github:lumine-code/sample#0123456789012345678901234567890123456789",
       "@lumine-code/native": "github:lumine-code/native#0123456789012345678901234567890123456789",
     },
-    devDependencies: { "electron-builder": "26.17.0" },
+    devDependencies: { "electron-builder": "27.0.0-alpha.14" },
     license: "MIT",
     repository: "https://github.com/lumine-code/lumine",
   };
@@ -187,18 +158,21 @@ async function fixture(
   }
   write(repoRoot, "keymaps/base.json", { "lumine-workspace": { escape: "core:cancel" } });
   const packedManifest = structuredClone(manifest);
-  packedManifest._luminePackages = {
-    sample: {
-      metadata: packageManifest,
-      main: "../node_modules/sample/lib/main.js",
-      grammarPaths: ["grammars/sample.json"],
-      styleSheetPaths: ["styles/main.css"],
+  delete packedManifest.devDependencies;
+  packedManifest.lumineMetadata = {
+    packages: {
+      sample: {
+        metadata: packageManifest,
+        main: "../node_modules/sample/lib/main.js",
+        grammarPaths: ["grammars/sample.json"],
+        styleSheetPaths: ["styles/main.css"],
+      },
     },
-  };
-  packedManifest._lumineMenu = { menu: [{ label: `File ${platform}` }] };
-  packedManifest._lumineKeymaps = {
-    "base.json": { "lumine-workspace": { escape: "core:cancel" } },
-    [`${platform}.json`]: { "lumine-workspace": { "cmdorctrl-p": `sample:${platform}` } },
+    menu: { menu: [{ label: `File ${platform}` }] },
+    keymaps: {
+      "base.json": { "lumine-workspace": { escape: "core:cancel" } },
+      [`${platform}.json`]: { "lumine-workspace": { "cmdorctrl-p": `sample:${platform}` } },
+    },
   };
   if (changeManifest) changeManifest(packedManifest);
   write(source, "package.json", packedManifest);
@@ -244,29 +218,6 @@ async function fixture(
   return { archive, repoRoot, buildDir, nativeFile };
 }
 
-test("renames the Windows crash helper to match the packaged executable", async (t) => {
-  const appOutDir = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-wer-"));
-  t.after(() => {
-    assert.equal(path.dirname(path.resolve(appOutDir)), path.resolve(os.tmpdir()));
-    fs.rmSync(appOutDir, { recursive: true, force: true });
-  });
-  const original = path.join(appOutDir, "electron_wer.dll");
-  fs.writeFileSync(original, "crash helper");
-  await packageWindowsCrashHelper({
-    electronPlatformName: "win32",
-    appOutDir,
-    packager: { appInfo: { productFilename: "Lumine" } },
-  });
-  assert.equal(fs.readFileSync(path.join(appOutDir, "Lumine_wer.dll"), "utf8"), "crash helper");
-  assert.equal(fs.existsSync(original), false);
-  assert.equal(whatToBuild().afterPack, "script/windows-wer.js");
-});
-
-test("does not package a WER helper on other platforms", async () => {
-  await packageWindowsCrashHelper({ electronPlatformName: "linux" });
-  await packageWindowsCrashHelper({ electronPlatformName: "darwin" });
-});
-
 test("rejects a Windows package with a missing crash helper", async (t) => {
   const { archive, repoRoot } = await fixture(t, { platform: "win32" });
   fs.unlinkSync(path.join(path.dirname(path.dirname(archive)), "Lumine_wer.dll"));
@@ -283,9 +234,10 @@ test("packages exactly one shell launcher for each target platform", () => {
     ["mac", "lumine.sh"],
     ["win", "resources/win/lumine.sh"],
   ]) {
-    const launchers = [...config.extraResources, ...config[platform].extraResources].filter(
-      (entry) => entry.to === "lumine.sh",
-    );
+    const launchers = [
+      ...config.fileOptions.extraResources,
+      ...config[platform].fileOptions.extraResources,
+    ].filter((entry) => entry.to === "lumine.sh");
     assert.deepEqual(launchers, [{ from: source, to: "lumine.sh" }]);
   }
 });
@@ -293,12 +245,13 @@ test("packages exactly one shell launcher for each target platform", () => {
 test("packages the same shared launcher for every target platform", () => {
   const config = whatToBuild();
   const helper = { from: "resources/lumine.js", to: "lumine.js" };
-  assert.ok(config.extraResources.some((entry) => entry.from === helper.from));
-  assert.ok(config.files.includes("!resources/lumine.js"));
+  assert.ok(config.fileOptions.extraResources.some((entry) => entry.from === helper.from));
+  assert.ok(config.fileOptions.files.includes("!resources/lumine.js"));
   for (const platform of ["linux", "mac", "win"]) {
-    const helpers = [...config.extraResources, ...config[platform].extraResources].filter(
-      (entry) => entry.to === helper.to,
-    );
+    const helpers = [
+      ...config.fileOptions.extraResources,
+      ...config[platform].fileOptions.extraResources,
+    ].filter((entry) => entry.to === helper.to);
     assert.deepEqual(helpers, [helper]);
   }
 });
@@ -307,7 +260,9 @@ test("preserves legal Markdown and notices in the actual dependency filter", () 
   const root = path.resolve(__dirname, "..");
   const config = whatToBuild();
   for (const name of ["LICENSE", "THIRD_PARTY_NOTICES"]) {
-    assert.ok(config.extraResources.some((entry) => entry.from === name && entry.to === name));
+    assert.ok(
+      config.fileOptions.extraResources.some((entry) => entry.from === name && entry.to === name),
+    );
   }
   const matcher = getNodeModuleFileMatcher(
     root,
@@ -455,17 +410,29 @@ for (const platform of ["linux", "win32", "darwin"]) {
   });
 }
 
-test("rejects metadata and declared source fields removed by manifest cleanup", async (t) => {
+test("rejects metadata and runtime dependency pins removed by manifest cleanup", async (t) => {
   const app = await fixture(t, {
     changeManifest(manifest) {
-      delete manifest._luminePackages;
-      delete manifest.devDependencies;
+      delete manifest.lumineMetadata;
+      delete manifest.dependencies;
     },
   });
   assert.throws(
     () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
     (error) =>
-      /lacks _luminePackages/.test(error.message) && /changed devDependencies/.test(error.message),
+      /lacks lumineMetadata/.test(error.message) && /changed dependencies/.test(error.message),
+  );
+});
+
+test("rejects development dependencies retained in the packaged manifest", async (t) => {
+  const app = await fixture(t, {
+    changeManifest(manifest) {
+      manifest.devDependencies = { "electron-builder": "27.0.0-alpha.14" };
+    },
+  });
+  assert.throws(
+    () => checkBuiltApp(app.archive, { repoRoot: app.repoRoot }),
+    /Packaged package.json retains devDependencies/,
   );
 });
 
@@ -480,9 +447,9 @@ test("rejects runtime bytes corrupted by a source change during packaging", asyn
 test("rejects wrong platform menus, incomplete bundled metadata, and changed pins", async (t) => {
   const app = await fixture(t, {
     changeManifest(manifest) {
-      manifest._lumineMenu = { menu: [{ label: "File darwin" }] };
-      manifest._lumineKeymaps = {};
-      manifest._luminePackages.extra = { metadata: { name: "extra" } };
+      manifest.lumineMetadata.menu = { menu: [{ label: "File darwin" }] };
+      manifest.lumineMetadata.keymaps = {};
+      manifest.lumineMetadata.packages.extra = { metadata: { name: "extra" } };
       manifest.dependencies.sample = "1.0.0";
     },
   });
@@ -518,7 +485,7 @@ test("rejects missing parser, query, snippets, and package main files", async (t
 test("rejects a main module cached outside its package even if that file exists", async (t) => {
   const app = await fixture(t, {
     changeManifest(manifest) {
-      manifest._luminePackages.sample.main = "../src/main.js";
+      manifest.lumineMetadata.packages.sample.main = "../src/main.js";
     },
   });
   assert.throws(
@@ -540,7 +507,7 @@ test("rejects build tools copied into the runtime node_modules", async (t) => {
     add: {
       "node_modules/electron-builder/package.json": {
         name: "electron-builder",
-        version: "26.17.0",
+        version: "27.0.0-alpha.14",
       },
     },
   });

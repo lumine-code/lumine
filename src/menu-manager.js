@@ -10,11 +10,7 @@ const { keyBindingsForTarget, resolveKeyBindingTarget } = require("./key-binding
 const menuLayout = require("./menu-layout");
 const changeAffectsTarget = require("./command-availability-change");
 
-const buildMetadata = require("../package.json");
-var platformMenu;
-if (buildMetadata) {
-  platformMenu = buildMetadata._lumineMenu && buildMetadata._lumineMenu.menu;
-}
+const platformMenu = require("../package.json").lumineMetadata?.menu?.menu;
 
 /**
  * @public
