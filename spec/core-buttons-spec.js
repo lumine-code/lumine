@@ -11,7 +11,8 @@ describe("core button focus styles", () => {
     root = fixture.attachShadow({ mode: "open" });
     const stylesheet = document.createElement("style");
     stylesheet.textContent =
-      ":host { --accent-indicator-color: rgb(10, 20, 30); }\n" +
+      ":host { --accent-indicator-color: rgb(10, 20, 30); --accent-background-color: rgb(40, 100, 180); --accent-foreground-color: rgb(255, 255, 255); --ui-control-height: 24px; --ui-spacing: 8px; --ui-border-radius: 4px; }\n" +
+      "status-bar-tile { display: inline-block; height: 18px; padding: 0 5px; border-radius: 0; }\n" +
       fs.readFileSync(path.join(__dirname, "../static/lumine-ui/styles/buttons.css"), "utf8");
     root.appendChild(stylesheet);
   });
@@ -62,5 +63,52 @@ describe("core button focus styles", () => {
       expect(style.outlineStyle).withContext(className).toBe("none");
       expect(style.boxShadow).withContext(className).toBe("rgb(40, 50, 60) 0px 0px 0px 2px");
     }
+  });
+
+  it("shares primary action paint with accent controls while preserving their shape", () => {
+    const button = document.createElement("button");
+    button.className = "btn btn-primary";
+    button.textContent = "Primary";
+    const tile = document.createElement("status-bar-tile");
+    tile.className = "accent-control";
+    tile.textContent = "115%";
+    tile.tabIndex = 0;
+    root.append(button, tile);
+
+    const paint = (element) => {
+      const style = getComputedStyle(element);
+      return {
+        color: style.color,
+        backgroundColor: style.backgroundColor,
+        backgroundImage: style.backgroundImage,
+        boxShadow: style.boxShadow,
+        outline: style.outline,
+        outlineOffset: style.outlineOffset,
+      };
+    };
+    for (const active of [false, true]) {
+      button.classList.toggle("active", active);
+      tile.classList.toggle("active", active);
+      expect(paint(tile)).withContext(`active: ${active}`).toEqual(paint(button));
+    }
+
+    const input = document.createElement("input");
+    root.appendChild(input);
+    input.focus();
+    button.focus();
+    expect(button.matches(":focus-visible")).toBe(true);
+    const focused = paint(button);
+    tile.focus();
+    expect(tile.matches(":focus-visible")).toBe(true);
+    expect(paint(tile)).toEqual(focused);
+
+    const tileStyle = getComputedStyle(tile);
+    const buttonStyle = getComputedStyle(button);
+    expect(tileStyle.height).toBe("18px");
+    expect(tileStyle.paddingLeft).toBe("5px");
+    expect(tileStyle.borderRadius).toBe("0px");
+    expect(buttonStyle.height).toBe("26px");
+    expect(buttonStyle.paddingLeft).toBe("8px");
+    expect(buttonStyle.borderRadius).toBe("4px");
   });
 });

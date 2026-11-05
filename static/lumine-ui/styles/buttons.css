@@ -6,6 +6,22 @@
 /* Base styles
    -------------------------------------------------- */
 
+.btn,
+.accent-control {
+  &:active,
+  &.active {
+    outline: 0;
+    background-image: none;
+    box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
+  }
+
+  &:focus-visible {
+    /* Preserve keyboard focus without leaving a ring after pointer clicks. */
+    outline: 2px auto var(--accent-indicator-color);
+    outline-offset: -2px;
+  }
+}
+
 .btn {
   display: inline-block;
   margin-bottom: 0; /* For input.btn */
@@ -29,19 +45,6 @@
     color: var(--text-color); /* @btn-default-color */
     text-decoration: none;
     background-color: var(--button-background-color-hover);
-  }
-
-  &:active,
-  &.active {
-    outline: 0;
-    background-image: none;
-    box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
-  }
-
-  &:focus-visible {
-    /* Preserve keyboard focus without leaving a ring after pointer clicks. */
-    outline: 2px auto var(--accent-indicator-color);
-    outline-offset: -2px;
   }
 
   &.selected,
@@ -75,8 +78,10 @@
 /* Primary is the accent button — the one action a surface wants clicked. It is
    painted from `--accent-background-color` rather than the info colour so that a theme
    setting an accent moves this button with it; the base value of that variable
-   is the info colour, so a theme that sets neither is unchanged. */
-.btn-primary {
+   is the info colour, so a theme that sets neither is unchanged. Other controls
+   opt into the same paint with `accent-control` while keeping their own shape. */
+.btn-primary,
+.accent-control {
   color: var(--accent-foreground-color);
   background-color: var(--accent-background-color);
 

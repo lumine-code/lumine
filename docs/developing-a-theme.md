@@ -167,6 +167,8 @@ The status and title bars mark the element they host with `.status-bar-item` or 
 
 The bars own layout while the theme owns appearance. Their complete tile contracts live in the [`status-bar`](https://github.com/lumine-code/status-bar/blob/master/docs/status-bar.md) and [`title-bar`](https://github.com/lumine-code/title-bar/blob/master/docs/title-bar.md) documentation.
 
+An action can add `.accent-control` to use the primary button's accent colors, hover and active feedback, and keyboard focus indicator while retaining its own dimensions, spacing and border shape. Theme these states together with `.btn-primary`; shared paint overrides on `.btn` also need to cover `.accent-control`. Exclude `.accent-control` from ordinary bar-tile hover rules so they preserve the primary action's feedback.
+
 ## Icon geometry belongs to the editor
 
 Every icon in the interface — tree-view rows, tabs, lists, the status bar — renders in one frame, defined once by the editor's base stylesheet: a square of `--ui-icon-size` whose `line-height` equals its height, aligned `vertical-align: text-bottom`. The box centers itself in any line, and each font's ink centers inside the box, so the same glyph sits at the same height in every surface without per-surface tuning.
