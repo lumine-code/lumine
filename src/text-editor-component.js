@@ -186,6 +186,7 @@ module.exports = class TextEditorComponent {
     this.overlayComponents = new Set();
     this.remeasureScrollbars = false;
     this.pendingAutoscroll = null;
+    this.pendingScheduledUpdates = 0;
     this.scrollTopPending = false;
     this.scrollLeftPending = false;
     this.scrollTop = 0;
@@ -426,29 +427,39 @@ module.exports = class TextEditorComponent {
     }
     if (useScheduler === true) {
       const documentScheduler = getScheduler();
+      this.pendingScheduledUpdates++;
       documentScheduler.readDocument(() => {
         // The scheduler flushes on a later animation frame, so the editor can
         // be destroyed between scheduling and this read. A destroyed editor
         // must never render (see scheduleUpdate); resolve rather than leak the
         // pending update promise, as every other bail-out in this method does.
-        if (this.props.model.isDestroyed()) {
-          if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
-          return;
-        }
-        const restartFrame = this.measureContentDuringUpdateSync();
-        documentScheduler.updateDocument(() => {
-          // A writer queued ahead of this one in the same flush can destroy
-          // the editor after the read above ran - re-check before rendering.
+        let queuedWriter = false;
+        try {
           if (this.props.model.isDestroyed()) {
             if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
             return;
           }
-          if (restartFrame) {
-            this.updateSync({ useScheduler: true, updateMode });
-          } else {
-            this.updateSyncAfterMeasuringContent(updateMode);
-          }
-        });
+          const restartFrame = this.measureContentDuringUpdateSync();
+          documentScheduler.updateDocument(() => {
+            try {
+              // Another writer can destroy the editor after the read above.
+              if (this.props.model.isDestroyed()) {
+                if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
+                return;
+              }
+              if (restartFrame) {
+                this.updateSync({ useScheduler: true, updateMode });
+              } else {
+                this.updateSyncAfterMeasuringContent(updateMode);
+              }
+            } finally {
+              this.pendingScheduledUpdates--;
+            }
+          });
+          queuedWriter = true;
+        } finally {
+          if (!queuedWriter) this.pendingScheduledUpdates--;
+        }
       });
     } else {
       const restartFrame = this.measureContentDuringUpdateSync();

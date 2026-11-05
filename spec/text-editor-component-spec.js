@@ -706,6 +706,33 @@ describe("TextEditorComponent", () => {
       expect(component.canScrollHorizontally()).toBe(true);
     });
 
+    it("waits for scheduled measurement and rendering when wrap limits leave the column unchanged", async () => {
+      const { component, editor } = buildComponent({ softWrapped: true });
+      const scheduler = TextEditorComponent.getScheduler();
+      const readers = [];
+      const writers = [];
+      spyOn(scheduler, "readDocument").and.callFake((callback) => readers.push(callback));
+      spyOn(scheduler, "updateDocument").and.callFake((callback) => writers.push(callback));
+
+      component.updateSync({ useScheduler: true });
+      const promise = editor.update({ softWrapMinColumn: 1 });
+      let settled = false;
+      promise.then(() => (settled = true));
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      expect(component.pendingScheduledUpdates).toBe(1);
+
+      readers.shift()();
+      expect(editor.update({ softWrapMinColumn: 2 })).toBe(promise);
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      writers.shift()();
+      await promise;
+      expect(settled).toBe(true);
+      expect(component.pendingScheduledUpdates).toBe(0);
+    });
+
     it("renders viewport-sized overlay rails without native scroll containers", async () => {
       const { component, editor } = buildComponent({
         scrollbarLayout: "overlay",

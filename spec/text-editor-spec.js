@@ -372,6 +372,30 @@ describe("TextEditor", () => {
   });
 
   describe(".update()", () => {
+    it("settles an idle view's shared update promise without scheduling a frame", async () => {
+      const detached = new TextEditor({
+        softWrapped: true,
+        editorWidthInChars: 10,
+        softWrapMinColumn: 20,
+      });
+      try {
+        const component = detached.getElement().getComponent();
+        const render = spyOn(component, "updateSync").and.callThrough();
+        const reset = jasmine.createSpy("did-reset");
+        detached.displayLayer.onDidReset(reset);
+
+        const updatePromise = detached.update({ editorWidthInChars: 15 });
+        expect(updatePromise).toBe(component.getNextUpdatePromise());
+        await updatePromise;
+
+        expect(detached.getSoftWrapColumn()).toBe(20);
+        expect(reset).not.toHaveBeenCalled();
+        expect(render).not.toHaveBeenCalled();
+      } finally {
+        detached.destroy();
+      }
+    });
+
     it("updates the editor with the supplied config parameters", () => {
       let changeSpy;
       const { element } = editor; // force element initialization

@@ -650,6 +650,7 @@ module.exports = class TextEditor {
   }
 
   finishUpdate(displayLayerParams = {}) {
+    const pendingUpdatePromise = this.component?.nextUpdatePromise;
     // Capture a visual scroll anchor before the display layer resets its
     // screen-row geometry (e.g. soft-wrap toggle, tab width, or a width-driven
     // rewrap during resize). The component restores it in didResetDisplayLayer
@@ -665,11 +666,28 @@ module.exports = class TextEditor {
     if (this.component && canResetGeometry) this.component.willResetDisplayLayer();
     this.displayLayer.reset(displayLayerParams);
 
-    // An unchanged wrapping column can leave the view entirely idle. Waiting
-    // for a new frame in that case would never resolve; synchronous views may
-    // also have already completed the update while handling the reset.
-    if (this.component && (this.component.updateScheduled || this.component.nextUpdatePromise)) {
-      return this.component.getNextUpdatePromise();
+    if (this.component) {
+      const component = this.component;
+      const updatePromise = component.getNextUpdatePromise();
+      // An unchanged wrapping column can leave the view entirely idle, and a
+      // synchronous view may have completed its reset already. Keep the same
+      // public next-update promise through this call stack, then settle it
+      // without waiting for a frame unless another update has been scheduled.
+      if (
+        !component.updateScheduled &&
+        !component.pendingScheduledUpdates &&
+        updatePromise !== pendingUpdatePromise
+      ) {
+        queueMicrotask(() => {
+          if (
+            !component.updateScheduled &&
+            !component.pendingScheduledUpdates &&
+            component.nextUpdatePromise === updatePromise
+          )
+            component.resolveNextUpdatePromise();
+        });
+      }
+      return updatePromise;
     } else {
       return Promise.resolve();
     }
@@ -918,6 +936,7 @@ module.exports = class TextEditor {
       this.autoHeight = value;
       displayLayerParams.softWrapColumn = this.getSoftWrapColumn();
       this.notifySoftWrapState();
+      this.scheduleComponentUpdate();
     }
     if (finish) this.finishUpdate(displayLayerParams);
   }
@@ -926,6 +945,7 @@ module.exports = class TextEditor {
     if (value !== this.autoWidth) {
       this.autoWidth = value;
       displayLayerParams.softWrapColumn = this.getSoftWrapColumn();
+      this.scheduleComponentUpdate();
     }
     if (finish) this.finishUpdate(displayLayerParams);
   }
