@@ -1,3 +1,4 @@
+const { webFrame } = require("electron");
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 
 describe("Window zoom", () => {
@@ -10,6 +11,10 @@ describe("Window zoom", () => {
     originalFontSize = lumine.config.get("editor.fontSize");
     jasmine.attachToDOM(main.getElement());
     await main.resetZoom();
+    await conditionPromise(
+      () => Math.abs(webFrame.getZoomFactor() - 1) < 1e-9,
+      "the renderer's default page scale",
+    );
   });
 
   afterEach(async () => {
@@ -21,12 +26,13 @@ describe("Window zoom", () => {
   it("scales the page through commands while preserving the configured editor font", async () => {
     lumine.config.set("editor.fontSize", 21);
     const editor = await lumine.workspace.open();
-    const initialPixelRatio = window.devicePixelRatio;
 
     await lumine.commands.dispatch(editor.getElement(), "window:zoom-in");
     expect(await main.getZoomFactor()).toBeCloseTo(1.05, 8);
+    // Other suites replace devicePixelRatio with fixed display-density mocks.
+    // Read Chromium's renderer scale directly instead of that global property.
     await conditionPromise(
-      () => Math.abs(window.devicePixelRatio / initialPixelRatio - 1.05) < 0.001,
+      () => Math.abs(webFrame.getZoomFactor() - 1.05) < 1e-9,
       "the page scale to update",
     );
     expect(lumine.config.get("editor.fontSize")).toBe(21);
