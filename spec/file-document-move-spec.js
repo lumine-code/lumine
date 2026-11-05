@@ -11,7 +11,7 @@ describe("file document moves", () => {
     jasmine.useRealClock();
     repositorySetupWork = [];
     const registry = lumine.project.repositoryRegistry;
-    for (const method of ["scanProjectRoots", "discoverForPath"]) {
+    for (const method of ["scanProjectRoots", "discoverForPathWithRevision"]) {
       const run = registry[method].bind(registry);
       spyOn(registry, method).and.callFake((...args) => {
         const work = run(...args);
@@ -35,8 +35,10 @@ describe("file document moves", () => {
 
   async function finishRepositorySetup() {
     // Watch readiness only arms filesystem observation. Let the real project
-    // scan and buffer repository lookups release their metadata reads too,
-    // including follow-up work their completions start before a directory move.
+    // scan and buffer repository lookups release their metadata reads too.
+    // Observe their shared revisioned entry: resolveForPath bypasses the
+    // discoverForPath convenience wrapper used by other callers. Also drain any
+    // follow-up work their completions start before a directory move.
     while (repositorySetupWork.length > 0) {
       await Promise.all(repositorySetupWork.splice(0));
     }
@@ -55,6 +57,42 @@ describe("file document moves", () => {
     fs.writeFileSync(target, contents);
     return openExisting(name);
   }
+
+  it("waits for repository observer metadata reads before moving the fixture", async () => {
+    const target = path.join(root, "dir", "a.txt");
+    const realpath = fs.promises.realpath.bind(fs.promises);
+    let signalRead;
+    let releaseRead;
+    const started = new Promise((resolve) => {
+      signalRead = resolve;
+    });
+    const release = new Promise((resolve) => {
+      releaseRead = resolve;
+    });
+    let intercepted = false;
+    spyOn(fs.promises, "realpath").and.callFake(async (filePath, ...options) => {
+      if (filePath === target && !intercepted) {
+        intercepted = true;
+        signalRead();
+        await release;
+      }
+      return realpath(filePath, ...options);
+    });
+    // RepositoryPathObserver uses this public entry rather than discoverForPath.
+    const discovery = lumine.project.repositoryRegistry.resolveForPath(target, { refresh: true });
+    const drained = jasmine.createSpy("repository setup drained");
+    let finishing;
+    try {
+      await started;
+      finishing = finishRepositorySetup().then(drained);
+      await new Promise(setImmediate);
+      expect(drained).not.toHaveBeenCalled();
+    } finally {
+      releaseRead();
+      await Promise.all([discovery, finishing]);
+    }
+    expect(drained).toHaveBeenCalled();
+  });
 
   it("releases move readiness in planned order when preparations finish in reverse order", async () => {
     let releaseFirst;
