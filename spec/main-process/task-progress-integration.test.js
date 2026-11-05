@@ -20,7 +20,16 @@ describe("Native task progress lifecycle", () => {
       browserWindow,
       windowStateId: crypto.randomUUID(),
       persistWindowState: false,
-      lumineApplication: { taskProgress: manager, quitting: false },
+      lumineApplication: {
+        taskProgress: manager,
+        quitting: false,
+        config: {
+          get(key) {
+            assert.equal(key, "core.zoomFactor");
+            return 1;
+          },
+        },
+      },
       sendToRenderer() {},
     };
     owner.auxiliaryWindowBroker = new AuxiliaryWindowBroker(owner, {

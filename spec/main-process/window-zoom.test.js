@@ -127,3 +127,45 @@ test("blocking pinch zoom preserves the window's page scale", async () => {
   assert.deepEqual(target.visualZoomLimits, [1, 1]);
   assert.equal(windowZoom.getZoomFactor(target), 1.4);
 });
+
+test("blocking pinch zoom retires a pending request when its frame is disposed", async () => {
+  const target = contents();
+  let reject;
+  const frame = { isDestroyed: () => false };
+  target.mainFrame = frame;
+  target.isDestroyed = () => false;
+  target.setVisualZoomLevelLimits = () =>
+    new Promise((_resolve, rejectRequest) => {
+      reject = rejectRequest;
+    });
+
+  const pending = windowZoom.disableVisualZoom(target);
+  frame.isDestroyed = () => true;
+  target.mainFrame = { isDestroyed: () => false };
+  reject(new Error("Render frame was disposed before the request completed"));
+
+  await assert.doesNotReject(pending);
+});
+
+test("blocking pinch zoom ignores destroyed contents without reading its frame", async () => {
+  const target = contents();
+  target.isDestroyed = () => true;
+  Object.defineProperty(target, "mainFrame", {
+    get() {
+      throw new Error("Destroyed WebContents must not be accessed");
+    },
+  });
+
+  await assert.doesNotReject(windowZoom.disableVisualZoom(target));
+  assert.equal(target.visualZoomLimits, undefined);
+});
+
+test("blocking pinch zoom preserves failures for a live frame, including detached wrappers", async () => {
+  const target = contents();
+  const error = new Error("Unable to set visual zoom limits");
+  target.mainFrame = { isDestroyed: () => false, detached: true };
+  target.isDestroyed = () => false;
+  target.setVisualZoomLevelLimits = () => Promise.reject(error);
+
+  await assert.rejects(windowZoom.disableVisualZoom(target), (actual) => actual === error);
+});

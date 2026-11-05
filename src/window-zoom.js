@@ -19,7 +19,14 @@ function getDefaultZoomFactor(lumineWindow) {
 // Page zoom remains available through commands. Pinch zoom is a separate
 // Chromium scale and must not introduce another, untracked zoom layer.
 function disableVisualZoom(webContents) {
-  return webContents.setVisualZoomLevelLimits(1, 1);
+  if (webContents.isDestroyed?.()) return Promise.resolve();
+  const frame = webContents.mainFrame;
+  if (frame?.isDestroyed()) return Promise.resolve();
+  return Promise.resolve(webContents.setVisualZoomLevelLimits(1, 1)).catch((error) => {
+    // A frame can be disposed before its WebContents finishes closing or reloads.
+    if (webContents.isDestroyed?.() || frame?.isDestroyed()) return;
+    throw error;
+  });
 }
 
 function getZoomFactor(webContents) {
