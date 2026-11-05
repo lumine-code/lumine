@@ -2,7 +2,7 @@ const TextBuffer = require("../src/text-buffer");
 const TextEditor = require("../src/text-editor");
 const TreeSitterDocument = require("../src/tree-sitter-document");
 const fs = require("fs");
-const temp = require("temp");
+const temp = require("@lumine-code/fs-temp");
 
 describe("Tree-sitter revisioned text snapshots", () => {
   let editor, fixturePath, readers;
