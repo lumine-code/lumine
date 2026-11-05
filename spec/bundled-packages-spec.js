@@ -24,6 +24,8 @@ describe("bundled-packages", function () {
     expect(names).toContain("launcher");
     expect(names).toContain("breadcrumbs");
     expect(names).toContain("metadata");
+    expect(names).toContain("git-chunk");
+    expect(names).not.toContain("git-diff");
     expect(names).toContain("language-c");
     // snippets and language-source are bundled because core assumes them: core
     // seeds ~/.lumine/snippets.json and ships File > Open Your Snippets, and

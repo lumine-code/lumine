@@ -66,7 +66,7 @@ describe("spec/helpers/async-spec-helpers", () => {
   });
 
   describe("conditionPromise", () => {
-    // The property git-diff depends on: a condition that is true now and false
+    // The property git-chunk depends on: a condition that is true now and false
     // again a moment later must still be seen.
     it("checks before it sleeps", async () => {
       let checks = 0;

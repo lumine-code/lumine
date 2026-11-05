@@ -4,7 +4,7 @@ const Diff = require("diff");
 // `{oldStart, oldLines, newStart, newLines}`. jsdiff's Myers algorithm gives the
 // expected hunk boundaries; pure deletions need one adjustment because jsdiff
 // reports the new-side start one line later than Git's unified-diff convention.
-// git-diff-view anchors its removed marker to the preceding line using that
+// The gutter view anchors its removed marker to the preceding line using that
 // convention, so deletion starts are corrected here.
 //
 // * `oldText` The baseline contents, or null when the path is absent there.

@@ -1,6 +1,6 @@
 const { computeLineDiffHunks } = require("../src/line-diff");
 
-// Hunks feed git-diff-view, which reads {newStart, oldLines, newLines} to place
+// Gutter decorations read {newStart, oldLines, newLines} from these hunks to place
 // added/modified/removed gutter marks. These assertions pin Git's deletion
 // new-start convention so removed markers remain correctly anchored.
 describe("computeLineDiffHunks", () => {
