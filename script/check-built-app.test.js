@@ -292,6 +292,35 @@ test("preserves legal Markdown and notices in the actual dependency filter", () 
   assert.equal(include(path.join(root, "node_modules/sample/README.md"), stat), false);
 });
 
+for (const platform of ["mac", "linux", "win"]) {
+  test(`${platform} dependency filter includes fswin native binaries only on Windows`, () => {
+    const root = path.resolve(__dirname, "..");
+    const config = whatToBuild();
+    const matcher = getNodeModuleFileMatcher(root, root, (value) => value, config[platform], {
+      config,
+      debugLogger: { isEnabled: false },
+    });
+    const include = matcher.createFilter();
+    const stat = { isDirectory: () => false };
+    for (const packageRoot of ["node_modules/fswin", "node_modules/winattr/node_modules/fswin"]) {
+      for (const arch of ["x64", "arm64", "ia32"]) {
+        const entry = `${packageRoot}/${arch}/fswin.node`;
+        assert.equal(include(path.join(root, entry), stat), platform === "win", entry);
+      }
+      for (const name of ["index.js", "package.json", "license", "LICENSE"]) {
+        const entry = `${packageRoot}/${name}`;
+        assert.equal(include(path.join(root, entry), stat), true, entry);
+      }
+    }
+    for (const entry of [
+      "node_modules/@lumine-code/watcher/build/Release/watcher.node",
+      "node_modules/@lumine-code/keyboard-layout/build/Release/keyboard-layout-manager.node",
+    ]) {
+      assert.equal(include(path.join(root, entry), stat), true, entry);
+    }
+  });
+}
+
 test("rejects missing or altered dependency licenses and third-party notices", async (t) => {
   const app = await fixture(t, {
     omit: ["node_modules/sample/THIRD_PARTY_NOTICES"],

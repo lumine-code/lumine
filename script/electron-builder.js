@@ -218,6 +218,9 @@ let options = {
     synopsis: "A community-led hyper-hackable text editor",
     target: [{ target: "appimage" }, { target: "deb" }, { target: "rpm" }, { target: "tar.gz" }],
     fileOptions: {
+      // winattr's fswin dependency ships Windows-only prebuilds without os metadata.
+      // Keep its JS and legal files, but omit inactive PE binaries on Unix.
+      files: ["!**/node_modules/fswin/**/*.node"],
       extraResources: [
         { from: "lumine.sh", to: `${baseName}.sh` },
         {
@@ -260,7 +263,11 @@ let options = {
         },
       ],
     },
-    fileOptions: { extraResources: [{ from: "lumine.sh", to: `${baseName}.sh` }] },
+    fileOptions: {
+      // fswin only loads its native binary on Windows.
+      files: ["!**/node_modules/fswin/**/*.node"],
+      extraResources: [{ from: "lumine.sh", to: `${baseName}.sh` }],
+    },
   },
 
   dmg: {
