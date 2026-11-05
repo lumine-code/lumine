@@ -134,7 +134,7 @@ const configSchema = {
       },
       showEmptyPaneLogo: {
         title: "Show Empty Pane Logo",
-        description: "Show the Lumine logo in empty editor panes.",
+        description: "Show the large background logo in empty editor panes.",
         type: "boolean",
         default: true,
       },

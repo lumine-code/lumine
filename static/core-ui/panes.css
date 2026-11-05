@@ -100,29 +100,48 @@ lumine-pane-container {
      pane item. The raw mark is a mask so every UI theme supplies its ink, and
      dock panes are excluded because their empty state is a drop target rather
      than the editor canvas. */
-  lumine-pane.empty-pane-logo-visible:not(lumine-dock lumine-pane) {
+  lumine-pane:not(lumine-dock lumine-pane) {
     --empty-pane-content-offset: min(8rem, 18%);
   }
 
-  lumine-pane.empty-pane-logo-visible:not(lumine-dock lumine-pane) > .item-views:empty::after {
-    content: "";
+  lumine-pane:not(lumine-dock lumine-pane) > .item-views:empty::before,
+  lumine-pane:not(lumine-dock lumine-pane) > .item-views:empty::after {
     position: absolute;
     top: 50%;
     left: 50%;
     width: min(18rem, 45%);
     height: min(18rem, 40%);
     pointer-events: none;
+    transform: translate(-50%, -50%);
+  }
+
+  lumine-pane.empty-pane-logo-visible:not(lumine-dock lumine-pane) > .item-views:empty::after {
+    content: "";
     background-color: var(--text-color-faded);
     opacity: 0.5;
     -webkit-mask: url("../resources/app-icons/lumine-raw.svg") center / contain no-repeat;
     mask: url("../resources/app-icons/lumine-raw.svg") center / contain no-repeat;
-    transform: translate(-50%, -50%);
+  }
+
+  /* Keep the small mark at the logo's centre as it moves above tips.
+     Reinforce neutral ink so a theme's faint tab border still reads here. */
+  lumine-pane.active:not(lumine-dock lumine-pane) > .item-views:empty::before {
+    content: "";
+    z-index: 1;
+    background-color: color-mix(in srgb, var(--pane-active-indicator-color) 75%, var(--text-color));
+    -webkit-mask: url("../resources/app-icons/lumine-raw.svg") center / 16px 16px no-repeat;
+    mask: url("../resources/app-icons/lumine-raw.svg") center / 16px 16px no-repeat;
+  }
+
+  lumine-pane.active:is(:focus-within, :has(:focus)):not(lumine-dock lumine-pane)
+    > .item-views:empty::before {
+    background-color: var(--accent-indicator-color);
   }
 
   /* Background tips own the centre line. Lift the mark above it while their
      overlay exists, then let it settle back to centre when the tips disappear. */
-  lumine-pane.empty-pane-logo-visible:not(lumine-dock lumine-pane):has(> background-tips)
-    > .item-views:empty::after {
+  lumine-pane:not(lumine-dock lumine-pane):has(> background-tips) > .item-views:empty::before,
+  lumine-pane:not(lumine-dock lumine-pane):has(> background-tips) > .item-views:empty::after {
     top: calc(50% + var(--empty-pane-content-offset));
     transition:
       top 0.3s ease-in-out,
@@ -137,12 +156,12 @@ lumine-pane-container {
      lengths keep its percentage relative to the empty viewport, not the mark.
      Custom offsets retain the existing layout-based positioning above. */
   @container style(--empty-pane-content-offset: min(8rem, 18%)) {
-    lumine-pane.empty-pane-logo-visible:not(lumine-dock lumine-pane) > .item-views:empty {
+    lumine-pane:not(lumine-dock lumine-pane) > .item-views:empty {
       container-type: size;
     }
 
-    lumine-pane.empty-pane-logo-visible:not(lumine-dock lumine-pane):has(> background-tips)
-      > .item-views:empty::after {
+    lumine-pane:not(lumine-dock lumine-pane):has(> background-tips) > .item-views:empty::before,
+    lumine-pane:not(lumine-dock lumine-pane):has(> background-tips) > .item-views:empty::after {
       top: 50%;
       transition: transform 0.3s ease-in-out;
       transform: translate(
@@ -151,15 +170,25 @@ lumine-pane-container {
       );
     }
   }
+
+  /* Without the background mark, keep pane status near the canvas edge. */
+  lumine-pane.active:not(.empty-pane-logo-visible):not(lumine-dock lumine-pane)
+    > .item-views:empty::before {
+    top: var(--ui-spacing);
+    left: var(--ui-spacing);
+    width: 16px;
+    height: 16px;
+    transform: none;
+    transition: none;
+  }
 }
 
 /* Packages deactivate before the renderer closes. Hide the core mark for
    that interval so removing package-owned empty-workspace UI cannot expose
    the mark by itself for the last visible frame. */
 body.is-unloading {
-  lumine-pane-container
-    lumine-pane.empty-pane-logo-visible:not(lumine-dock lumine-pane)
-    > .item-views:empty::after {
+  lumine-pane-container lumine-pane:not(lumine-dock lumine-pane) > .item-views:empty::before,
+  lumine-pane-container lumine-pane:not(lumine-dock lumine-pane) > .item-views:empty::after {
     content: none;
   }
 }

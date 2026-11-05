@@ -26,6 +26,7 @@
   --level-3-color-active: hsl(from var(--level-3-color) h s calc(l + 3));
   --pane-item-background-color: var(--base-background-color);
   --pane-item-border-color: var(--base-border-color);
+  --pane-active-indicator-color: var(--tab-border-color);
   --input-background-color: #fff;
   --input-border-color: var(--base-border-color);
   --tool-panel-background-color: var(--app-background-color);

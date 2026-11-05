@@ -150,6 +150,12 @@ const THEME_VARIABLES = Object.freeze([
       "Pane item background color.",
     ],
     ["pane-item-border-color", "color", "var(--base-border-color)", "Pane item border color."],
+    [
+      "pane-active-indicator-color",
+      "color",
+      "var(--tab-border-color)",
+      "Neutral indicator for the active pane when it does not have focus.",
+    ],
     ["input-background-color", "color", "#fff", "Input background color."],
     ["input-border-color", "color", "var(--base-border-color)", "Input border color."],
     [
