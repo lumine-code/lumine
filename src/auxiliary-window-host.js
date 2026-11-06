@@ -7,6 +7,7 @@ const PaneContainer = require("./pane-container");
 const { createWorkspaceElement } = require("./workspace-element");
 const EmbeddedPaneKeyboardBridge = require("./embedded-pane-keyboard-bridge");
 const AuxiliaryKeyboardTransport = require("./auxiliary-keyboard-transport");
+const trackPaneFocus = require("./pane-focus");
 const {
   captureLifecycleError,
   awaitLifecycleCleanup,
@@ -161,14 +162,20 @@ module.exports = class AuxiliaryWindowHost {
       const focused = () => {
         environment.views.setAnimationFrameWindow(domWindow);
         environment.repositories?.handleWindowFocus();
-        document.body.classList.remove("is-blurred");
+        document.body.classList.toggle("is-blurred", !document.hasFocus());
       };
-      const blurred = () => document.body.classList.add("is-blurred");
+      // Entering an iframe blurs its parent Window without leaving this
+      // presentation, so both events must use the document's current focus.
+      const blurred = () => document.body.classList.toggle("is-blurred", !document.hasFocus());
       for (const name of ["keydown", "keyup"]) document.addEventListener(name, keyboard);
       document.addEventListener("contextmenu", contextMenu);
       domWindow.addEventListener("focus", focused);
       domWindow.addEventListener("blur", blurred);
+      // The shared body classes include the main window's focus state. This
+      // presentation may already be focused or remain hidden before listening.
+      document.body.classList.toggle("is-blurred", !document.hasFocus());
       editorWindow.subscriptions.add(
+        trackPaneFocus(domWindow, document, service),
         new Disposable(() => {
           for (const name of ["keydown", "keyup"]) document.removeEventListener(name, keyboard);
           document.removeEventListener("contextmenu", contextMenu);

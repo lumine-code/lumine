@@ -1,5 +1,7 @@
 const KeymapManager = require("../src/keymap-manager");
 const WindowEventHandler = require("../src/window-event-handler");
+const trackPaneFocus = require("../src/pane-focus");
+const { Emitter } = require("@lumine-code/event-kit");
 
 describe("WindowEventHandler", () => {
   let windowEventHandler;
@@ -259,7 +261,10 @@ describe("WindowEventHandler", () => {
     }));
 
   describe("when the window is blurred", () => {
-    beforeEach(() => window.dispatchEvent(new CustomEvent("blur")));
+    beforeEach(() => {
+      document.hasFocus.and.returnValue(false);
+      window.dispatchEvent(new CustomEvent("blur"));
+    });
 
     afterEach(() => document.body.classList.remove("is-blurred"));
 
@@ -268,9 +273,45 @@ describe("WindowEventHandler", () => {
 
     describe("when the window is focused again", () =>
       it("removes the .is-blurred class from the body", () => {
+        document.hasFocus.and.returnValue(true);
         window.dispatchEvent(new CustomEvent("focus"));
         expect(document.body.className).not.toMatch("is-blurred");
       }));
+  });
+
+  it("retains the foreground state when an embedded document blurs its parent Window", () => {
+    jasmine.attachToDOM(lumine.workspace.getElement());
+    const pane = lumine.workspace.getMainWindow().getEditorContainer().getActivePane();
+    const frame = document.createElement("iframe");
+    pane.activateItem({ element: frame, getTitle: () => "Embedded input" }, { activatePane: true });
+    const input = frame.contentDocument.createElement("input");
+    frame.contentDocument.body.append(input);
+    input.focus();
+    expect(document.activeElement).toBe(frame);
+    expect(frame.contentDocument.activeElement).toBe(input);
+
+    window.dispatchEvent(new CustomEvent("blur"));
+
+    expect(document.body.classList.contains("is-blurred")).toBeFalse();
+    expect(pane.getElement().classList.contains("is-focused")).toBeTrue();
+  });
+
+  it("keeps a presentation blurred when a focus event arrives without document focus", () => {
+    document.hasFocus.and.returnValue(false);
+
+    window.dispatchEvent(new CustomEvent("focus"));
+
+    expect(document.body.classList.contains("is-blurred")).toBeTrue();
+  });
+
+  it("retains focus and blur behavior for custom documents without hasFocus", () => {
+    const body = document.createElement("body");
+    const context = { document: { body } };
+
+    WindowEventHandler.prototype.handleWindowBlur.call(context);
+    expect(body.classList.contains("is-blurred")).toBeTrue();
+    WindowEventHandler.prototype.handleWindowFocus.call(context);
+    expect(body.classList.contains("is-blurred")).toBeFalse();
   });
 
   describe("window:close event", () =>
@@ -537,4 +578,163 @@ describe("WindowEventHandler", () => {
 
       expect(lumine.applicationDelegate.performWebContentsAction).not.toHaveBeenCalled();
     }));
+});
+
+describe("Pane document focus tracking", () => {
+  let registrations;
+
+  beforeEach(() => {
+    registrations = [];
+  });
+
+  afterEach(() => {
+    for (const registration of registrations) registration.dispose();
+  });
+
+  const presentation = () => {
+    const document = window.document.implementation.createHTMLDocument();
+    const domWindow = new EventTarget();
+    domWindow.MutationObserver = window.MutationObserver;
+    const emitter = new Emitter();
+    const nativeFocusSource = {
+      onDidFocus: (callback) => emitter.on("focus", callback),
+      onDidBlur: (callback) => emitter.on("blur", callback),
+    };
+    let activeElement = document.body;
+    spyOn(document, "hasFocus").and.returnValue(true);
+    spyOnProperty(document, "activeElement", "get").and.callFake(() => activeElement);
+    return {
+      document,
+      domWindow,
+      emitter,
+      setActive(element) {
+        activeElement = element;
+      },
+      track() {
+        const registration = trackPaneFocus(domWindow, document, nativeFocusSource);
+        registrations.push(registration);
+        return registration;
+      },
+    };
+  };
+
+  it("marks the pane ancestors of a focused iframe and follows document focus changes", () => {
+    const host = presentation();
+    const outer = host.document.createElement("lumine-pane");
+    const inner = host.document.createElement("lumine-pane");
+    const frame = host.document.createElement("iframe");
+    inner.append(frame);
+    outer.append(inner);
+    host.document.body.append(outer);
+    host.setActive(frame);
+    host.track();
+    expect(outer.classList.contains("is-focused")).toBeTrue();
+    expect(inner.classList.contains("is-focused")).toBeTrue();
+
+    host.document.hasFocus.and.returnValue(false);
+    host.domWindow.dispatchEvent(new Event("blur"));
+    expect(outer.classList.contains("is-focused")).toBeFalse();
+    expect(inner.classList.contains("is-focused")).toBeFalse();
+
+    host.document.hasFocus.and.returnValue(true);
+    host.domWindow.dispatchEvent(new Event("focus"));
+    host.domWindow.dispatchEvent(new Event("blur"));
+    expect(outer.classList.contains("is-focused")).toBeTrue();
+    expect(inner.classList.contains("is-focused")).toBeTrue();
+  });
+
+  it("follows focus between panes and clears focus after leaving the pane", async () => {
+    const host = presentation();
+    const panes = [0, 1].map(() => host.document.createElement("lumine-pane"));
+    const inputs = panes.map((pane) => {
+      const input = host.document.createElement("input");
+      pane.append(input);
+      host.document.body.append(pane);
+      return input;
+    });
+    host.setActive(inputs[0]);
+    host.track();
+    host.setActive(inputs[1]);
+    inputs[1].dispatchEvent(new Event("focusin", { bubbles: true }));
+    expect(panes[0].classList.contains("is-focused")).toBeFalse();
+    expect(panes[1].classList.contains("is-focused")).toBeTrue();
+
+    inputs[1].dispatchEvent(new Event("focusout", { bubbles: true }));
+    host.setActive(host.document.body);
+    await flushMicrotasks();
+    expect(panes[1].classList.contains("is-focused")).toBeFalse();
+  });
+
+  it("reconciles native window focus when an iframe produces no further DOM blur", async () => {
+    const host = presentation();
+    const pane = host.document.createElement("lumine-pane");
+    const frame = host.document.createElement("iframe");
+    pane.append(frame);
+    host.document.body.append(pane);
+    host.setActive(frame);
+    const registration = host.track();
+    host.domWindow.dispatchEvent(new Event("blur"));
+    expect(pane.classList.contains("is-focused")).toBeTrue();
+
+    host.document.hasFocus.and.returnValue(false);
+    host.emitter.emit("blur");
+    expect(host.document.body.classList.contains("is-blurred")).toBeTrue();
+    expect(pane.classList.contains("is-focused")).toBeFalse();
+
+    host.document.hasFocus.and.returnValue(true);
+    host.emitter.emit("focus");
+    expect(host.document.body.classList.contains("is-blurred")).toBeFalse();
+    expect(pane.classList.contains("is-focused")).toBeTrue();
+
+    registration.dispose();
+    host.document.hasFocus.and.returnValue(false);
+    host.emitter.emit("blur");
+    await flushMicrotasks();
+    expect(host.document.body.classList.contains("is-blurred")).toBeFalse();
+    expect(pane.classList.contains("is-focused")).toBeFalse();
+  });
+
+  it("updates the focused ancestors after a connected move without another focus event", async () => {
+    const host = presentation();
+    const first = host.document.createElement("lumine-pane");
+    const second = host.document.createElement("lumine-pane");
+    const input = host.document.createElement("input");
+    first.append(input);
+    host.document.body.append(first, second);
+    host.setActive(input);
+    host.track();
+    expect(first.classList.contains("is-focused")).toBeTrue();
+
+    second.append(input);
+    await flushMicrotasks();
+
+    expect(first.classList.contains("is-focused")).toBeFalse();
+    expect(second.classList.contains("is-focused")).toBeTrue();
+  });
+
+  it("preserves a transferred pane's new owner and releases listeners on disposal", async () => {
+    const source = presentation();
+    const target = presentation();
+    const pane = source.document.createElement("lumine-pane");
+    const input = source.document.createElement("input");
+    pane.append(input);
+    source.document.body.append(pane);
+    source.setActive(input);
+    const previous = source.track();
+    expect(pane.classList.contains("is-focused")).toBeTrue();
+
+    target.document.body.append(pane);
+    target.setActive(input);
+    const current = target.track();
+    previous.dispose();
+    await flushMicrotasks();
+    expect(pane.classList.contains("is-focused")).toBeTrue();
+
+    current.dispose();
+    input.dispatchEvent(new Event("focusin", { bubbles: true }));
+    target.domWindow.dispatchEvent(new Event("focus"));
+    pane.append(target.document.createElement("span"));
+    await flushMicrotasks();
+    expect(pane.classList.contains("is-focused")).toBeFalse();
+  });
 });

@@ -1,6 +1,7 @@
 const { Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const listen = require("./delegated-listener");
 const EmbeddedPaneKeyboardBridge = require("./embedded-pane-keyboard-bridge");
+const trackPaneFocus = require("./pane-focus");
 
 // Handles low-level events related to the `window`.
 module.exports = class WindowEventHandler {
@@ -54,6 +55,13 @@ module.exports = class WindowEventHandler {
     if (typeof this.document.hasFocus === "function") {
       this.document.body.classList.toggle("is-blurred", !this.document.hasFocus());
     }
+    this.subscriptions.add(
+      trackPaneFocus(
+        window,
+        document,
+        document === window.document ? this.lumineEnvironment.window : undefined,
+      ),
+    );
     this.subscriptions.add(
       this.lumineEnvironment.commands.add(this.window, {
         "window:toggle-full-screen": this.handleWindowToggleFullScreen,
@@ -272,11 +280,15 @@ module.exports = class WindowEventHandler {
   }
 
   handleWindowFocus() {
-    this.document.body.classList.remove("is-blurred");
+    const focused = typeof this.document.hasFocus === "function" ? this.document.hasFocus() : true;
+    this.document.body.classList.toggle("is-blurred", !focused);
   }
 
   handleWindowBlur() {
-    this.document.body.classList.add("is-blurred");
+    // Entering an embedded document also blurs its parent Window, while the
+    // presentation itself retains focus.
+    const focused = typeof this.document.hasFocus === "function" ? this.document.hasFocus() : false;
+    this.document.body.classList.toggle("is-blurred", !focused);
   }
 
   handleEnterFullScreen() {

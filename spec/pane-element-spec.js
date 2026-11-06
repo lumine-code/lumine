@@ -100,6 +100,40 @@ describe("PaneElement", function () {
       expect(watermarkStyle().content).toBe("none");
     });
 
+    jasmine.itWithDocumentFocus(
+      "keeps a selected empty pane neutral while its window is blurred",
+      function () {
+        const wasBlurred = document.body.classList.contains("is-blurred");
+        const probe = document.createElement("span");
+        paneElement.appendChild(probe);
+        const color = (value) => {
+          probe.style.backgroundColor = value;
+          return getComputedStyle(probe).backgroundColor;
+        };
+        const accent = color("var(--accent-indicator-color)");
+        const neutral = color(
+          "color-mix(in srgb, var(--pane-active-indicator-color) 75%, var(--text-color))",
+        );
+        const indicator = () => getComputedStyle(paneElement.itemViews, "::before");
+        try {
+          paneElement.focus();
+          expect(paneElement.matches(":focus-within")).toBeTrue();
+          for (const visible of [true, false]) {
+            lumine.config.set("core.showEmptyPaneLogo", visible);
+            document.body.classList.remove("is-blurred");
+            expect(indicator().backgroundColor).toBe(accent);
+            document.body.classList.add("is-blurred");
+            expect(pane.isActive()).toBeTrue();
+            expect(indicator().visibility).toBe("visible");
+            expect(indicator().backgroundColor).toBe(neutral);
+          }
+        } finally {
+          document.body.classList.toggle("is-blurred", wasBlurred);
+          probe.remove();
+        }
+      },
+    );
+
     it("moves the mark above background tips and restores it when they leave", function () {
       const styles = document.createElement("style");
       styles.textContent =
@@ -133,6 +167,40 @@ describe("PaneElement", function () {
 
       backgroundTips.remove();
       expect(watermarkStyle().transitionDuration).toBe("0s");
+    });
+
+    it("keeps the indicator centred on the moving logo after closing the active sibling", async function () {
+      const sibling = pane.splitRight();
+      const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+      await frame();
+      await frame();
+      sibling.destroy();
+      paneElement.appendChild(document.createElement("background-tips"));
+
+      const centre = (pseudo) => {
+        const style = getComputedStyle(paneElement.itemViews, pseudo);
+        const matrix = new DOMMatrixReadOnly(style.transform);
+        return {
+          x: parseFloat(style.left) + matrix.m41 + parseFloat(style.width) / 2,
+          y: parseFloat(style.top) + matrix.m42 + parseFloat(style.height) / 2,
+        };
+      };
+      centre("::after");
+      const transitions = paneElement.itemViews
+        .getAnimations({ subtree: true })
+        .filter((animation) => animation.transitionProperty === "transform");
+      for (const transition of transitions) transition.pause();
+      const positions = [];
+      for (const time of [0, 75, 150, 225, 300]) {
+        for (const transition of transitions) transition.currentTime = time;
+        const indicator = centre("::before");
+        const logo = centre("::after");
+        expect(indicator.x).toBeCloseTo(logo.x, 2);
+        expect(indicator.y).toBeCloseTo(logo.y, 2);
+        positions.push(logo.y);
+      }
+      expect(Math.abs(positions.at(-1) - positions[0])).toBeGreaterThan(1);
+      for (const transition of transitions) transition.finish();
     });
 
     it("keeps its composition position when the empty viewport is resized", function () {

@@ -37,6 +37,58 @@ describe("Auxiliary editor windows", () => {
     });
   });
 
+  for (const hasFocus of [false, true]) {
+    it(`initializes its own ${hasFocus ? "focused" : "blurred"} state instead of copying the main window's`, async () => {
+      const open = window.open.bind(window);
+      const sourceClasses = `${document.body.className.replace(/\bis-blurred\b/g, "")} auxiliary-source${hasFocus ? " is-blurred" : ""}`;
+      spyOnProperty(document.body, "className", "get").and.returnValue(sourceClasses);
+      spyOn(window, "open").and.callFake((...args) => {
+        const domWindow = open(...args);
+        spyOn(domWindow.document, "hasFocus").and.returnValue(hasFocus);
+        return domWindow;
+      });
+
+      const extra = await lumine.workspace.openEditorWindow({ show: false });
+      const domWindow = extra.getDOMWindow();
+      const body = extra.getDocument().body;
+      expect(body.classList.contains("is-blurred")).toBe(!hasFocus);
+      expect(body.classList.contains("auxiliary-source")).toBeTrue();
+
+      extra.getDocument().hasFocus.and.returnValue(true);
+      domWindow.dispatchEvent(new domWindow.Event("focus"));
+      expect(body.classList.contains("is-blurred")).toBeFalse();
+      // A parent Window blur from entering an iframe retains document focus.
+      domWindow.dispatchEvent(new domWindow.Event("blur"));
+      expect(body.classList.contains("is-blurred")).toBeFalse();
+      extra.getDocument().hasFocus.and.returnValue(false);
+      domWindow.dispatchEvent(new domWindow.Event("blur"));
+      expect(body.classList.contains("is-blurred")).toBeTrue();
+    });
+  }
+
+  it("tracks focus inside an embedded document without changing the active pane on window blur", async () => {
+    const extra = await lumine.workspace.openEditorWindow({ show: false });
+    const document = extra.getDocument();
+    const domWindow = extra.getDOMWindow();
+    const pane = extra.getEditorContainer().getActivePane();
+    spyOn(document, "hasFocus").and.returnValue(true);
+    const frame = document.createElement("iframe");
+    pane.activateItem({ element: frame, getTitle: () => "Embedded input" }, { activatePane: true });
+    const input = frame.contentDocument.createElement("input");
+    frame.contentDocument.body.append(input);
+    input.focus();
+    domWindow.dispatchEvent(new domWindow.Event("blur"));
+    expect(document.activeElement).toBe(frame);
+    expect(document.body.classList.contains("is-blurred")).toBeFalse();
+    expect(pane.getElement().classList.contains("is-focused")).toBeTrue();
+
+    document.hasFocus.and.returnValue(false);
+    domWindow.dispatchEvent(new domWindow.Event("blur"));
+    expect(document.body.classList.contains("is-blurred")).toBeTrue();
+    expect(pane.getElement().classList.contains("is-focused")).toBeFalse();
+    expect(pane.getElement().classList.contains("active")).toBeTrue();
+  });
+
   it("restores a document layout into its existing native presentation", async () => {
     const workspace = lumine.workspace;
     const editor = await workspace.open();

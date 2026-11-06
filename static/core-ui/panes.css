@@ -123,17 +123,25 @@ lumine-pane-container {
     mask: url("../resources/app-icons/lumine-raw.svg") center / contain no-repeat;
   }
 
-  /* Keep the small mark at the logo's centre as it moves above tips.
+  /* Keep the status dot at the logo's centre as it moves above tips.
      Reinforce neutral ink so a theme's faint tab border still reads here. */
-  lumine-pane.active:not(lumine-dock lumine-pane) > .item-views:empty::before {
+  lumine-pane:not(lumine-dock lumine-pane) > .item-views:empty::before {
+    /* Preserve the before-change position when an inactive pane becomes the
+       survivor of a split and background tips start the logo's transition. */
     content: "";
-    z-index: 1;
-    background-color: color-mix(in srgb, var(--pane-active-indicator-color) 75%, var(--text-color));
-    -webkit-mask: url("../resources/app-icons/lumine-raw.svg") center / 16px 16px no-repeat;
-    mask: url("../resources/app-icons/lumine-raw.svg") center / 16px 16px no-repeat;
+    visibility: hidden;
   }
 
-  lumine-pane.active:is(:focus-within, :has(:focus)):not(lumine-dock lumine-pane)
+  lumine-pane.active:not(lumine-dock lumine-pane) > .item-views:empty::before {
+    visibility: visible;
+    z-index: 1;
+    clip-path: circle(3px at center);
+    background-color: color-mix(in srgb, var(--pane-active-indicator-color) 75%, var(--text-color));
+  }
+
+  body:not(.is-blurred)
+    &
+    lumine-pane.active:is(.is-focused, :focus-within, :has(:focus)):not(lumine-dock lumine-pane)
     > .item-views:empty::before {
     background-color: var(--accent-indicator-color);
   }
@@ -176,8 +184,8 @@ lumine-pane-container {
     > .item-views:empty::before {
     top: var(--ui-spacing);
     left: var(--ui-spacing);
-    width: 16px;
-    height: 16px;
+    width: 6px;
+    height: 6px;
     transform: none;
     transition: none;
   }
