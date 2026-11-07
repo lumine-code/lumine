@@ -211,20 +211,20 @@
   },
   "overrides": {
     "eslint@^10.14.0": {
-      "minimatch": "11.0.4"
+      "minimatch": "11.0.5"
     },
     "@eslint/config-array@0.23.5": {
-      "minimatch": "11.0.4"
+      "minimatch": "11.0.5"
     },
     "jasmine@7.0.0": {
-      "glob": "14.0.3"
+      "glob": "14.0.4"
     },
     "@electron/asar": {
-      "glob@^13.0.2": "14.0.3",
-      "minimatch@^10.0.1": "11.0.4"
+      "glob@^13.0.2": "14.0.4",
+      "minimatch@^10.0.1": "11.0.5"
     },
     "app-builder-lib@27.0.0-alpha.14": {
-      "minimatch@^10.2.5": "11.0.4"
+      "minimatch@^10.2.5": "11.0.5"
     }
   }
 }
