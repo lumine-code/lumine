@@ -241,6 +241,18 @@ function createScrollbarRuntime() {
       this.element = element;
       this.options = options;
       this.callbacks = new Set();
+      this.endStyles = new Map(
+        ["padding-bottom", "scroll-padding-bottom"].map((property) => [
+          property,
+          {
+            authored: {
+              value: element.style.getPropertyValue(property),
+              priority: element.style.getPropertyPriority(property),
+            },
+            chromeValues: new Set(),
+          },
+        ]),
+      );
       this.layer = element.ownerDocument.createElement("div");
       this.layer.className = "lumine-scrollbar-overlay";
       this.layer.dataset.scrollbarChrome = "";
@@ -276,18 +288,109 @@ function createScrollbarRuntime() {
       this.vertical = create("vertical");
       this.horizontal = create("horizontal");
       this.layer.append(this.vertical.element, this.horizontal.element);
-      this.observer = new element.ownerDocument.defaultView.ResizeObserver(() =>
-        manager.invalidate(this),
-      );
+      this.observer = new element.ownerDocument.defaultView.ResizeObserver((entries) => {
+        let stylesChanged = false;
+        for (const entry of entries) {
+          if (entry.target !== element) continue;
+          const box = entry.borderBoxSize[0];
+          const size = `${box.inlineSize}:${box.blockSize}`;
+          stylesChanged ||= size !== this.borderBoxSize;
+          this.borderBoxSize = size;
+        }
+        manager.invalidate(this, stylesChanged);
+      });
       this.observeChildren();
       this.refresh();
     }
 
     observeChildren() {
       this.observer.disconnect();
-      this.observer.observe(this.element);
+      this.observer.observe(this.element, { box: "border-box" });
       for (const child of this.element.children)
         if (!child.classList.contains("lumine-scrollbar-overlay")) this.observer.observe(child);
+    }
+
+    captureAuthoredPadding() {
+      const style = this.element.style;
+      for (const [property, state] of this.endStyles) {
+        if (!state.managed) continue;
+        if (
+          style.getPropertyValue(property) === state.managed &&
+          style.getPropertyPriority(property) === "important"
+        )
+          continue;
+        state.authored = {
+          value: style.getPropertyValue(property),
+          priority: style.getPropertyPriority(property),
+        };
+        state.managed = null;
+        state.requested = null;
+      }
+    }
+
+    restorePadding() {
+      this.captureAuthoredPadding();
+      let changed = false;
+      for (const [property, state] of this.endStyles) {
+        if (!state.managed) continue;
+        const { value, priority } = state.authored;
+        if (value) this.element.style.setProperty(property, value, priority);
+        else this.element.style.removeProperty(property);
+        state.managed = null;
+        state.requested = null;
+        changed = true;
+      }
+      return changed;
+    }
+
+    prepareRead() {
+      this.captureAuthoredPadding();
+      // Re-evaluate authored CSS only after style, theme or border-box changes.
+      // Restore all affected ports before the manager's shared read phase;
+      // ordinary content mutations and scrolling never need this baseline probe.
+      if (this.paddingStyleDirty) this.restorePadding();
+      this.paddingStyleDirty = false;
+    }
+
+    preservePaddingScrollPosition() {
+      if (
+        this.paddingStyleDirty &&
+        !this.paddingScrollPosition &&
+        this.endStyles.get("padding-bottom").managed
+      ) {
+        const top = this.element.scrollTop;
+        const maximum = this.element.scrollHeight - this.element.clientHeight;
+        this.paddingScrollPosition = {
+          top,
+          expected: null,
+          atEnd: maximum > 0 && top >= maximum - 1,
+        };
+      }
+    }
+
+    updateEndPadding(snapshot) {
+      if (!snapshot.scrollEndInset) return this.restorePadding();
+      let changed = false;
+      for (const [property, state] of this.endStyles) {
+        const requested = `calc(${state.base} + ${snapshot.scrollEndInset}px)`;
+        if (state.requested === requested) continue;
+        const maximum = snapshot.scrollHeight - snapshot.viewportHeight;
+        if (!this.paddingScrollPosition && maximum > 0 && snapshot.scrollTop >= maximum - 1)
+          this.paddingScrollPosition = {
+            top: snapshot.scrollTop,
+            expected: snapshot.scrollTop,
+            atEnd: true,
+          };
+        this.element.style.setProperty(property, requested, "important");
+        const value = this.element.style.getPropertyValue(property);
+        state.chromeValues.add(`${value}:important`);
+        if (state.chromeValues.size > 8)
+          state.chromeValues.delete(state.chromeValues.values().next().value);
+        state.managed = value;
+        state.requested = requested;
+        changed = true;
+      }
+      return changed;
     }
 
     read() {
@@ -299,7 +402,17 @@ function createScrollbarRuntime() {
       )
         return null;
       const window = element.ownerDocument.defaultView;
+      this.captureAuthoredPadding();
       const style = window.getComputedStyle(element);
+      for (const [property, state] of this.endStyles)
+        if (!state.managed) {
+          state.authored = {
+            value: element.style.getPropertyValue(property),
+            priority: element.style.getPropertyPriority(property),
+          };
+          const base = style.getPropertyValue(property).trim();
+          state.base = base && base !== "auto" ? base : "0px";
+        }
       const styles = new Map([[element, style]]);
       const styleFor = (node) => {
         if (!styles.has(node)) styles.set(node, window.getComputedStyle(node));
@@ -467,6 +580,7 @@ function createScrollbarRuntime() {
         edge,
         verticalSize: size,
         horizontalSize: size,
+        scrollEndInset: !gutter && canScrollHorizontally ? size : 0,
         viewportWidth: width,
         viewportHeight: height,
         // The vertical rail owns the intersection in every layout, including
@@ -490,11 +604,45 @@ function createScrollbarRuntime() {
 
     write(snapshot) {
       if (this.destroyed || !snapshot) return;
+      for (const [property, state] of this.endStyles) {
+        const value = this.element.style.getPropertyValue(property);
+        const priority = this.element.style.getPropertyPriority(property);
+        if (
+          value !== (state.managed || state.authored.value) ||
+          priority !== (state.managed ? "important" : state.authored.priority)
+        ) {
+          // Authored writes between the shared read and write phases own their
+          // new value. Measure it before adding the end inset again.
+          this.manager.invalidate(this, true);
+          return;
+        }
+      }
+      if (this.paddingScrollPosition?.expected === null)
+        this.paddingScrollPosition.expected = snapshot.scrollTop;
       if (this.layout !== snapshot.layout) {
         this.layout = snapshot.layout;
         this.element.classList.toggle("lumine-scrollport-gutter", this.layout === "gutter");
         this.manager.invalidate(this);
         return;
+      }
+      if (this.updateEndPadding(snapshot)) {
+        // Padding changes the native extent (and may resize percentage-height
+        // content). Publish only the next measured geometry, never an estimate.
+        this.manager.invalidate(this);
+        return;
+      }
+      if (this.paddingScrollPosition) {
+        const { top, expected, atEnd } = this.paddingScrollPosition;
+        this.paddingScrollPosition = null;
+        // A temporary baseline probe may clamp a native offset at the bottom.
+        // Restore it after remeasurement, unless input moved away meanwhile.
+        snapshot.scrollTop = this.element.scrollTop;
+        if (snapshot.scrollTop === expected) {
+          const maximum = Math.max(0, snapshot.scrollHeight - snapshot.viewportHeight);
+          snapshot.scrollTop = atEnd ? maximum : clamp(top, 0, maximum);
+          if (snapshot.scrollTop !== expected)
+            this.element.scrollTo({ top: snapshot.scrollTop, behavior: "instant" });
+        }
       }
       const old = this.geometry;
       this.geometry = snapshot;
@@ -540,6 +688,7 @@ function createScrollbarRuntime() {
         "layout",
         "verticalSize",
         "horizontalSize",
+        "scrollEndInset",
         "viewportWidth",
         "viewportHeight",
         "verticalTrackSize",
@@ -685,6 +834,8 @@ function createScrollbarRuntime() {
       this.vertical.destroy();
       this.horizontal.destroy();
       this.layer.remove();
+      this.manager.retiredEndStyles.set(this.element, this.endStyles);
+      this.restorePadding();
       this.element.classList.remove("lumine-scrollport");
       this.element.classList.remove("lumine-scrollport-gutter");
       if (this.element.style.scrollbarWidth === "none")
@@ -693,6 +844,10 @@ function createScrollbarRuntime() {
       this.callbacks.clear();
       this.manager.controllers.delete(this.element);
       this.manager.dirty.delete(this);
+      this.manager.window.queueMicrotask(() => {
+        if (this.manager.retiredEndStyles.get(this.element) === this.endStyles)
+          this.manager.retiredEndStyles.delete(this.element);
+      });
     }
   }
 
@@ -708,6 +863,7 @@ function createScrollbarRuntime() {
         });
       this.scheduleWrite = scheduleWrite || ((callback) => callback());
       this.controllers = new Map();
+      this.retiredEndStyles = new WeakMap();
       this.dirty = new Set();
       this.roots = new Set([document.body]);
       this.listeners = {
@@ -731,6 +887,7 @@ function createScrollbarRuntime() {
       this.window.addEventListener("resize", this.resize);
       this.mutations = new this.window.MutationObserver((records) => {
         const affected = new Map();
+        const stylesChanged = new Set();
         const ignored = new Set();
         let relevant = false;
         for (const record of records) {
@@ -757,8 +914,10 @@ function createScrollbarRuntime() {
             // An ancestor's visibility, overflow or positioning can change the
             // geometry and clipping of scrollports below it.
             for (const current of this.controllers.values())
-              if (target.contains(current.element) && !affected.has(current))
-                affected.set(current, false);
+              if (target.contains(current.element)) {
+                if (!affected.has(current)) affected.set(current, false);
+                stylesChanged.add(current);
+              }
           } else {
             for (const node of record.addedNodes)
               if (node.nodeType === 1 && !node.closest(excluded)) this.addRoot(node);
@@ -767,7 +926,7 @@ function createScrollbarRuntime() {
         if (!relevant) return;
         for (const [controller, childrenChanged] of affected) {
           if (childrenChanged) controller.observeChildren();
-          this.invalidate(controller);
+          this.invalidate(controller, stylesChanged.has(controller));
         }
         if (
           this.roots.size ||
@@ -829,9 +988,29 @@ function createScrollbarRuntime() {
       }
       if (record.attributeName !== "style") return false;
       this.attributeStyle ??= this.document.createElement("span").style;
+      const controller = this.controllers.get(record.target);
+      const endStyles = controller?.endStyles || this.retiredEndStyles.get(record.target);
+      if (controller)
+        for (const [property, state] of controller.endStyles)
+          if (
+            state.managed &&
+            (record.target.style.getPropertyValue(property) !== state.managed ||
+              record.target.style.getPropertyPriority(property) !== "important")
+          )
+            return false;
       const withoutChrome = (value) => {
         this.attributeStyle.cssText = value || "";
         this.attributeStyle.removeProperty("scrollbar-width");
+        if (endStyles)
+          for (const [property, state] of endStyles) {
+            const value = this.attributeStyle.getPropertyValue(property);
+            const priority = this.attributeStyle.getPropertyPriority(property);
+            if (
+              state.chromeValues.has(`${value}:${priority}`) ||
+              (value === state.authored.value && priority === state.authored.priority)
+            )
+              this.attributeStyle.removeProperty(property);
+          }
         return this.attributeStyle.cssText;
       };
       return withoutChrome(record.oldValue) === withoutChrome(record.target.getAttribute("style"));
@@ -862,7 +1041,7 @@ function createScrollbarRuntime() {
         if (current) {
           // A same-document move can preserve size while changing containing
           // block, clipping and panel reveal policy.
-          this.invalidate(current);
+          this.invalidate(current, true);
           return;
         }
         const style = this.window.getComputedStyle(element);
@@ -881,8 +1060,9 @@ function createScrollbarRuntime() {
       while (walker.nextNode()) inspect(walker.currentNode);
     }
 
-    invalidate(controller) {
+    invalidate(controller, stylesChanged = false) {
       if (this.destroyed || controller.destroyed) return;
+      controller.paddingStyleDirty ||= stylesChanged;
       this.dirty.add(controller);
       this.schedule();
     }
@@ -905,7 +1085,10 @@ function createScrollbarRuntime() {
         });
         this.roots.clear();
         for (const root of roots) this.scan(root);
-        const measured = [...this.dirty].map((controller) => [controller, controller.read()]);
+        const dirty = [...this.dirty];
+        for (const controller of dirty) controller.preservePaddingScrollPosition();
+        for (const controller of dirty) controller.prepareRead();
+        const measured = dirty.map((controller) => [controller, controller.read()]);
         this.dirty.clear();
         this.writeRequest = this.scheduleWrite(() => {
           this.writeRequest = null;
@@ -919,7 +1102,10 @@ function createScrollbarRuntime() {
       for (const controller of this.controllers.values()) controller.syncVisibility();
     }
     refresh() {
-      for (const controller of this.controllers.values()) this.dirty.add(controller);
+      for (const controller of this.controllers.values()) {
+        controller.paddingStyleDirty = true;
+        this.dirty.add(controller);
+      }
       this.schedule();
     }
     dispose() {

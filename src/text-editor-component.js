@@ -847,6 +847,7 @@ module.exports = class TextEditorComponent {
       scrollHeight: this.getScrollHeight(),
       verticalSize: this.getVerticalScrollbarWidth(),
       horizontalSize: this.getHorizontalScrollbarHeight(),
+      scrollEndInset: this.getScrollEndInset(),
       verticalTrackSize: Math.max(0, this.getScrollContainerHeight()),
       horizontalTrackSize: Math.max(
         0,
@@ -5511,11 +5512,14 @@ module.exports = class TextEditorComponent {
     return physicalExtent(this.getScrollWidth(), this.renderOriginLeft || 0);
   }
 
+  getScrollEndInset() {
+    return this.getScrollbarLayout() === "overlay" && this.canScrollHorizontally()
+      ? this.getHorizontalScrollbarHeight()
+      : 0;
+  }
+
   getScrollHeight() {
-    const endInset =
-      this.getScrollbarLayout() === "overlay" && this.canScrollHorizontally()
-        ? this.getHorizontalScrollbarHeight()
-        : 0;
+    const endInset = this.getScrollEndInset();
     let scrollHeight;
     if (this.props.model.getScrollPastEnd()) {
       scrollHeight =

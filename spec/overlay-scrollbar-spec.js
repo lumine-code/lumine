@@ -100,6 +100,13 @@ describe("Shared overlay scrollbars", () => {
     expect(onDragChange).toHaveBeenCalledTimes(2);
   });
 
+  function measure(controller) {
+    for (let pass = 0; pass < 4; pass++) {
+      controller.prepareRead();
+      controller.write(controller.read());
+    }
+  }
+
   function scrollport(options = {}) {
     const fixture = document.createElement("div");
     fixture.style.cssText = "position:absolute;left:30px;top:30px;width:300px;height:180px;";
@@ -113,7 +120,7 @@ describe("Shared overlay scrollbars", () => {
     fixtures.push(fixture);
     const controller = lumine.scrollbars.attach(element, { layout: "overlay", ...options });
     components.push(controller);
-    controller.write(controller.read());
+    measure(controller);
     return { fixture, element, content, controller };
   }
 
@@ -135,7 +142,7 @@ describe("Shared overlay scrollbars", () => {
       it(`gives the ${direction} ${layout} intersection to the full-height vertical rail`, () => {
         const { element, controller } = scrollport({ layout, policy: "always" });
         element.style.direction = direction;
-        controller.write(controller.read());
+        measure(controller);
         const bounds = element.getBoundingClientRect();
         const vertical = controller.vertical.element.getBoundingClientRect();
         const horizontal = controller.horizontal.element.getBoundingClientRect();
@@ -182,7 +189,7 @@ describe("Shared overlay scrollbars", () => {
       it(`honors an explicit ${edge} overlay edge in ${direction} without crossing rails`, () => {
         const { element, controller } = scrollport({ edge, policy: "always" });
         element.style.direction = direction;
-        controller.write(controller.read());
+        measure(controller);
         const bounds = element.getBoundingClientRect();
         const vertical = controller.vertical.element.getBoundingClientRect();
         const horizontal = controller.horizontal.element.getBoundingClientRect();
@@ -205,7 +212,7 @@ describe("Shared overlay scrollbars", () => {
         const { element, content, controller } = scrollport({ kind, policy: "always" });
         element.style.direction = direction;
         content.style.height = "20px";
-        controller.write(controller.read());
+        measure(controller);
         expect(controller.geometry.canScrollVertically).toBeFalse();
         expect(controller.geometry.canScrollHorizontally).toBeTrue();
         const bounds = element.getBoundingClientRect();
@@ -318,7 +325,7 @@ describe("Shared overlay scrollbars", () => {
     it(`normalizes native rail wheel mode ${mode} without reading layout`, () => {
       const { element, controller } = scrollport();
       element.style.lineHeight = "20px";
-      controller.write(controller.read());
+      measure(controller);
       const style = spyOn(window, "getComputedStyle").and.callThrough();
       const read = spyOn(controller, "read").and.callThrough();
       wheel(controller.vertical.thumb, { deltaY: 2, deltaMode: mode });
@@ -349,14 +356,14 @@ describe("Shared overlay scrollbars", () => {
   it("reserves space only for overflowing inline axes and hides empty tracks", () => {
     const { element, content, controller } = scrollport({ layout: "gutter" });
     content.style.cssText = "width:100%;height:20px";
-    controller.write(controller.read());
+    measure(controller);
     const visibility = (bar) => getComputedStyle(bar.element).visibility;
     expect(element.clientWidth).toBe(300);
     expect(element.clientHeight).toBe(180);
     expect(visibility(controller.vertical)).toBe("hidden");
     expect(visibility(controller.horizontal)).toBe("hidden");
     content.style.height = "1000px";
-    controller.write(controller.read());
+    measure(controller);
     expect(element.clientWidth).toBe(290);
     expect(element.clientHeight).toBe(180);
     expect(controller.geometry.viewportWidth).toBe(290);
@@ -368,7 +375,7 @@ describe("Shared overlay scrollbars", () => {
       element.getBoundingClientRect().left + element.clientWidth,
     );
     content.style.width = "900px";
-    controller.write(controller.read());
+    measure(controller);
     expect(element.clientHeight).toBe(170);
     expect(controller.horizontal.metrics.trackSize).toBe(290);
     expect(controller.vertical.metrics.trackSize).toBe(180);
@@ -377,7 +384,7 @@ describe("Shared overlay scrollbars", () => {
     expect(controller.vertical.element.contains(corner)).toBeTrue();
     expect(controller.horizontal.element.contains(corner)).toBeFalse();
     content.style.cssText = "width:100%;height:20px";
-    controller.write(controller.read());
+    measure(controller);
     expect(element.clientWidth).toBe(300);
     expect(element.clientHeight).toBe(180);
     expect(visibility(controller.vertical)).toBe("hidden");
@@ -422,7 +429,7 @@ describe("Shared overlay scrollbars", () => {
   it("puts the RTL horizontal rail after the left gutter and reaches the right edge", () => {
     const { element, controller } = scrollport({ layout: "gutter" });
     element.style.direction = "rtl";
-    controller.write(controller.read());
+    measure(controller);
     const rect = controller.horizontal.element.getBoundingClientRect();
     const outer = element.getBoundingClientRect();
     expect(rect.left).toBe(outer.left + 10);
@@ -438,7 +445,7 @@ describe("Shared overlay scrollbars", () => {
     expect(scrollbarPresentation(element).kind).toBe("panel");
     expect(scrollbarPresentation(element).layout).toBe("overlay");
     expect(scrollbarPresentation(element).policy).toBe("hover");
-    controller.write(controller.read());
+    measure(controller);
     expect(controller.layer.classList.contains("is-document")).toBeFalse();
     expect(controller.layer.classList.contains("is-persistent")).toBeFalse();
     const nested = document.createElement("div");
@@ -448,7 +455,7 @@ describe("Shared overlay scrollbars", () => {
     expect(scrollbarPresentation(nested).layout).toBe("gutter");
     expect(scrollbarPresentation(nested).policy).toBe("always");
     element.dataset.scrollbarKind = "document";
-    controller.write(controller.read());
+    measure(controller);
     expect(controller.layer.classList.contains("is-document")).toBeTrue();
     expect(controller.layer.classList.contains("is-persistent")).toBeTrue();
   });
@@ -467,7 +474,7 @@ describe("Shared overlay scrollbars", () => {
   it("places RTL menu tracks on the left and maps negative native horizontal offsets", () => {
     const { element, controller } = scrollport();
     element.style.direction = "rtl";
-    controller.write(controller.read());
+    measure(controller);
     expect(controller.layer.classList.contains("is-left")).toBeTrue();
     expect(controller.horizontal.metrics.position).toBe(600);
     element.scrollLeft = -300;
@@ -481,7 +488,7 @@ describe("Shared overlay scrollbars", () => {
     fixture.style.position = "fixed";
     element.style.cssText =
       "position:fixed;left:40px;top:40px;width:200px;height:100px;overflow:auto";
-    controller.write(controller.read());
+    measure(controller);
     controller.layer.classList.add("is-revealed");
     expect(controller.layer.parentElement).toBe(fixture);
     expect(element.nextSibling).toBe(controller.layer);
@@ -530,7 +537,7 @@ describe("Shared overlay scrollbars", () => {
     list.style.maxHeight = "120px";
     const controller = lumine.scrollbars.attach(list);
     components.push(controller);
-    controller.write(controller.read());
+    measure(controller);
     controller.layer.classList.add("is-revealed");
     const rect = controller.vertical.element.getBoundingClientRect();
     const x = rect.left + rect.width / 2,
@@ -561,7 +568,7 @@ describe("Shared overlay scrollbars", () => {
     const geometry = lumine.scrollbars.getGeometry(element);
     expect(geometry.viewportWidth).toBe(300);
     expect(geometry.viewportHeight).toBe(180);
-    expect(geometry.scrollHeight).toBe(1000);
+    expect(geometry.scrollHeight).toBe(1010);
     expect(geometry.verticalSize).toBe(10);
   });
 
@@ -569,7 +576,7 @@ describe("Shared overlay scrollbars", () => {
     const { element, controller } = scrollport();
     element.style.fontSize = "20px";
     element.style.setProperty("--scrollbar-size", "1em");
-    controller.write(controller.read());
+    measure(controller);
     expect(lumine.scrollbars.getGeometry(element).verticalSize).toBe(20);
     expect(controller.vertical.element.style.width).toBe("20px");
     expect(controller.horizontal.metrics.trackSize).toBe(280);
@@ -597,14 +604,18 @@ describe("Shared overlay scrollbars", () => {
     expect(callback.calls.mostRecent().args[0].scrollHeight).toBe(1000);
   });
 
-  const flush = () =>
-    new Promise((resolve) => lumine.views.readDocument(() => lumine.views.updateDocument(resolve)));
+  const flush = async () => {
+    for (let pass = 0; pass < 4; pass++)
+      await new Promise((resolve) =>
+        lumine.views.readDocument(() => lumine.views.updateDocument(resolve)),
+      );
+  };
 
   it("retains authored stacking when a disconnected scrollport gets new chrome", async () => {
     const { fixture, element, controller } = scrollport();
     element.dataset.scrollbarKind = "panel";
     element.dataset.scrollbarZIndex = "101";
-    controller.write(controller.read());
+    measure(controller);
     expect(controller.layer.style.zIndex).toBe("101");
     fixture.remove();
     await flush();
@@ -665,15 +676,15 @@ describe("Shared overlay scrollbars", () => {
     controller.refresh();
     await flush();
     await flush();
-    expect(first.calls.mostRecent().args[0].scrollHeight).toBe(1400);
-    expect(second.calls.mostRecent().args[0].scrollHeight).toBe(1400);
+    expect(first.calls.mostRecent().args[0].scrollHeight).toBe(1410);
+    expect(second.calls.mostRecent().args[0].scrollHeight).toBe(1410);
     subscriptions[0].dispose();
     content.style.height = "1600px";
     controller.refresh();
     await flush();
     await flush();
-    expect(first.calls.mostRecent().args[0].scrollHeight).toBe(1400);
-    expect(second.calls.mostRecent().args[0].scrollHeight).toBe(1600);
+    expect(first.calls.mostRecent().args[0].scrollHeight).toBe(1410);
+    expect(second.calls.mostRecent().args[0].scrollHeight).toBe(1610);
   });
 
   it("rebinds identical geometry to an adopted document without restoring native chrome", async () => {

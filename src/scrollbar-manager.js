@@ -76,7 +76,7 @@ module.exports = class ScrollbarManager {
    * Read track thickness and viewport/document extents in CSS pixels.
    * Thickness stays stable when a thumb is hidden or content fits the viewport.
    * @param {HTMLElement} element - Editor element or native DOM scrollport.
-   * @returns {Object} layout (overlay or gutter); CSS-pixel verticalSize and horizontalSize track thicknesses, viewportWidth and viewportHeight excluding reserved gutters, verticalTrackSize and horizontalTrackSize lengths (vertical spans the full height including any horizontal gutter, horizontal excludes the vertical rail), scrollWidth and scrollHeight, canScrollVertically and canScrollHorizontally. Editor snapshots also include rowGeometryVersion for marker projection invalidation.
+   * @returns {Object} layout (overlay or gutter); CSS-pixel verticalSize and horizontalSize track thicknesses, scrollEndInset (extra bottom extent for an overflowing horizontal overlay), viewportWidth and viewportHeight excluding reserved gutters, verticalTrackSize and horizontalTrackSize lengths (vertical spans the full height including any horizontal gutter, horizontal excludes the vertical rail), scrollWidth and scrollHeight, canScrollVertically and canScrollHorizontally. Editor snapshots also include rowGeometryVersion for marker projection invalidation.
    * @category Geometry
    */
   getGeometry(element) {
@@ -86,6 +86,7 @@ module.exports = class ScrollbarManager {
         layout: component.getScrollbarLayout(),
         verticalSize: component.getVerticalScrollbarWidth(),
         horizontalSize: component.getHorizontalScrollbarHeight(),
+        scrollEndInset: component.getScrollEndInset(),
         viewportWidth: component.getScrollContainerClientWidth(),
         viewportHeight: component.getScrollContainerClientHeight(),
         verticalTrackSize: Math.max(0, component.getScrollContainerHeight()),
@@ -109,6 +110,7 @@ module.exports = class ScrollbarManager {
       layout,
       verticalSize: size,
       horizontalSize: size,
+      scrollEndInset: 0,
       viewportWidth: element.clientWidth,
       viewportHeight: element.clientHeight,
       verticalTrackSize:
@@ -175,6 +177,7 @@ module.exports = class ScrollbarManager {
         "layout",
         "verticalSize",
         "horizontalSize",
+        "scrollEndInset",
         "viewportWidth",
         "viewportHeight",
         "verticalTrackSize",

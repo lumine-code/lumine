@@ -58,6 +58,26 @@ describe("Editor overlay scrollbars", () => {
   });
 
   for (const layout of ["overlay", "gutter"]) {
+    it(`keeps the final line above the ${layout} horizontal rail without scroll-past-end`, () => {
+      element.dataset.scrollbarLayout = layout;
+      editor.update({ scrollPastEnd: false });
+      component.updateSync();
+      const inset = layout === "overlay" ? 12 : 0;
+      expect(component.canScrollHorizontally()).toBeTrue();
+      expect(lumine.scrollbars.getGeometry(element).scrollEndInset).toBe(inset);
+      expect(component.lastScrollGeometry.scrollEndInset).toBe(inset);
+      expect(component.getScrollHeight()).toBe(component.getContentHeight() + inset);
+      component.setScrollTop(component.getMaxScrollTop());
+      component.updateSync();
+      expect(component.getContentHeight() - component.getScrollTop()).toBeLessThanOrEqual(
+        component.getContentViewportHeight() + 1,
+      );
+      editor.setSoftWrapped(true);
+      component.updateSync();
+      expect(component.canScrollHorizontally()).toBeFalse();
+      expect(lumine.scrollbars.getGeometry(element).scrollEndInset).toBe(0);
+    });
+
     it(`gives the ${layout} intersection to the full-height vertical rail and public geometry`, () => {
       element.dataset.scrollbarLayout = layout;
       component.updateSync();
