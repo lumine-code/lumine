@@ -20,7 +20,7 @@ function copyRepository(targetPath) {
 }
 
 describe("Project repository discovery", () => {
-  let registry, project, workingDirectory;
+  let registry, project, workingDirectory, fileWatchHandle;
 
   beforeEach(() => {
     jasmine.useRealClock?.();
@@ -28,12 +28,25 @@ describe("Project repository discovery", () => {
       copyRepository(temp.mkdirSync("project-discovery-repository")),
     );
     registry = new RepositoryRegistry({ config: lumine.config });
+    // A copied .git directory can still produce native creation notifications.
+    // Those legitimately invalidate an in-flight descriptor. Control this
+    // fixture's watcher epoch while keeping filesystem discovery real.
+    fileWatchHandle = {
+      ready: Promise.resolve(),
+      dispose() {},
+      onDidChange(callback) {
+        this.didChange = callback;
+      },
+      onDidInvalidate() {},
+      onDidError() {},
+    };
     project = new Project({
       repositoryRegistry: registry,
       config: lumine.config,
       grammarRegistry: lumine.grammars,
       notificationManager: lumine.notifications,
       packageManager: { serviceHub: { consume: () => ({ dispose() {} }) } },
+      fileWatchClient: { watchDirectory: () => fileWatchHandle },
     });
   });
 
@@ -96,6 +109,40 @@ describe("Project repository discovery", () => {
       finishCandidate.resolve();
       finishSecondLookup.resolve();
       await scanned.promise;
+    }
+  });
+
+  it("revalidates a pending lookup when its watcher reports newly created Git metadata", async () => {
+    const entered = deferred();
+    const finishCandidate = deferred();
+    const stat = fs.promises.stat.bind(fs.promises);
+    const metadataPath = path.join(workingDirectory, ".git");
+    let holdCandidate = true;
+    spyOn(fs.promises, "stat").and.callFake(async (filePath, options) => {
+      const value = await stat(filePath, options);
+      if (holdCandidate && path.resolve(filePath) === metadataPath && options?.bigint !== true) {
+        holdCandidate = false;
+        entered.resolve();
+        await finishCandidate.promise;
+      }
+      return value;
+    });
+    const provider = project.repositoryDiscovery.repositoryProviders[0];
+    const providerLookups = spyOn(provider, "repositoryForPath").and.callThrough();
+    project.setPaths([workingDirectory]);
+    const explicit = project.repositoryForPath(workingDirectory);
+    await entered.promise;
+    try {
+      fileWatchHandle.didChange([{ action: "created", kind: "directory", path: metadataPath }]);
+      await conditionPromise(() => providerLookups.calls.count() > 1, "fresh metadata discovery");
+      finishCandidate.resolve();
+      const repository = await explicit;
+      expect(repository).toEqual(jasmine.any(GitRepository));
+      await registry.fileChangeValidationTail;
+      expect(registry.getForPath(workingDirectory)).toBe(repository);
+      expect(repository.isDestroyed()).toBe(false);
+    } finally {
+      finishCandidate.resolve();
     }
   });
 
