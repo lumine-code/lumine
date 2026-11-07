@@ -107,6 +107,7 @@ async function* scanQueryCaptures(mode, queryType, { signal, batchSize = 256 } =
       2,
       Math.min(8192, Math.floor(mode.queryCaptureChunkCodeUnits ?? 8192)),
     );
+    let queryWindowUnits = chunkUnits;
     const resolver = new ScopeResolver(layer, layer.scopeResolver.idForScope);
     const budget = { signal, isCancelled: () => !isCurrent() };
     try {
@@ -116,19 +117,41 @@ async function* scanQueryCaptures(mode, queryType, { signal, batchSize = 256 } =
         const endRow = Math.min(extent.end.row, start.row + chunkRows);
         const rowEnd = endRow === extent.end.row ? extent.end : new Point(endRow, 0);
         const rowEndIndex = mode.buffer.characterIndexForPosition(rowEnd);
-        const window = boundedQueryRange(
+        let window = boundedQueryRange(
           source,
           startIndex,
-          rowEndIndex > startIndex ? Math.min(endIndex, rowEndIndex) : endIndex,
-          chunkUnits,
+          Math.min(
+            rowEndIndex > startIndex ? Math.min(endIndex, rowEndIndex) : endIndex,
+            startIndex + queryWindowUnits,
+          ),
+          Math.max(2, queryWindowUnits),
         );
-        const end = mode.buffer.positionForCharacterIndex(window.endIndex);
-        const queried = runQuery(
-          query,
-          tree.rootNode,
-          { startPosition: start, endPosition: end },
-          budget,
-        );
+        let queried;
+        for (;;) {
+          const end = mode.buffer.positionForCharacterIndex(window.endIndex);
+          queried = runQuery(
+            query,
+            tree.rootNode,
+            { startPosition: start, endPosition: end },
+            budget,
+          );
+          if (queried.complete || queried.reason !== "timeout") break;
+          // No resolver state or published captures exist for this attempt.
+          // Preserve its time budget by scheduling strictly smaller windows;
+          // an indivisible character and all other limits still fail closed.
+          const half = Math.floor((window.endIndex - startIndex) / 2);
+          const smaller = boundedQueryRange(
+            source,
+            startIndex,
+            startIndex + half,
+            Math.max(2, half),
+          );
+          if (smaller.empty || smaller.endIndex >= window.endIndex) break;
+          window = smaller;
+          queryWindowUnits = window.endIndex - startIndex;
+          await yieldTask();
+          assertCurrent();
+        }
         requireComplete(queried);
         const captures = queried.results;
         for (let offset = 0; offset < captures.length;) {
