@@ -80,14 +80,12 @@ function mirrorList(text) {
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith("#"));
   requireValue(active.length > 0, "Empty Ubuntu mirror list");
-  requireValue(
-    active.every((line) => {
-      const kind = officialUri(line.split(/\s/)[0]);
-      return kind && kind !== "mirrorlist";
-    }),
-    "Mirror list contains a non-Ubuntu endpoint",
-  );
-  return text;
+  const selected = active.filter((line) => {
+    const kind = officialUri(line.split(/\s/)[0]);
+    return kind && kind !== "mirrorlist";
+  });
+  requireValue(selected.length > 0, "No official Ubuntu endpoint in mirror list");
+  return selected.length === active.length ? text : selected.join("\n") + "\n";
 }
 function usesRunnerMirrorList(files) {
   return files.some(

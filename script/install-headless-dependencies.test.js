@@ -141,6 +141,17 @@ test("runner mirror list preserves priorities and refuses unrelated or nested tr
   for (const bad of ["https://untrusted.example.test/ubuntu", "mirror+file:/tmp/nested.list", ""])
     assert.throws(() => p.mirrorList(bad));
 });
+test("mixed runner mirrors retain official endpoints and exclude unrelated transports", () => {
+  const mixed =
+    "https://untrusted.example.test/ubuntu\tpriority:0\n" +
+    mirrors +
+    "mirror+file:/tmp/nested.list\n";
+  assert.equal(p.mirrorList(mixed), mirrors);
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-apt-test-"));
+  const layouts = p.prepareSources(files, mixed, workspace);
+  assert.equal(fs.readFileSync(path.join(workspace, "ubuntu-mirrors.txt"), "utf8"), mirrors);
+  assert.equal(layouts.length, 2);
+});
 test("private preparation changes no input source files or signing fields", () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-apt-test-")),
     before = JSON.stringify(files);
