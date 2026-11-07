@@ -280,20 +280,36 @@ describe("WindowEventHandler", () => {
   });
 
   it("retains the foreground state when an embedded document blurs its parent Window", () => {
+    const nativeHasFocus = Document.prototype.hasFocus.bind(document);
+    const wasFocused = nativeHasFocus();
+    const previousFocus = document.activeElement;
     jasmine.attachToDOM(lumine.workspace.getElement());
     const pane = lumine.workspace.getMainWindow().getEditorContainer().getActivePane();
     const frame = document.createElement("iframe");
-    pane.activateItem({ element: frame, getTitle: () => "Embedded input" }, { activatePane: true });
-    const input = frame.contentDocument.createElement("input");
-    frame.contentDocument.body.append(input);
-    input.focus();
-    expect(document.activeElement).toBe(frame);
-    expect(frame.contentDocument.activeElement).toBe(input);
+    const item = { element: frame, getTitle: () => "Embedded input" };
+    try {
+      pane.activateItem(item, { activatePane: true });
+      const input = frame.contentDocument.createElement("input");
+      frame.contentDocument.body.append(input);
+      input.focus();
+      expect(document.activeElement).toBe(frame);
+      expect(frame.contentDocument.activeElement).toBe(input);
 
-    window.dispatchEvent(new CustomEvent("blur"));
+      window.dispatchEvent(new CustomEvent("blur"));
 
-    expect(document.body.classList.contains("is-blurred")).toBeFalse();
-    expect(pane.getElement().classList.contains("is-focused")).toBeTrue();
+      expect(document.body.classList.contains("is-blurred")).toBeFalse();
+      expect(pane.getElement().classList.contains("is-focused")).toBeTrue();
+    } finally {
+      // Removing the still-focused iframe can strand Blink's focused frame on
+      // its detached document. Return focus to this document before disposal;
+      // focusing the pane itself would redirect it straight back to the iframe.
+      const target = previousFocus?.isConnected ? previousFocus : document.body;
+      target.focus();
+      if (document.activeElement === frame) document.body.focus();
+      pane.removeItem(item);
+      expect(frame.isConnected).toBeFalse();
+      if (wasFocused) expect(nativeHasFocus()).toBeTrue();
+    }
   });
 
   it("keeps a presentation blurred when a focus event arrives without document focus", () => {
