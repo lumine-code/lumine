@@ -115,7 +115,7 @@
     "tinyglobby": "^0.2.17",
     "title-bar": "github:lumine-code/title-bar#a5836594aa4b979b44d32951e93e600dc797a51d",
     "tree-view": "github:lumine-code/tree-view#e04afeb85eb89df5e7c2124f9efc98e7d6d0cbd6",
-    "web-tree-sitter": "0.27.1",
+    "web-tree-sitter": "0.27.2",
     "whitespace": "github:lumine-code/whitespace#178be4353402ce3b2e72df1d8e48f4ccf2a6f920",
     "winattr": "^4.0.0",
     "window-title": "github:lumine-code/window-title#702b12e2bcec7c6f481a65fe44e5c0cd3d2ea2ae",

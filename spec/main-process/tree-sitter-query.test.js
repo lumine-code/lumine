@@ -103,6 +103,43 @@ test("anchored predicates inspect a bounded edge of a huge node while unknown ne
     parser.close();
   }
 });
+
+test("Unicode query source indices preserve bounded predicates across pattern boundaries", () => {
+  const parser = new SourceParser(language),
+    tree = parser.parseSync('"' + "x".repeat(300000) + 'tail"');
+  const comment = "; " + "é🦉".repeat(100) + "\r\n";
+  const source =
+    comment +
+    '((string) @head (#match? @head "^\\"x"))\r\n' +
+    comment +
+    '((string) @tail (#match? @tail "tail\\"$") (#set! position "tail"))\r\n' +
+    '((string) @absent (#match? @absent "^\\"missing"))';
+  const query = createQuery(language, source);
+  try {
+    for (const method of ["captures", "matches"]) {
+      const result = runQuery(
+        query,
+        tree.rootNode,
+        {},
+        { method, now: () => 0, maxPredicateTextLength: 64 },
+      );
+      assert.equal(result.complete, true, method);
+      assert.equal(result.reason, null, method);
+      const captures =
+        method === "captures" ? result.results : result.results.flatMap((match) => match.captures);
+      assert.deepEqual(
+        captures.map((capture) => capture.name),
+        ["head", "tail"],
+      );
+      const properties =
+        method === "captures" ? captures[1].setProperties : result.results[1].setProperties;
+      assert.equal(properties.position, "tail");
+    }
+  } finally {
+    query.delete();
+    parser.close();
+  }
+});
 test("custom directives and invalid predicates keep the native validation contract", () => {
   for (const source of [
     '((string) @s (#MATCH? @s "x"))',

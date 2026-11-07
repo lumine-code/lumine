@@ -2,7 +2,6 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { Parser, Language, Query, TreeCursor } = require("web-tree-sitter");
-require("../../src/tree-sitter-cursor");
 
 async function main() {
   await Parser.init();
@@ -11,6 +10,32 @@ async function main() {
   const language = await Language.load(fs.readFileSync(path.join(path.dirname(file), config.treeSitter.grammar)));
   const parser = new Parser().setLanguage(language);
   const query = new Query(language, "(identifier) @name");
+  {
+    const tree = parser.parse("function first(a) { return a; }\nfunction second(b) { return b; }");
+    const cursor = tree.rootNode.firstNamedChild.walk();
+    const expected = cursor.nodeText;
+    const other = tree.walk();
+    other.gotoLastChild();
+    // Exercise the fixed public copy before installing Lumine's wrapper.
+    // Another cursor and query leave unrelated data in the transfer buffer.
+    query.captures(tree.rootNode);
+    const copy = cursor.copy();
+    assert.equal(copy.nodeText, expected);
+    assert.equal(copy.gotoParent(), false);
+    assert.equal(copy.gotoFirstChild(), true);
+    assert.equal(cursor.nodeText, expected);
+    copy.delete();
+    other.delete();
+    cursor.delete();
+    tree.delete();
+  }
+  const nativeDelete = TreeCursor.prototype.delete;
+  let nativeDeletes = 0;
+  TreeCursor.prototype.delete = function (...args) {
+    nativeDeletes++;
+    return Reflect.apply(nativeDelete, this, args);
+  };
+  require("../../src/tree-sitter-cursor");
   {
     const tree = parser.parse("const value = 1;");
     const cursor = tree.walk();
@@ -76,8 +101,29 @@ async function main() {
   global.gc();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(parser.parse("const healthy = 1;").rootNode.hasError, false);
+  {
+    const tree = parser.parse("const closed = 1;");
+    const cursor = tree.walk();
+    const move = cursor.gotoFirstChild;
+    const copy = cursor.copy;
+    const runtime = require("../../src/tree-sitter-runtime");
+    const previous = runtime.failure;
+    const before = nativeDeletes;
+    runtime.failure = new Error("isolated fixture runtime failure");
+    try {
+      cursor.delete();
+      cursor.delete();
+      assert.equal(nativeDeletes, before);
+      assert.throws(() => move(), /disposed/);
+      assert.throws(() => copy(), /disposed/);
+    } finally {
+      runtime.failure = previous;
+      tree.delete();
+    }
+  }
   query.delete();
   parser.delete();
+  TreeCursor.prototype.delete = nativeDelete;
   console.log("Cursor collection and copy passed");
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

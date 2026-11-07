@@ -20,7 +20,7 @@ Atomic source edits and Replace All retain a separate local coordinate map for p
 
 `applyTextEdits()` keeps up to 128 exact local splices for the parser journal. Larger streams use the existing full-source transport and fresh-parse fallback while preserving their complete presentation map. Independent synchronous batches pass their exact splices alongside the broad display invalidation range; crossing the parser's bulk threshold must not collapse the retained highlighting between edits. Parser readiness remains separate from retained paint.
 
-The installed binding is web-tree-sitter 0.27.1. Its [WASM adapter](https://github.com/tree-sitter/tree-sitter/blob/v0.27.1/lib/binding_web/lib/tree-sitter.c) converts JavaScript code-unit offsets and columns to byte offsets and parses UTF-16LE. Lumine therefore supplies its existing UTF-16 coordinates directly; it must not add a separate UTF-8 conversion merely because the native Tree-sitter API names its fields in bytes. CRLF handling and surrogate pairs are covered by differential syntax tests.
+The installed binding is web-tree-sitter 0.27.2. Its [WASM adapter](https://github.com/tree-sitter/tree-sitter/blob/v0.27.2/lib/binding_web/lib/tree-sitter.c) converts JavaScript code-unit offsets and columns to byte offsets and parses UTF-16LE. Lumine therefore supplies its existing UTF-16 coordinates directly; it must not add a separate UTF-8 conversion merely because the native Tree-sitter API names its fields in bytes. Query pattern boundaries and query error offsets also use JavaScript string indices, so query adapters slice the source string directly. CRLF handling and surrogate pairs are covered by differential syntax tests.
 
 Parser input comes from a snapshot reader in 4096-unit chunks. Node text uses a separate 32768-unit reader. Parsing does not call the legacy whole-input materialization getter; an explicit consumer request for `tree.input` still produces a string. The binding's parse-input buffer is bounded, so increasing callback chunks arbitrarily is not a free optimization.
 
@@ -44,7 +44,7 @@ The combined invalidation receives exact old/new extents and offsets, never subs
 
 ## Lifetime and cancellation
 
-The [upstream tree wrapper](https://github.com/tree-sitter/tree-sitter/blob/v0.27.1/lib/binding_web/src/tree.ts) owns its WASM allocation through explicit deletion and finalization. Lumine explicitly deletes private working copies and closes parser jobs on destruction; published snapshots follow their consumers' lifetimes. Published trees reject in-place edits. Existing cursor ownership protection remains in place.
+The [upstream tree wrapper](https://github.com/tree-sitter/tree-sitter/blob/v0.27.2/lib/binding_web/src/tree.ts) owns its WASM allocation through explicit deletion and finalization. Lumine explicitly deletes private working copies and closes parser jobs on destruction; published snapshots follow their consumers' lifetimes. Published trees reject in-place edits. Existing cursor ownership protection remains in place.
 
 Published trees have a managed owner. Nodes and cursors retain that owner, so collection cannot invalidate a consumer's older snapshot. Once the owner is collected, the raw tree enters a disposal queue instead of running its WASM destructor inside V8's finalizer batch. The queue prefers 100 ms without text edits and yields between jobs with a 2 ms target. Above 2048 pending jobs it makes progress even during continuous editing. These are scheduling targets, not hard latency or byte limits: a single native destructor cannot be interrupted and may exceed the target. Retired queue slots are compacted under sustained pressure. No dependency source or WASM memory layout is modified.
 
@@ -54,9 +54,9 @@ Initial loading keeps its separate 5 ms allowance. If native parsing finishes af
 
 Once a large root has switched to asynchronous updates, consecutive edits less than 50 ms apart wait for a 50 ms quiet period before capturing input or acquiring a parser. Cancellation removes that wait, and a revision check prevents submitted ranges from being paired with newer text. The first edit after a pause starts immediately; cold loads, injection parses, small buffers and fast synchronous grammars do not use this delay. This avoids repeatedly starting work that the next key would cancel, at the cost of deferring fresh syntax until the burst pauses. The quiet period is not a bound on the subsequent parse or publication time.
 
-The [parser interface](https://github.com/tree-sitter/tree-sitter/blob/v0.27.1/lib/binding_web/src/parser.ts) supports progress callbacks and included ranges. Both backends parse in budgeted slices, discard obsolete work, and retain the changed-included-range resume guard for this runtime version. The worker mirror applies the renderer's exact edit journal; it does not replace web-tree-sitter or mutate published trees.
+The [parser interface](https://github.com/tree-sitter/tree-sitter/blob/v0.27.2/lib/binding_web/src/parser.ts) supports progress callbacks and included ranges. Both backends parse in budgeted slices, discard obsolete work, and retain the changed-included-range resume guard for this runtime version. The worker mirror applies the renderer's exact edit journal; it does not replace web-tree-sitter or mutate published trees.
 
-The upstream sources above were reviewed at tag `v0.27.1` on 2026-10-19 alongside the installed implementation. No upstream implementation was copied into the changes.
+The upstream sources above were reviewed at tag `v0.27.2` on 2026-11-07 alongside the installed implementation. No upstream implementation was copied into the changes.
 
 ## Indentation plans
 

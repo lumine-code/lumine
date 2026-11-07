@@ -72,16 +72,13 @@ module.exports = function createQuery(language, source) {
   for (const { name, start, end } of ops.toReversed())
     if (MATCH.has(name))
       rewritten = rewritten.slice(0, start) + name.toUpperCase() + rewritten.slice(end);
-  // Equal-length ASCII aliases preserve every native diagnostic/pattern byte
-  // offset. They expose operands without copying the binding's query parser.
+  // Equal-length ASCII aliases preserve every diagnostic/pattern string index.
+  // They expose operands without copying the binding's query parser.
   const query = new Query(language, rewritten);
-  const bytes = Buffer.from(source);
   try {
     for (let index = 0; index < query.patternCount(); index++) {
       const names = operators(
-        bytes
-          .subarray(query.startIndexForPattern(index), query.endIndexForPattern(index))
-          .toString(),
+        source.slice(query.startIndexForPattern(index), query.endIndexForPattern(index)),
       )
         .map(({ name }) => name)
         .filter((name) => TEXT.has(name));

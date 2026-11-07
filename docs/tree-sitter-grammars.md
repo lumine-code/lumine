@@ -15,7 +15,7 @@ A Tree-sitter grammar config and all of its runtime assets live directly in a pa
   "type": "tree-sitter",
   "treeSitter": {
     "parserSource": "github:tree-sitter/tree-sitter-json#v0.24.8",
-    "wasmBuildTool": "tree-sitter-cli#v0.27.0",
+    "wasmBuildTool": "tree-sitter-cli#v0.27.2",
     "grammar": "json.wasm",
     "highlightsQuery": ["json-no-comments-highlights.scm", "json-highlights.scm"],
     "indentsQuery": "json-indents.scm",
@@ -242,7 +242,7 @@ Each display view registers its requested buffer fragments, excluding the interi
 
 Published trees retain their original UTF-16 text and revision. Owner-side analyses acquire current syntax after settlement; renderer packages access them through `analyzeSyntax`. Analyses must not edit, delete or retain a published tree beyond their invocation. Private indentation snapshots include exact already-applied edits from the open transaction, without delivering change events early. They therefore reuse the preceding tree incrementally instead of reparsing the document from scratch. Missing revision links still require a fresh parse. Parser and node-text callbacks read bounded chunks of the immutable text. Temporary private copies are released explicitly. Retained nodes and cursors keep their published tree owner alive; collected owners enqueue WASM tree disposal between edit bursts, with a pressure threshold and yields between disposal jobs. A single native destructor remains uninterruptible. Query lifetime remains managed by the runtime.
 
-The pinned 0.27.1 runtime has unsafe automatic cursor cleanup and interleaved cursor copying. A small ownership layer in the editor uses the public `delete()` and `resetTo()` methods to preserve cursor lifetime and state; it does not modify the dependency or its Wasm binary. Retained cursor methods keep their public owner alive and reject calls after explicit disposal. Subprocess regressions force garbage collection while cursors and retained methods are used, copied and released.
+The pinned 0.27.2 runtime fixes automatic cursor cleanup and interleaved cursor copying. The editor retains a small ownership layer for idempotent disposal, retained methods and cleanup after runtime failure; cursor copying delegates to the upstream public method. It does not modify the dependency or its Wasm binary. Retained cursor methods keep their public owner alive and reject calls after explicit disposal. Subprocess regressions force garbage collection while cursors and retained methods are used, copied and released.
 
 That runtime also clears included-range differences when resuming an incremental parse, which can lose newly injected content. If a suspended job covers different source from its edited old tree, the adapter resets that job once and continues with a fresh parse. The comparison merges adjacent ranges and clips them at EOF: changing parse-boundary hints without changing their covered source retains incremental reuse. Incremental jobs that finish within their first slice also retain the incremental path. Deterministic regressions interrupt both kinds of job and verify the new injected token and reuse of unaffected syntax.
 

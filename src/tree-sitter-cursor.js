@@ -2,15 +2,14 @@ const { Node, TreeCursor } = require("web-tree-sitter");
 
 const installed = Symbol.for("lumine.tree-sitter.managed-cursors");
 
-// web-tree-sitter 0.27.1's cursor finalizer calls the Wasm destructor without
-// marshaling the cursor into its shared transfer buffer. Keep the raw cursor
-// alive until its public wrapper is collected, then use the public delete()
-// method, which marshals the right cursor and unregisters the unsafe finalizer.
-// No runtime source, Wasm memory layout or vendor file is modified here.
+// Keep retained methods attached to their cursor owner, make disposal
+// idempotent and reject use after close. Cleanup must not call a failed runtime.
+// The binding owns cursor copying and its native transfer-buffer/finalizer
+// details; the wrapper only adds Lumine's ownership and failure policy.
 if (!Node.prototype[installed]) {
   const walk = Node.prototype.walk;
   const deleteCursor = TreeCursor.prototype.delete;
-  const resetTo = TreeCursor.prototype.resetTo;
+  const copyCursor = TreeCursor.prototype.copy;
   const owners = new WeakMap();
   const dispose = (state) => {
     if (state.closed) return;
@@ -63,21 +62,10 @@ if (!Node.prototype[installed]) {
     return own(walk.apply(this, args));
   };
 
-  // The upstream copy path also relies on the shared transfer buffer rather
-  // than marshaling its receiver first. resetTo() copies the complete cursor
-  // state through the supported API, including a subtree cursor's root.
-  TreeCursor.prototype.copy = function () {
+  TreeCursor.prototype.copy = function (...args) {
     const owner = owners.get(this);
     if (owner?.closed) throw new Error("Tree-sitter cursor is disposed");
-    const source = owner?.cursor ?? this;
-    const copy = own(walk.call(source.tree.rootNode));
-    try {
-      resetTo.call(owners.get(copy).cursor, source);
-      return copy;
-    } catch (error) {
-      copy.delete();
-      throw error;
-    }
+    return own(Reflect.apply(copyCursor, owner?.cursor ?? this, args));
   };
 
   Object.defineProperty(Node.prototype, installed, { value: true });

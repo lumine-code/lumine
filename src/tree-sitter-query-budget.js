@@ -155,7 +155,7 @@ function runQuery(query, node, options = {}, budget = {}) {
   const originalPredicates = query.textPredicates;
   let rawResults = [];
   if (!stopped()) {
-    // Narrow compatibility seam for pinned web-tree-sitter 0.27.1. Its query
+    // Narrow compatibility seam for pinned web-tree-sitter 0.27.2. Its query
     // methods do not free their raw WASM results when a JS predicate throws.
     // Defer such errors until the method has returned and released that memory.
     // Never evaluate a predicate on truncated text: omit the match and mark the

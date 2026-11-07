@@ -391,7 +391,7 @@ class TreeSitterParser {
           originalRanges[0].startIndex === 0 &&
           originalRanges[0].endIndex > sourceOf(job.previous).length;
         if ((!sameRanges && !unrestricted) || job.previous.rootNode.hasError) {
-          // The 0.27.1 runtime clears included-range differences when resuming
+          // The 0.27.2 runtime clears included-range differences when resuming
           // an incremental parse. It can then reuse an old subtree over newly
           // included source. Keep the fast path if the first slice completes;
           // otherwise restart this changed-range job fresh and resume normally.

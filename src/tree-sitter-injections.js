@@ -12,7 +12,6 @@ const INJECTION_CAPTURES = new Set(["injection.owner", "injection.content", "inj
 
 function compileInjectionQuery(query, source) {
   const descriptors = new Map();
-  const bytes = typeof source === "string" ? Buffer.from(source) : null;
   const bounds = [
     [0, 0],
     [0, 1],
@@ -25,9 +24,8 @@ function compileInjectionQuery(query, source) {
     const fail = (message) => {
       const error = new Error(`Invalid injection pattern ${patternIndex + 1}: ${message}`);
       error.name = "QueryError";
-      // Query pattern offsets use UTF-8 bytes; diagnostics index the source string.
-      error.index =
-        bytes?.subarray(0, query.startIndexForPattern(patternIndex)).toString().length ?? 0;
+      // The binding and diagnostics both index UTF-16 source code units.
+      error.index = typeof source === "string" ? query.startIndexForPattern(patternIndex) : 0;
       throw error;
     };
     const captures = new Map();

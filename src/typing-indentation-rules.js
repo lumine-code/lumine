@@ -33,17 +33,17 @@ function literals(node) {
 function compile(query, source) {
   if (!query) return null;
   try {
-    const bytes = Buffer.from(source),
-      rules = [];
+    const rules = [];
     for (let pattern = 0; pattern < query.patternCount(); pattern++) {
       if (query.assertedProperties[pattern]?.["indent.reindent"] === "true") continue;
       const names = query.captureNames.filter(
         (name, id) => relevant.has(name) && query.captureQuantifiers[pattern][id],
       );
       if (!names.length) continue;
-      const text = bytes
-        .subarray(query.startIndexForPattern(pattern), query.endIndexForPattern(pattern))
-        .toString();
+      const text = source.slice(
+        query.startIndexForPattern(pattern),
+        query.endIndexForPattern(pattern),
+      );
       const captures = new Map(),
         predicates = [];
       const visit = (items) => {
