@@ -157,6 +157,10 @@ class PaneElement extends HTMLElement {
   }
 
   activeItemChanged(item) {
+    // Inactive roots stay mounted. Expose selection independently of display
+    // and focus so themes can relate only the current view to its tab.
+    if (this.visibleItemView?.parentNode === this.itemViews)
+      this.visibleItemView.removeAttribute("data-active-pane-item");
     delete this.dataset.activeItemName;
     delete this.dataset.activeItemPath;
     if (this.changePathDisposable != null) {
@@ -210,6 +214,7 @@ class PaneElement extends HTMLElement {
       this.hideItemView(this.visibleItemView);
     }
     this.visibleItemView = itemView;
+    itemView.setAttribute("data-active-pane-item", "");
     if (this.attached) {
       this.showItemView(itemView);
     }
@@ -241,6 +246,8 @@ class PaneElement extends HTMLElement {
     this.itemViewsByItem.delete(item);
     const viewToRemove = this.views.getView(item);
     if (viewToRemove) {
+      if (viewToRemove.parentNode === this.itemViews)
+        viewToRemove.removeAttribute("data-active-pane-item");
       const hadFocus = viewToRemove.contains(this.ownerDocument.activeElement);
       if (this.visibleItemView === viewToRemove) this.visibleItemView = null;
       if (!retainView && (!moved || viewToRemove.parentNode === this.itemViews))
@@ -258,6 +265,8 @@ class PaneElement extends HTMLElement {
   }
 
   paneDestroyed() {
+    if (this.visibleItemView?.parentNode === this.itemViews)
+      this.visibleItemView.removeAttribute("data-active-pane-item");
     this.itemViewsByItem.clear();
     this.subscriptions.dispose();
     if (this.changePathDisposable != null) {

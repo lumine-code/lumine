@@ -12,6 +12,28 @@ Items implement `getTitle()` and expose a DOM element through `getElement()`, th
 
 `getSingletonKey()` returns a namespaced non-empty string for a resource that has one item in this workspace, or null when uniqueness is not required. Workspace tools use a constant key; independent search results and command executions use different resource keys. Reopening an existing key activates its existing item without making a split. Changing the key emits `onDidChangeSingletonKey(callback)`, or `onDidChangeURI(callback)` when it follows the URI; subscriptions return a Disposable. Publish the change before awaiting rendering so the former resource slot is immediately available. Closing the item releases its key.
 
+## Tab connection
+
+An active standard tab is open toward its item's content by default. Add `tab-content-separated` to the pane item's view root when the content should have a continuous boundary below the tabs, such as a terminal with its own palette or a table whose header has a different background. The class applies in the center and every dock; compact icon tabs keep their existing presentation. Packages may toggle the class as their view changes, without events or changes to the tab DOM.
+
+```js
+this.element.classList.add("tab-content-separated");
+```
+
+Core owns the boolean `data-active-pane-item` attribute on the selected view root in each pane. It follows item selection independently of pane focus, is removed from inactive or released roots, and remains correct when items move. Inactive roots can stay mounted, so themes must match the selected direct child of `.item-views` rather than any descendant carrying the class:
+
+```css
+lumine-pane:has(> .item-views > [data-active-pane-item].tab-content-separated)
+  > .tab-bar:not(.icons-only)
+  > .tab.active {
+  /* Restore the theme's existing content-side edge without changing geometry. */
+}
+```
+
+The theme owns the edge's color and rendering. The class does not change item backgrounds, add a toolbar or affect closing the item. Apply it to the root exposed through `getElement()` or the view provider, not an embedded editor, nested component or wrapper that is not the pane item's root. Packages own the class and must leave the active-view attribute to core.
+
+Choose the class from the item's intended layout. Center document views normally leave it off because the built-in breadcrumb strip supplies their natural boundary. This is a layout convention rather than a runtime dependency: hiding or disabling breadcrumbs does not change tab connection, and themes inspect only the selected item's class.
+
 ## Metadata
 
 A pane item can implement `getMetadata({ signal } = {})` and `onDidChangeMetadata(callback)` to expose its current document properties to an inspector. `getMetadata` returns an array of sections or a Promise for one; `onDidChangeMetadata` returns a Disposable and calls its callback without arguments when a previous snapshot becomes stale. Implement both methods for mutable metadata. Items without this capability can still expose ordinary file properties through `getPath()` and `getFileState()`.

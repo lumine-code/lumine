@@ -250,6 +250,91 @@ describe("PaneElement", function () {
     });
   });
 
+  describe("the active pane item marker", function () {
+    const markedViews = (element = paneElement) =>
+      Array.from(element.itemViews.querySelectorAll(":scope > [data-active-pane-item]"));
+
+    it("marks only the selected root in each pane independently of focus", function () {
+      const separated = copyableElement("div");
+      separated.classList.add("tab-content-separated");
+      const connected = copyableElement("div");
+      pane.addItem(separated);
+      pane.addItem(connected);
+      expect(markedViews()).toEqual([separated]);
+
+      pane.activateItem(connected);
+      expect(markedViews()).toEqual([connected]);
+      expect(separated.parentNode).toBe(paneElement.itemViews);
+      expect(separated.classList.contains("tab-content-separated")).toBeTrue();
+
+      const siblingItem = copyableElement("div");
+      const sibling = pane.splitRight({ items: [siblingItem] });
+      expect(markedViews()).toEqual([connected]);
+      expect(markedViews(sibling.getElement())).toEqual([siblingItem]);
+      pane.activate();
+      expect(markedViews()).toEqual([connected]);
+      expect(markedViews(sibling.getElement())).toEqual([siblingItem]);
+    });
+
+    it("clears a retained root when the pane becomes empty and marks it again on reuse", function () {
+      const item = copyableElement("div");
+      pane.addItem(item);
+      expect(markedViews()).toEqual([item]);
+
+      pane.removeItem(item, true, { preservePane: true, retainView: true });
+      expect(item.parentNode).toBe(paneElement.itemViews);
+      expect(markedViews()).toEqual([]);
+
+      pane.addItem(item, { moved: true });
+      expect(markedViews()).toEqual([item]);
+    });
+
+    it("does not carry selection into an occupied destination until the moved item is activated", function () {
+      jasmine.attachToDOM(containerElement);
+      const remaining = copyableElement("div");
+      const moved = copyableElement("div");
+      moved.classList.add("tab-content-separated");
+      pane.addItems([remaining, moved]);
+      pane.activateItem(moved);
+      const destinationItem = copyableElement("div");
+      const destination = pane.splitRight({ items: [destinationItem] });
+
+      pane.moveItemToPane(moved, destination);
+      expect(markedViews()).toEqual([remaining]);
+      expect(markedViews(destination.getElement())).toEqual([destinationItem]);
+      expect(moved.hasAttribute("data-active-pane-item")).toBeFalse();
+      expect(moved.classList.contains("tab-content-separated")).toBeTrue();
+
+      destination.activateItem(moved);
+      expect(markedViews(destination.getElement())).toEqual([moved]);
+      expect(destinationItem.hasAttribute("data-active-pane-item")).toBeFalse();
+    });
+
+    it("restores the source marker when a move is rejected during removal", function () {
+      const item = copyableElement("div");
+      pane.addItem(item);
+      const destination = pane.splitRight();
+      const subscription = pane.onDidRemoveItem(() => destination.destroy());
+      try {
+        expect(() => pane.moveItemToPane(item, destination)).toThrow();
+        expect(pane.getActiveItem()).toBe(item);
+        expect(item.parentNode).toBe(paneElement.itemViews);
+        expect(markedViews()).toEqual([item]);
+      } finally {
+        subscription.dispose();
+      }
+    });
+
+    it("releases the marker when its pane is destroyed", function () {
+      const item = copyableElement("div");
+      pane.addItem(item);
+      expect(item.hasAttribute("data-active-pane-item")).toBeTrue();
+
+      pane.destroy();
+      expect(item.hasAttribute("data-active-pane-item")).toBeFalse();
+    });
+  });
+
   describe("when the active item changes", function () {
     it("hides all item elements except the active one", function () {
       const item1 = copyableElement("div");
@@ -269,6 +354,8 @@ describe("PaneElement", function () {
       expect(item2.parentElement).toBeDefined();
       expect(item1.style.display).toBe("none");
       expect(item2.style.display).toBe("");
+      expect(item1.hasAttribute("data-active-pane-item")).toBeFalse();
+      expect(item2.hasAttribute("data-active-pane-item")).toBeTrue();
       expect(item3.parentElement).toBeNull();
 
       pane.activateItem(item3);
@@ -358,6 +445,8 @@ describe("PaneElement", function () {
         expect(paneElement.itemViews.children[1].model).toBe(item2);
         expect(paneElement.itemViews.children[0].style.display).toBe("none");
         expect(paneElement.itemViews.children[1].style.display).toBe("");
+        expect(paneElement.itemViews.children[0].hasAttribute("data-active-pane-item")).toBeFalse();
+        expect(paneElement.itemViews.children[1].hasAttribute("data-active-pane-item")).toBeTrue();
       }));
 
     describe("when the new active implements .getPath()", function () {
