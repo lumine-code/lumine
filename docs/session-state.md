@@ -16,7 +16,7 @@ Bulk node writes run in a short-lived Node child with one acknowledged batch in 
 
 Separate snapshots let two windows keep their own pane layout and documents. An active window's snapshots for other projects remain available when it switches back, and restoring previous windows reuses their saved identities. Sessions without project folders are durable too: their private key uses the window identity, so unrelated empty windows do not share a snapshot.
 
-Native window geometry has its own persistent identity, separate from document sessions and browser storage. When startup opens a fresh session, it inherits the last focused window's size, position and display mode even if `core.restorePreviousState` disables document restoration or startup supplies a file, folder or `--new-window`. Additional windows retain their own geometry and the usual cascade. `--clear-window-state` clears the selected native geometry before opening the window.
+Native window geometry has its own persistent identity, separate from document sessions and browser storage. When startup opens a fresh session, it inherits the last focused window's size, position and display mode even if `core.restorePreviousState` disables document restoration or startup supplies a file, folder or `--new-window`. The last geometry identity remains saved after every window closes, including on macOS where the application can keep running without windows. Additional windows retain their own geometry and the usual cascade. `--clear-window-state` clears the selected native geometry before opening the window.
 
 ## Project changes
 

@@ -2028,6 +2028,7 @@ describe("LumineApplication", function () {
       assert.isTrue(
         scenario.getApplication(0).storageFolder.store.calledWith("application.json", {
           version: "1",
+          lastWindowGeometryId: secondWindow.windowGeometryId,
           windows: [
             {
               projectRoots: [scenario.convertRootPath("a")],
@@ -2055,6 +2056,7 @@ describe("LumineApplication", function () {
       assert.isTrue(
         scenario.getApplication(0).storageFolder.store.calledWith("application.json", {
           version: "1",
+          lastWindowGeometryId: remainingWindow.windowGeometryId,
           windows: [
             {
               projectRoots: [scenario.convertRootPath("a")],
@@ -2103,6 +2105,7 @@ describe("LumineApplication", function () {
       });
 
       const saved = scenario.getApplication(0).storageFolder.store.lastCall.args[1];
+      assert.strictEqual(saved.lastWindowGeometryId, replacementWindow.windowGeometryId);
       assert.deepEqual(saved.windows, [
         {
           projectRoots: [scenario.convertRootPath("b")],
@@ -2197,10 +2200,70 @@ describe("LumineApplication", function () {
       await scenario.assert("[_ _]");
     });
 
+    for (const restorePreviousState of ["no", "always"]) {
+      it(`restores geometry from an empty application state with session restoration ${restorePreviousState}`, async function () {
+        savedState.windows = [];
+        savedState.lastWindowGeometryId = previousGeometryId;
+        app.config.set("core.restorePreviousState", restorePreviousState);
+
+        const [opened] = await scenario.launch({ app });
+
+        assert.strictEqual(opened.windowGeometryId, previousGeometryId);
+        assert.notStrictEqual(opened.windowStateId, previousStateId);
+        assert.notStrictEqual(opened.windowStateId, previousGeometryId);
+        await scenario.assert("[_ _]");
+      });
+    }
+
+    it("preserves the last closed window's geometry across an empty application state and process restart", async function () {
+      const [first] = await scenario.launch({ app, pathsToOpen: ["a"] });
+      const last = await scenario.open({ app, pathsToOpen: ["c"], newWindow: true });
+      app.removeWindow(first);
+      first.close();
+      app.removeWindow(last);
+      last.close();
+      await app.saveCurrentWindowOptions(true);
+      const serialized = app.storageFolder.store.lastCall.args[1];
+      assert.deepEqual(serialized, {
+        version: "1",
+        lastWindowGeometryId: last.windowGeometryId,
+        windows: [],
+      });
+      const nextApplication = scenario.addApplication({ applicationJson: serialized });
+      nextApplication.config.set("core.restorePreviousState", "always");
+
+      const [reopened] = await scenario.launch({ app: nextApplication });
+
+      assert.strictEqual(reopened.windowGeometryId, last.windowGeometryId);
+      assert.notStrictEqual(reopened.windowStateId, last.windowStateId);
+      assert.notStrictEqual(reopened.windowGeometryId, previousGeometryId);
+      assert.isFalse(reopened.hasProjectPaths());
+      assert.strictEqual(reopened._editorPaths.size, 0);
+      assert.deepEqual(nextApplication.getAllWindows(), [reopened]);
+    });
+
+    it("saves the most recently focused live window's geometry instead of the previous launch's identity", async function () {
+      const [first] = await scenario.launch({ app, pathsToOpen: ["a"] });
+      const second = await scenario.open({ app, pathsToOpen: ["c"], newWindow: true });
+      second.browserWindow.emit("focus");
+      await app.saveCurrentWindowOptions();
+      let serialized = app.storageFolder.store.lastCall.args[1];
+      assert.strictEqual(serialized.lastWindowGeometryId, second.windowGeometryId);
+      assert.notStrictEqual(serialized.lastWindowGeometryId, previousGeometryId);
+
+      first.browserWindow.emit("focus");
+      await app.saveCurrentWindowOptions();
+      serialized = app.storageFolder.store.lastCall.args[1];
+
+      assert.strictEqual(serialized.lastWindowGeometryId, first.windowGeometryId);
+      assert.strictEqual(serialized.windows.at(-1).windowGeometryId, first.windowGeometryId);
+    });
+
     it("keeps the borrowed geometry identity across later fresh launches", async function () {
       const [first] = await scenario.launch({ app });
       await app.saveCurrentWindowOptions();
       const serialized = app.storageFolder.store.lastCall.args[1];
+      assert.strictEqual(serialized.lastWindowGeometryId, previousGeometryId);
       assert.deepEqual(serialized.windows, [
         {
           projectRoots: [],

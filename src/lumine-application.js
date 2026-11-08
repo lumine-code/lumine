@@ -1070,9 +1070,6 @@ module.exports = class LumineApplication extends EventEmitter {
 
     if (!options.test) {
       const previousWindowOptions = await this.loadPreviousWindowOptions();
-      if (this.getAllWindows().length === 0) {
-        this.lastWindowGeometryId = previousWindowOptions.at(-1)?.windowGeometryId;
-      }
       if (shouldReopenPreviousWindows) {
         optionsForWindowsToOpen = [...previousWindowOptions, ...optionsForWindowsToOpen];
       }
@@ -2396,6 +2393,8 @@ module.exports = class LumineApplication extends EventEmitter {
 
     const state = {
       version: APPLICATION_STATE_VERSION,
+      lastWindowGeometryId:
+        windowsByStateId.values().next().value?.windowGeometryId ?? this.lastWindowGeometryId,
       windows: Array.from(windowsByStateId.values()).map((window) => ({
         projectRoots: window.projectRoots,
         windowStateId: window.windowStateId,
@@ -2420,6 +2419,11 @@ module.exports = class LumineApplication extends EventEmitter {
       // Lumine >=1.36.1
       // Geometry identities are independent of document sessions. Older records
       // used the session identity for both.
+      if (this.getAllWindows().length === 0) {
+        const lastWindow = state.windows.at(-1);
+        this.lastWindowGeometryId =
+          state.lastWindowGeometryId ?? lastWindow?.windowGeometryId ?? lastWindow?.windowStateId;
+      }
       return state.windows.map((each) => ({
         foldersToOpen: each.projectRoots,
         windowStateId: each.windowStateId,
