@@ -103,7 +103,11 @@ function readSourceSync(filePath, encoding, reference) {
 
 async function sourceMatchesSnapshot(source, encoding, snapshot) {
   const decoder = iconv.getDecoder(encodingName(encoding), { stripBOM: false });
-  const stream = typeof source === "string" ? fs.createReadStream(source) : source;
+  const ownsStream = typeof source === "string";
+  const stream = ownsStream ? fs.createReadStream(source) : source;
+  // Close our native stream explicitly even after an early mismatch. The
+  // default async iterator requests destruction without awaiting native close.
+  const chunks = ownsStream ? stream.iterator({ destroyOnReturn: false }) : stream;
   const matches = snapshotMatcher(snapshot);
   let offset = 0;
   const accept = (text) => {
@@ -111,9 +115,27 @@ async function sourceMatchesSnapshot(source, encoding, snapshot) {
     offset += text.length;
     return true;
   };
-  for await (const chunk of stream)
-    for (const decoded of decodeSourceChunk(decoder, chunk)) if (!accept(decoded)) return false;
-  return accept(decoder.end() || "") && offset === snapshot.length;
+  try {
+    for await (const chunk of chunks)
+      for (const decoded of decodeSourceChunk(decoder, chunk)) if (!accept(decoded)) return false;
+    return accept(decoder.end() || "") && offset === snapshot.length;
+  } finally {
+    if (ownsStream && !stream.closed) {
+      await new Promise((resolve, reject) => {
+        let failure = stream.errored;
+        const onError = (error) => {
+          failure ??= error;
+        };
+        stream.on("error", onError);
+        stream.once("close", () => {
+          stream.removeListener("error", onError);
+          if (failure) reject(failure);
+          else resolve();
+        });
+        stream.destroy();
+      });
+    }
+  }
 }
 
 function* encode(snapshot, encoding) {

@@ -118,6 +118,97 @@ test("custom streams cannot allocate unbounded decoder strings during load or sa
   assert.equal(largest, 65536);
 });
 
+for (const contents of ["before", "different"]) {
+  test(`owned baseline reads await native close after ${contents === "before" ? "a match" : "an early mismatch"}`, async (t) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-baseline-close-"));
+    const file = path.join(directory, "owned.txt");
+    fs.writeFileSync(file, contents);
+    let closeStarted;
+    let releaseClose;
+    const closing = new Promise((resolve) => {
+      closeStarted = resolve;
+    });
+    const release = new Promise((resolve) => {
+      releaseClose = resolve;
+    });
+    const createReadStream = fs.createReadStream;
+    let stream;
+    t.mock.method(fs, "createReadStream", (target, options) => {
+      if (target !== file) return createReadStream(target, options);
+      stream = createReadStream(target, {
+        ...options,
+        fs: {
+          open: fs.open,
+          read: fs.read,
+          close(fd, callback) {
+            closeStarted();
+            release.then(() => fs.close(fd, callback));
+          },
+        },
+      });
+      return stream;
+    });
+    let resolved = false;
+    const comparison = new TextStore("before").baseTextMatchesFile(file, "utf8").then((value) => {
+      resolved = true;
+      return value;
+    });
+    try {
+      await closing;
+      await new Promise(setImmediate);
+      assert.equal(resolved, false, "comparison must retain ownership until native close");
+      assert.equal(stream.closed, false);
+      releaseClose();
+      assert.equal(await comparison, contents === "before");
+      assert.equal(stream.closed, true);
+    } finally {
+      releaseClose();
+      await comparison;
+      await new Promise((resolve) => stream.close(resolve));
+      fs.unlinkSync(file);
+      fs.rmdirSync(directory);
+    }
+  });
+}
+
+for (const stage of ["read", "close"]) {
+  test(`owned baseline reads preserve native ${stage} errors and close the file`, async (t) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-baseline-error-"));
+    const file = path.join(directory, "owned.txt");
+    fs.writeFileSync(file, "different");
+    const failure = Object.assign(new Error(`Owned ${stage} failed`), { code: "EIO" });
+    const createReadStream = fs.createReadStream;
+    let stream;
+    t.mock.method(fs, "createReadStream", (target, options) => {
+      if (target !== file) return createReadStream(target, options);
+      stream = createReadStream(target, {
+        ...options,
+        fs: {
+          open: fs.open,
+          read(...args) {
+            if (stage === "read") queueMicrotask(() => args.at(-1)(failure));
+            else fs.read(...args);
+          },
+          close(fd, callback) {
+            fs.close(fd, (error) => callback(error || (stage === "close" ? failure : null)));
+          },
+        },
+      });
+      return stream;
+    });
+    try {
+      await assert.rejects(
+        new TextStore("before").baseTextMatchesFile(file, "utf8"),
+        (error) => error === failure,
+      );
+      assert.equal(stream.closed, true);
+    } finally {
+      fs.unlinkSync(file);
+      fs.rmdirSync(directory);
+    }
+  });
+}
+
 test("reload shares matching backing leaves while retaining every changed, truncated and appended unit", async () => {
   const before = "x".repeat(1024 * 1024),
     store = new TextStore(before);

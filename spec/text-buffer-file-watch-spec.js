@@ -278,6 +278,78 @@ describe("TextBuffer deferred file observation", () => {
     await buffer.endFileOperation();
   });
 
+  it("waits for an active baseline read to close before moving its parent directory", async () => {
+    const parent = path.join(directory, "current");
+    const target = path.join(parent, "owned.txt");
+    fs.mkdirSync(parent);
+    fs.writeFileSync(target, "before");
+    buffer = await TextBuffer.load(target);
+    await buffer.getFileWatchStartPromise();
+    buffer.append(" with unsaved edits");
+
+    let readStarted;
+    let releaseRead;
+    const started = new Promise((resolve) => {
+      readStarted = resolve;
+    });
+    const release = new Promise((resolve) => {
+      releaseRead = resolve;
+    });
+    const compare = buffer.buffer.baseTextMatchesFile.bind(buffer.buffer);
+    let stream;
+    spyOn(buffer.buffer, "baseTextMatchesFile").and.callFake((filePath, encoding) => {
+      if (stream) return compare(filePath, encoding);
+      // Keep the real native read open at its callback boundary. Windows denies
+      // a parent-directory rename while this ordinary child read is still open.
+      stream = fs.createReadStream(filePath, {
+        fs: {
+          open: fs.open,
+          close: fs.close,
+          read(...args) {
+            const callback = args.pop();
+            fs.read(...args, (...result) => {
+              readStarted();
+              release.then(() => callback(...result));
+            });
+          },
+        },
+      });
+      return compare(stream, encoding);
+    });
+    const reconcile = buffer.reconcileWatchedFile();
+    const registry = new FileDocumentRegistry();
+    const registration = registerBuffer(registry);
+    const move = { oldPath: parent, newPath: path.join(directory, "moved"), isDirectory: true };
+    let operation;
+    let ready;
+    let prepared = false;
+    try {
+      await started;
+      operation = registry.beginFileMove([move]);
+      ready = operation.ready.then(() => {
+        prepared = true;
+        expect(stream.closed).toBe(true);
+      });
+      await new Promise(setImmediate);
+      expect(prepared).toBe(false);
+      releaseRead();
+      await ready;
+      await fs.promises.rename(move.oldPath, move.newPath);
+      await operation.complete([move]);
+      expect(buffer.getPath()).toBe(path.join(move.newPath, "owned.txt"));
+      expect(buffer.getText()).toBe("before with unsaved edits");
+      expect(buffer.getFileState()).toBe("modified");
+      expect(fs.readFileSync(buffer.getPath(), "utf8")).toBe("before");
+    } finally {
+      releaseRead();
+      await reconcile;
+      if (ready) await ready;
+      await operation?.complete([]);
+      registration.dispose();
+      registry.dispose();
+    }
+  });
+
   it("keeps markers and history unchanged when a pending load observes an edit and rollback", async () => {
     const custom = source();
     buffer = await TextBuffer.load(custom);

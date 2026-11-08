@@ -4504,7 +4504,7 @@ class TextBuffer {
     const source = file instanceof File ? file.getPath() : file.createReadStream();
     let baseTextMatchesFile;
     try {
-      baseTextMatchesFile = await this.buffer.baseTextMatchesFile(source, this.getEncoding());
+      baseTextMatchesFile = await this.compareFileWithBaseText(source);
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
       if (
@@ -4799,6 +4799,18 @@ class TextBuffer {
     this.emitter.emit("did-reload");
   }
 
+  async compareFileWithBaseText(source) {
+    this.pendingFileLoads++;
+    try {
+      return await this.buffer.baseTextMatchesFile(source, this.getEncoding());
+    } finally {
+      this.pendingFileLoads--;
+      if (this.pendingFileLoads === 0) {
+        for (const resolve of this.fileLoadWaiters.splice(0)) resolve();
+      }
+    }
+  }
+
   async beginFileOperation() {
     this.fileWatchOperationDepth++;
     this.fileOperationGeneration++;
@@ -4864,7 +4876,7 @@ class TextBuffer {
         const source = file instanceof File ? file.getPath() : file.createReadStream();
         let baseTextMatchesFile;
         try {
-          baseTextMatchesFile = await this.buffer.baseTextMatchesFile(source, this.getEncoding());
+          baseTextMatchesFile = await this.compareFileWithBaseText(source);
         } catch (error) {
           if (error.code === "ENOENT") return onDidDelete();
           throw error;
