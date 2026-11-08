@@ -3,6 +3,7 @@ const path = require("node:path");
 const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const {
   DOMScrollbarManager,
+  ScrollbarActivity,
   scrollbarSize,
   createScrollbarRuntime,
   scrollbarPresentation,
@@ -67,6 +68,37 @@ module.exports = class ScrollbarManager {
    */
   attach(element, options = {}) {
     return this.forDocument(element.ownerDocument)?.attach(element, options) ?? null;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Reveal transient overlay chrome after a handled navigation action, even at a boundary.
+   * Hover and dragging retain visibility; activity expires 700 ms after the last action.
+   * @param {HTMLElement} element - Editor element or the actual DOM scrollport, already attached.
+   * @returns {Boolean} Whether transient chrome accepted the activity. Persistent surfaces are unchanged.
+   * @category DOM Surfaces
+   */
+  reveal(element) {
+    if (element.matches("lumine-text-editor"))
+      return element.getComponent?.()?.revealScrollbars() ?? false;
+    return this.documents.get(element.ownerDocument)?.reveal(element) ?? false;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Create the shared activity timer for renderer-owned scrollbar chrome.
+   * @param {HTMLElement} element - Surface whose document owns the timer.
+   * @param {Function} onChange - Receives the active Boolean when recent activity starts or expires; combine it with hover and dragging in the renderer.
+   * @returns {Object|null} Controller with active, reveal(), clear() and dispose(), or null for an inert document. Dispose when the surface is removed or moves to another document.
+   * @category DOM Surfaces
+   */
+  createActivity(element, onChange) {
+    const window = element.ownerDocument.defaultView;
+    return window ? new ScrollbarActivity({ window, onChange }) : null;
   }
 
   /**

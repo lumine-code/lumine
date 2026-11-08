@@ -503,6 +503,7 @@ class Environment {
       textEditorRegistry: this.textEditors,
       textEditorFactory: this.textEditorFactory,
       styleManager: this.styles,
+      scrollbarManager: this.scrollbars,
       enablePersistence: this.enablePersistence,
     });
 

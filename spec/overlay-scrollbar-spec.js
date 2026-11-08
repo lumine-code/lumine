@@ -1,4 +1,77 @@
-const { OverlayScrollbar, scrollbarPresentation } = require("../src/overlay-scrollbar");
+const {
+  OverlayScrollbar,
+  ScrollbarActivity,
+  scrollbarPresentation,
+} = require("../src/overlay-scrollbar");
+
+describe("Scrollbar activity deadline", () => {
+  function clock() {
+    let now = 0;
+    let id = 0;
+    const timers = new Map();
+    const window = {
+      performance: { now: () => now },
+      setTimeout: jasmine.createSpy("setTimeout").and.callFake((callback, delay) => {
+        const handle = id++;
+        timers.set(handle, { at: now + delay, callback });
+        return handle;
+      }),
+      clearTimeout: jasmine
+        .createSpy("clearTimeout")
+        .and.callFake((handle) => timers.delete(handle)),
+    };
+    return {
+      window,
+      timers,
+      tick(duration) {
+        const end = now + duration;
+        for (;;) {
+          const next = [...timers].sort((a, b) => a[1].at - b[1].at)[0];
+          if (!next || next[1].at > end) break;
+          now = next[1].at;
+          timers.delete(next[0]);
+          next[1].callback();
+        }
+        now = end;
+      },
+    };
+  }
+
+  it("extends one deadline without replacing a timer for repeated activity", () => {
+    const time = clock();
+    const onChange = jasmine.createSpy("visibility");
+    const activity = new ScrollbarActivity({ window: time.window, onChange });
+    activity.reveal();
+    time.tick(600);
+    for (let index = 0; index < 100; index++) activity.reveal();
+    expect(time.window.setTimeout).toHaveBeenCalledTimes(1);
+    expect(time.window.clearTimeout).not.toHaveBeenCalled();
+    time.tick(699);
+    expect(activity.active).toBeTrue();
+    expect(time.timers.size).toBe(1);
+    time.tick(1);
+    expect(activity.active).toBeFalse();
+    expect(onChange.calls.allArgs()).toEqual([[true], [false]]);
+    expect(time.timers.size).toBe(0);
+  });
+
+  it("clears handle zero and retires a disposed controller without callbacks", () => {
+    const time = clock();
+    const onChange = jasmine.createSpy("visibility");
+    const activity = new ScrollbarActivity({ window: time.window, onChange });
+    activity.reveal();
+    activity.clear();
+    expect(time.window.clearTimeout).toHaveBeenCalledWith(0);
+    expect(onChange.calls.allArgs()).toEqual([[true], [false]]);
+    activity.reveal();
+    activity.dispose();
+    activity.reveal();
+    time.tick(2000);
+    expect(activity.active).toBeFalse();
+    expect(onChange.calls.allArgs()).toEqual([[true], [false], [true]]);
+    expect(time.timers.size).toBe(0);
+  });
+});
 
 describe("Shared overlay scrollbars", () => {
   let components, fixtures;
@@ -460,15 +533,141 @@ describe("Shared overlay scrollbars", () => {
     expect(controller.layer.classList.contains("is-persistent")).toBeTrue();
   });
 
-  it("reveals a panel for keyboard focus without changing viewport dimensions", () => {
-    const { element, content, controller } = scrollport({ policy: "auto" });
+  it("reveals a panel for navigation rather than static focus without changing viewport dimensions", () => {
+    const { element, content, controller } = scrollport({ kind: "panel" });
     const input = document.createElement("input");
     content.appendChild(input);
     const before = [element.clientWidth, element.clientHeight];
     input.focus();
+    spyOn(controller.owner, "matches").and.returnValue(false);
+    spyOn(controller.layer, "matches").and.returnValue(false);
     controller.syncVisibility();
+    expect(controller.layer.classList.contains("is-revealed")).toBeFalse();
+    expect(lumine.scrollbars.reveal(element)).toBeTrue();
     expect(controller.layer.classList.contains("is-revealed")).toBeTrue();
     expect([element.clientWidth, element.clientHeight]).toEqual(before);
+  });
+
+  it("retains hover and dragging after activity expires without measuring or publishing geometry", () => {
+    const { element, controller } = scrollport({ kind: "panel" });
+    let hover = true;
+    const matches = controller.owner.matches;
+    spyOn(controller.owner, "matches").and.callFake((selector) =>
+      selector === ":hover" ? hover : matches.call(controller.owner, selector),
+    );
+    spyOn(controller.layer, "matches").and.returnValue(false);
+    spyOn(controller, "read").and.callThrough();
+    const callback = jasmine.createSpy("geometry");
+    controller.callbacks.add(callback);
+    const geometry = controller.publicGeometry;
+    for (let index = 0; index < 100; index++) lumine.scrollbars.reveal(element);
+    controller.activity.clear();
+    expect(controller.layer.classList.contains("is-revealed")).toBeTrue();
+    hover = false;
+    controller.vertical.drag = { id: 1 };
+    controller.syncVisibility();
+    expect(controller.layer.classList.contains("is-revealed")).toBeTrue();
+    controller.vertical.drag = null;
+    controller.syncVisibility();
+    expect(controller.layer.classList.contains("is-revealed")).toBeFalse();
+    expect(controller.publicGeometry).toBe(geometry);
+    expect(controller.read).not.toHaveBeenCalled();
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("reveals actual native scroll changes while ignoring duplicate scroll events", () => {
+    const { element, controller } = scrollport({ kind: "panel" });
+    spyOn(controller.activity, "reveal").and.callThrough();
+    element.scrollTop = 100;
+    element.dispatchEvent(new Event("scroll"));
+    expect(controller.activity.reveal).toHaveBeenCalledTimes(1);
+    element.dispatchEvent(new Event("scroll"));
+    expect(controller.activity.reveal).toHaveBeenCalledTimes(1);
+    element.scrollLeft = 100;
+    element.dispatchEvent(new Event("scroll"));
+    expect(controller.activity.reveal).toHaveBeenCalledTimes(2);
+  });
+
+  it("reveals scrollbar gestures even when thumb geometry already has the destination", () => {
+    const { element, controller } = scrollport({ kind: "panel" });
+    controller.vertical.updatePosition(100);
+    element.scrollTop = 100;
+    element.dispatchEvent(new Event("scroll"));
+    expect(controller.activity.active).toBeTrue();
+  });
+
+  it("routes common select-list navigation to its actual list scrollport", async () => {
+    const list = lumine.workspace.buildSelectList({
+      items: ["one", "two"],
+      renderItem: (item) => ({ primary: item }),
+    });
+    const element = list.getElement();
+    jasmine.attachToDOM(element);
+    fixtures.push(element);
+    components.push({ destroy: () => list.destroy() });
+    await list.setQuery("");
+    spyOn(lumine.scrollbars, "reveal").and.callThrough();
+    for (const command of [
+      "core:move-up",
+      "core:move-down",
+      "core:move-to-top",
+      "core:move-to-bottom",
+    ])
+      lumine.commands.dispatch(element, command);
+    expect(lumine.scrollbars.reveal).toHaveBeenCalledTimes(4);
+    for (const call of lumine.scrollbars.reveal.calls.allArgs())
+      expect(call).toEqual([list.component.refs.items]);
+    lumine.commands.dispatch(element, "unknown:navigation");
+    expect(lumine.scrollbars.reveal).toHaveBeenCalledTimes(4);
+  });
+
+  it("allocates no activity timer for persistent, gutter or nonoverflowing surfaces", () => {
+    for (const options of [{ kind: "document" }, { layout: "gutter" }, { kind: "panel" }]) {
+      const { element, content, controller } = scrollport(options);
+      if (options.kind === "panel") {
+        content.style.cssText = "width:10px;height:10px";
+        measure(controller);
+      }
+      expect(lumine.scrollbars.reveal(element)).toBeFalse();
+      expect(controller.activity).toBeFalsy();
+    }
+  });
+
+  it("retains navigation activity when expanding a fitting panel introduces overflow", () => {
+    const { element, content, controller } = scrollport({ kind: "panel" });
+    content.style.cssText = "width:10px;height:10px";
+    measure(controller);
+    expect(lumine.scrollbars.reveal(element)).toBeFalse();
+    expect(controller.activity).toBeFalsy();
+    content.style.height = "1000px";
+    measure(controller);
+    expect(controller.activity.active).toBeTrue();
+    expect(controller.layer.classList.contains("is-revealed")).toBeTrue();
+  });
+
+  it("disposes activity when hidden, made persistent or detached", () => {
+    const { element, controller } = scrollport({ kind: "panel" });
+    lumine.scrollbars.reveal(element);
+    const activity = controller.activity;
+    element.hidden = true;
+    measure(controller);
+    expect(activity.disposed).toBeTrue();
+    expect(activity.timer).toBeNull();
+    element.hidden = false;
+    measure(controller);
+    lumine.scrollbars.reveal(element);
+    const next = controller.activity;
+    controller.options.policy = "always";
+    measure(controller);
+    expect(next.disposed).toBeTrue();
+    expect(lumine.scrollbars.reveal(element)).toBeFalse();
+    controller.options.policy = "hover";
+    measure(controller);
+    const last = controller.activity;
+    lumine.scrollbars.reveal(element);
+    controller.destroy();
+    expect(last.disposed).toBeTrue();
+    expect(last.timer).toBeNull();
   });
 
   it("places RTL menu tracks on the left and maps negative native horizontal offsets", () => {

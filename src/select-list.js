@@ -901,18 +901,22 @@ class SelectList extends InputDialog {
     return {
       ...super.commandsForElement(),
       "core:move-up": (event) => {
+        this.services.scrollbarManager?.reveal(this.component.refs.items);
         this.selectPrevious();
         event.stopPropagation();
       },
       "core:move-down": (event) => {
+        this.services.scrollbarManager?.reveal(this.component.refs.items);
         this.selectNext();
         event.stopPropagation();
       },
       "core:move-to-top": (event) => {
+        this.services.scrollbarManager?.reveal(this.component.refs.items);
         this.selectFirst();
         event.stopPropagation();
       },
       "core:move-to-bottom": (event) => {
+        this.services.scrollbarManager?.reveal(this.component.refs.items);
         this.selectLast();
         event.stopPropagation();
       },

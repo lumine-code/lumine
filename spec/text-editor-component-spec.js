@@ -249,9 +249,13 @@ describe("TextEditorComponent", () => {
         expect(component.refs.scrollContainer.classList.contains("is-persistent")).toBe(false);
         expect(component.refs.scrollContainer.classList.contains("is-hover")).toBe(true);
         element.classList.add("disable-animations");
+        element.style.transform = "translateX(-10000px)";
         element.focus();
         expect(element.contains(document.activeElement)).toBe(true);
         const horizontalRail = component.refs.horizontalScrollbar.element;
+        expect(getComputedStyle(horizontalRail).opacity).toBe("0");
+        expect(getComputedStyle(horizontalRail).pointerEvents).toBe("none");
+        expect(lumine.scrollbars.reveal(element)).toBe(true);
         expect(getComputedStyle(horizontalRail).opacity).toBe("1");
         expect(getComputedStyle(horizontalRail).pointerEvents).toBe("auto");
         element.dataset.scrollbar = "always";

@@ -130,10 +130,10 @@ lumine-text-editor ::-webkit-scrollbar-thumb {
 }
 .lumine-scrollbar-overlay:is(.is-persistent, .is-revealed) > .lumine-scrollbar,
 .lumine-scrollbar:is(:hover, .is-dragging),
-.scroll-view:is(.is-gutter, .is-persistent) > .lumine-scrollbar,
+.scroll-view:is(.is-gutter, .is-persistent, .is-revealed) > .lumine-scrollbar,
 .scroll-view.is-hover:hover > .lumine-scrollbar,
-lumine-text-editor:is(:hover, :focus-within) > div > .scroll-view.is-hover > .lumine-scrollbar,
-lumine-dock lumine-pane:is(:hover, :focus-within) .scroll-view.is-overlay > .lumine-scrollbar {
+lumine-text-editor:hover > div > .scroll-view.is-hover > .lumine-scrollbar,
+lumine-dock lumine-pane:hover .scroll-view.is-hover > .lumine-scrollbar {
   opacity: 1;
   pointer-events: auto;
 }

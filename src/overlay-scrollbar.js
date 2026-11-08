@@ -4,6 +4,57 @@ function createScrollbarRuntime() {
   const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
   const finite = (value) => (Number.isFinite(value) ? Math.max(0, value) : 0);
 
+  // Visibility is independent of geometry. Extending the deadline does not
+  // replace a timer on every scroll frame or repeated navigation command.
+  class ScrollbarActivity {
+    constructor({ window, onChange, delay = 700 }) {
+      this.window = window;
+      this.onChange = onChange;
+      this.delay = delay;
+      this.active = false;
+      this.timer = null;
+    }
+
+    reveal(duration = this.delay) {
+      if (this.disposed) return;
+      this.deadline = this.window.performance.now() + duration;
+      if (!this.active) {
+        this.active = true;
+        this.onChange(true);
+      }
+      if (this.timer === null) this.schedule(duration);
+    }
+
+    schedule(delay) {
+      this.timer = this.window.setTimeout(() => {
+        this.timer = null;
+        if (this.disposed) return;
+        const remaining = this.deadline - this.window.performance.now();
+        if (remaining > 0) this.schedule(remaining);
+        else {
+          this.active = false;
+          this.onChange(false);
+        }
+      }, delay);
+    }
+
+    clear() {
+      if (this.timer !== null) this.window.clearTimeout(this.timer);
+      this.timer = null;
+      if (this.active) {
+        this.active = false;
+        this.onChange(false);
+      }
+    }
+
+    dispose() {
+      this.disposed = true;
+      if (this.timer !== null) this.window.clearTimeout(this.timer);
+      this.timer = null;
+      this.active = false;
+    }
+  }
+
   function scrollbarSize(element, editor = false) {
     const window = element.ownerDocument.defaultView;
     if (!window) return 10;
@@ -514,9 +565,10 @@ function createScrollbarRuntime() {
       }
       this.owner = presentation.focusOwner;
       const persistent = presentation.policy === "always";
+      const nativeScrollLeft = element.scrollLeft;
       const scrollLeft = this.rtl
-        ? Math.max(0, scrollWidth - width) + element.scrollLeft
-        : element.scrollLeft;
+        ? Math.max(0, scrollWidth - width) + nativeScrollLeft
+        : nativeScrollLeft;
       const wheelChain = [];
       for (let node = element; node; node = node.parentElement) {
         if (typeof node.scrollBy !== "function") continue;
@@ -594,6 +646,7 @@ function createScrollbarRuntime() {
         canScrollVertically,
         scrollTop: element.scrollTop,
         scrollLeft,
+        nativeScrollLeft,
         wheelChain,
         wheelLineHeight: parseFloat(style.lineHeight) || 16,
         // Match native defaults: macOS preserves the delivered axes; other
@@ -646,6 +699,10 @@ function createScrollbarRuntime() {
       }
       const old = this.geometry;
       this.geometry = snapshot;
+      if (!old) {
+        this.scrollTop = snapshot.scrollTop;
+        this.scrollLeft = snapshot.nativeScrollLeft;
+      }
       if (snapshot.followSibling) {
         if (this.element.nextSibling !== this.layer)
           snapshot.parent.insertBefore(this.layer, this.element.nextSibling);
@@ -683,6 +740,27 @@ function createScrollbarRuntime() {
         canScroll: snapshot.canScrollHorizontally,
       });
       this.horizontal.element.style.left = `${snapshot.horizontalInset}px`;
+      const transient =
+        !snapshot.persistent &&
+        snapshot.layout === "overlay" &&
+        snapshot.visible &&
+        (snapshot.canScrollVertically || snapshot.canScrollHorizontally);
+      if (transient && !this.activity)
+        this.activity = new ScrollbarActivity({
+          window: this.manager.window,
+          onChange: () => this.syncVisibility(),
+        });
+      else if (!transient && this.activity) {
+        this.activity.dispose();
+        this.activity = null;
+      }
+      if (snapshot.persistent || snapshot.layout !== "overlay" || !snapshot.visible)
+        this.pendingActivityDeadline = null;
+      else if (this.pendingActivityDeadline != null) {
+        const remaining = this.pendingActivityDeadline - this.manager.window.performance.now();
+        if (remaining > 0 && this.activity) this.activity.reveal(remaining);
+        if (remaining <= 0 || this.activity) this.pendingActivityDeadline = null;
+      }
       this.syncVisibility();
       const keys = [
         "layout",
@@ -704,13 +782,20 @@ function createScrollbarRuntime() {
     }
 
     syncPosition() {
-      if (!this.geometry) return;
-      this.vertical.updatePosition(this.element.scrollTop);
+      if (!this.geometry) {
+        this.reveal();
+        return;
+      }
+      const top = this.element.scrollTop;
+      const left = this.element.scrollLeft;
+      const moved = top !== this.scrollTop || left !== this.scrollLeft;
+      this.scrollTop = top;
+      this.scrollLeft = left;
+      this.vertical.updatePosition(top);
       this.horizontal.updatePosition(
-        this.rtl
-          ? this.geometry.scrollWidth - this.geometry.viewportWidth + this.element.scrollLeft
-          : this.element.scrollLeft,
+        this.rtl ? this.geometry.scrollWidth - this.geometry.viewportWidth + left : left,
       );
+      if (moved) this.reveal();
     }
 
     routeWheel(event) {
@@ -809,15 +894,30 @@ function createScrollbarRuntime() {
     }
 
     syncVisibility() {
-      if (!this.owner) return;
-      const document = this.element.ownerDocument;
+      if (!this.owner || this.destroyed) return;
       const visible =
         this.owner.matches(":hover") ||
-        this.owner.contains(document.activeElement) ||
         this.layer.matches(":hover") ||
+        !!this.activity?.active ||
         !!this.vertical.drag ||
         !!this.horizontal.drag;
       this.layer.classList.toggle("is-revealed", visible);
+    }
+
+    reveal() {
+      if (this.destroyed) return false;
+      if (!this.activity) {
+        // A handled expand/navigation can introduce overflow on the next
+        // layout pass. Remember its deadline without measuring or a timer.
+        if (
+          !this.geometry ||
+          (!this.geometry.persistent && this.geometry.layout === "overlay" && this.geometry.visible)
+        )
+          this.pendingActivityDeadline = this.manager.window.performance.now() + 700;
+        return false;
+      }
+      this.activity.reveal();
+      return true;
     }
 
     refresh() {
@@ -829,6 +929,8 @@ function createScrollbarRuntime() {
     destroy() {
       if (this.destroyed) return;
       this.destroyed = true;
+      this.activity?.dispose();
+      this.activity = null;
       this.observer.disconnect();
       this.layer.removeEventListener("wheel", this.wheel);
       this.vertical.destroy();
@@ -875,11 +977,6 @@ function createScrollbarRuntime() {
         },
         pointerover: () => this.syncVisibility(),
         pointerout: () => this.syncVisibility(),
-        focusin: () => this.syncVisibility(),
-        focusout: () =>
-          this.window.queueMicrotask(() => {
-            if (!this.destroyed) this.syncVisibility();
-          }),
       };
       for (const [name, callback] of Object.entries(this.listeners))
         document.addEventListener(name, callback, true);
@@ -1034,6 +1131,10 @@ function createScrollbarRuntime() {
       return controller;
     }
 
+    reveal(element) {
+      return this.controllers.get(element)?.reveal() ?? false;
+    }
+
     scan(root) {
       if (!root?.isConnected || root.closest(excluded)) return;
       const inspect = (element) => {
@@ -1122,7 +1223,13 @@ function createScrollbarRuntime() {
       this.dirty.clear();
     }
   }
-  return { OverlayScrollbar, DOMScrollbarManager, scrollbarSize, scrollbarPresentation };
+  return {
+    ScrollbarActivity,
+    OverlayScrollbar,
+    DOMScrollbarManager,
+    scrollbarSize,
+    scrollbarPresentation,
+  };
 }
 
 module.exports = { ...createScrollbarRuntime(), createScrollbarRuntime };

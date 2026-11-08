@@ -1201,11 +1201,16 @@ const rewrapCommandListener = function (listener, wrap) {
 var stopEventPropagation = function (notificationManager, commandListeners) {
   const newCommandListeners = {};
   for (let commandName in commandListeners) {
+    const scrollbarNavigation =
+      /^(?:core:(?:move-|select-|page-)|editor:(?:move-|select-|add-selection-))/.test(
+        commandName,
+      ) || /^editor:scroll-(?:up|down|to-cursor|to-zone)$/.test(commandName);
     newCommandListeners[commandName] = rewrapCommandListener(
       commandListeners[commandName],
       (didDispatch) =>
         function (event) {
           event.stopPropagation();
+          if (scrollbarNavigation) this.getComponent?.()?.revealScrollbars();
           return require("./settle-editor-command")(
             () =>
               require("./text-editor-input-queue")(this.getModel(), () =>

@@ -418,6 +418,7 @@ module.exports = class Workspace extends Model {
       tooltipManager: params.tooltipManager,
       textEditorRegistry: params.textEditorRegistry,
       textEditorFactory: params.textEditorFactory,
+      scrollbarManager: params.scrollbarManager,
       applicationDelegate: params.applicationDelegate,
     };
     this.modalDialogFactory = new ModalDialogFactory(this.modalDialogServices);

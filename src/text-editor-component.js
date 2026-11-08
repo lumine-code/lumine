@@ -8,7 +8,7 @@ const { idleDisposals } = require("./idle-disposal-queue");
 const { isPairedCharacter, hasRtlText } = require("./text-utils");
 const NodePool = require("./node-pool");
 const EditorScrollbarComponent = require("./editor-scrollbar-component");
-const { scrollbarSize, scrollbarPresentation } = require("./overlay-scrollbar");
+const { ScrollbarActivity, scrollbarSize, scrollbarPresentation } = require("./overlay-scrollbar");
 const GutterContainerComponent = require("./gutter-container-component");
 const CursorsAndInputComponent = require("./cursors-and-input-component");
 const LinesTileComponent = require("./lines-tile-component");
@@ -1162,6 +1162,7 @@ module.exports = class TextEditorComponent {
     classes.toggle("is-dock", dock);
     classes.toggle("is-persistent", presentation.policy === "always");
     classes.toggle("is-hover", presentation.policy === "hover");
+    this.updateScrollbarActivity();
 
     let left = null;
     let width = null;
@@ -2942,8 +2943,11 @@ module.exports = class TextEditorComponent {
   }
 
   didDetach() {
+    this.disposeScrollbarActivity();
     if (this.attached) {
       this.scrollAnimator.cancel();
+      this.refs.verticalScrollbar?.scrollbar.endDrag();
+      this.refs.horizontalScrollbar?.scrollbar.endDrag();
       this.highlightsComponent?.cancelFlashes();
       this.stopDragging?.call(this);
       this.focused = false;
@@ -3002,6 +3006,7 @@ module.exports = class TextEditorComponent {
       this.props.model.setVisible(false);
       this.scrollAnimator.finish();
     }
+    this.updateScrollbarActivity();
     const displayLayer = this.props.model.displayLayer;
     displayLayer.buffer.getLanguageMode().requestHighlighting?.(displayLayer, [], false);
   }
@@ -3122,6 +3127,7 @@ module.exports = class TextEditorComponent {
       if (accepted) {
         // The user took over the viewport; stop pinning the inherited anchor.
         this.settlingScrollAnchor = null;
+        this.revealScrollbars();
       }
       return accepted;
     }
@@ -3215,6 +3221,7 @@ module.exports = class TextEditorComponent {
   }
 
   didDragScrollbar({ dragging }) {
+    this.syncScrollbarVisibility();
     if (!dragging) return;
     this.scrollAnimator.cancel();
     this.settlingScrollAnchor = null;
@@ -4224,6 +4231,57 @@ module.exports = class TextEditorComponent {
     return this.scrollbarPresentation.layout;
   }
 
+  updateScrollbarActivity() {
+    const presentation = this.scrollbarPresentation;
+    const window = this.window;
+    const enabled =
+      this.attached &&
+      this.visible &&
+      window &&
+      !this.props.model.isMini() &&
+      presentation.layout === "overlay" &&
+      presentation.policy === "hover" &&
+      (this.canScrollVertically() || this.canScrollHorizontally());
+    if (this.scrollbarActivity && (!enabled || this.scrollbarActivityWindow !== window)) {
+      this.disposeScrollbarActivity();
+    }
+    if (enabled && !this.scrollbarActivity) {
+      this.scrollbarActivityWindow = window;
+      this.scrollbarActivity = new ScrollbarActivity({
+        window,
+        onChange: () => this.syncScrollbarVisibility(),
+      });
+    }
+    this.syncScrollbarVisibility();
+  }
+
+  disposeScrollbarActivity() {
+    const previous = this.scrollbarActivity;
+    this.scrollbarActivity = null;
+    this.scrollbarActivityWindow = null;
+    previous?.dispose();
+    this.syncScrollbarVisibility();
+  }
+
+  syncScrollbarVisibility() {
+    const container = this.refs.scrollContainer;
+    if (!container) return;
+    const visible = !!(
+      this.scrollbarActivity &&
+      (this.scrollbarActivity.active ||
+        this.refs.verticalScrollbar?.scrollbar.drag ||
+        this.refs.horizontalScrollbar?.scrollbar.drag)
+    );
+    if (container.classList.contains("is-revealed") !== visible)
+      container.classList.toggle("is-revealed", visible);
+  }
+
+  revealScrollbars() {
+    if (!this.attached || !this.visible || !this.scrollbarActivity) return false;
+    this.scrollbarActivity.reveal();
+    return true;
+  }
+
   getHorizontalScrollbarTrackInset() {
     const { layout, kind } = this.scrollbarPresentation;
     return this.canScrollVertically() || (layout === "overlay" && kind === "document")
@@ -5152,6 +5210,7 @@ module.exports = class TextEditorComponent {
 
   didChangeSelectionRange(event) {
     const { model } = this.props;
+    if (!event?.textChanged && event?.origin !== "reload") this.revealScrollbars();
 
     if (this.getPlatform() === "linux") {
       // Buffer edits move selections to follow their text; they are not a new
@@ -5720,6 +5779,7 @@ module.exports = class TextEditorComponent {
       this.scrollTopPending = true;
       this.scrollTop = scrollTop;
       this.element.emitter.emit("did-change-scroll-top", scrollTop);
+      this.revealScrollbars();
       return true;
     } else {
       return false;
@@ -5761,6 +5821,7 @@ module.exports = class TextEditorComponent {
       this.scrollLeftPending = true;
       this.scrollLeft = scrollLeft;
       this.element.emitter.emit("did-change-scroll-left", scrollLeft);
+      this.revealScrollbars();
       return true;
     } else {
       return false;
