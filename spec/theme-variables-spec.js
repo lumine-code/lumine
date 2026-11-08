@@ -328,7 +328,7 @@ describe("the theme variable contract", () => {
 
     expect(textSource).toContain(".character-match");
     expect(selectListSource).not.toContain(".character-match");
-    expect(selectListSource).toContain("&:hover:not(.selected)");
+    expect(selectListSource).toContain("&:is(:hover, [data-context-menu-hover]):not(.selected)");
     expect(selectListSource).toContain('> li.select-list-separator[role="separator"]');
     // SelectList's geometry specs verify the separator's visible weight and
     // spacing; their CSS values follow the owning display's pixel grid.
