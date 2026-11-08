@@ -127,13 +127,60 @@ test("NSIS recovery keeps the pinned archive and delegates extraction to the bui
   assert.deepEqual(fixture.requests, [
     {
       url: `${nsisAPI}/tags/nsis%401.2.1`,
-      request: { headers: { Accept: "application/vnd.github+json" }, signal },
+      request: { headers: { Accept: "application/vnd.github+json" }, signal, redirect: "error" },
     },
     {
       url: `${nsisAPI}/assets/123`,
-      request: { headers: { Accept: "application/octet-stream" }, signal },
+      request: { headers: { Accept: "application/octet-stream" }, signal, redirect: "manual" },
     },
   ]);
+});
+
+test("NSIS recovery supplies its explicit token only to the shared official API boundary", async (t) => {
+  const fixture = nsisRecoveryFixture(t, { env: { GITHUB_TOKEN: "fixture-token" } });
+  assert.equal(await fixtureNsisCompiler(fixture.settings), fixture.compiler);
+  assert.deepEqual(
+    fixture.requests.map(({ request }) => request.headers),
+    [
+      { Accept: "application/vnd.github+json", Authorization: "Bearer fixture-token" },
+      { Accept: "application/octet-stream", Authorization: "Bearer fixture-token" },
+    ],
+  );
+  assert.deepEqual(fixture.calls[0], [undefined, fixture.settings.resourcesDirectory]);
+});
+
+test("an NSIS signed asset redirect has no credential and still needs the pinned checksum", async (t) => {
+  const fixture = nsisRecoveryFixture(t, { env: { GITHUB_TOKEN: "fixture-token" } });
+  const signedURL = "https://release-assets.githubusercontent.com/isolated-fixture?signature=test";
+  fixture.settings.fetch = async (url, request) => {
+    fixture.requests.push({ url, request });
+    if (fixture.requests.length === 1) return Response.json(fixture.metadata);
+    if (fixture.requests.length === 2) {
+      return new Response(null, { status: 302, headers: { Location: signedURL } });
+    }
+    assert.equal(fixture.requests.length, 3);
+    assert.equal(url, signedURL);
+    assert.equal(request.headers, undefined);
+    assert.equal(request.redirect, "error");
+    return new Response(fixtureArchive);
+  };
+  assert.equal(await fixtureNsisCompiler(fixture.settings), fixture.compiler);
+  assert.deepEqual(fs.readFileSync(path.join(fixture.directory, nsisArchive)), fixtureArchive);
+  assert.equal(fixture.calls.length, 2);
+});
+
+test("an NSIS asset API rate limit remains a failure without a transport retry", async (t) => {
+  const fixture = nsisRecoveryFixture(t, { env: { GITHUB_TOKEN: "fixture-token" } });
+  fixture.settings.fetch = async (url, request) => {
+    fixture.requests.push({ url, request });
+    return fixture.requests.length === 1
+      ? Response.json(fixture.metadata)
+      : new Response(null, { status: 403 });
+  };
+  await assert.rejects(fixtureNsisCompiler(fixture.settings), /archive HTTP 403/);
+  assert.equal(fixture.calls.length, 1);
+  assert.equal(fixture.requests.length, 2);
+  assert.deepEqual(fs.readdirSync(fixture.directory), []);
 });
 
 test("an available NSIS compiler uses the original builder path once", async (t) => {

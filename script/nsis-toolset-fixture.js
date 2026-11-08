@@ -4,6 +4,7 @@ const { createHash } = require("node:crypto");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { fileURLToPath, pathToFileURL } = require("node:url");
+const { githubReleaseRequest } = require("./github-release-request");
 
 const releases =
   "https://api.github.com/repos/electron-userland/electron-builder-binaries/releases";
@@ -60,10 +61,15 @@ async function fixtureNsisCompiler({
     throw new Error("NSIS recovery requires the owned fixture's real directory");
   }
   const tag = `nsis@${version}`;
-  const metadata = await fetch(`${releases}/tags/${encodeURIComponent(tag)}`, {
-    headers: { Accept: "application/vnd.github+json" },
-    signal,
-  });
+  const metadata = await githubReleaseRequest(
+    fetch,
+    `${releases}/tags/${encodeURIComponent(tag)}`,
+    {
+      accept: "application/vnd.github+json",
+      token: env.GITHUB_TOKEN,
+      signal,
+    },
+  );
   if (!metadata.ok) throw new Error(`Official NSIS release metadata HTTP ${metadata.status}`);
   const release = await metadata.json();
   const assets = release.assets?.filter((asset) => asset.name === filename);
@@ -89,8 +95,9 @@ async function fixtureNsisCompiler({
   }
   signal?.throwIfAborted();
   report(`Downloading ${filename} through the official GitHub release asset API.`);
-  const response = await fetch(`${releases}/assets/${asset.id}`, {
-    headers: { Accept: "application/octet-stream" },
+  const response = await githubReleaseRequest(fetch, `${releases}/assets/${asset.id}`, {
+    accept: "application/octet-stream",
+    token: env.GITHUB_TOKEN,
     signal,
   });
   if (!response.ok) throw new Error(`Official NSIS release archive HTTP ${response.status}`);
