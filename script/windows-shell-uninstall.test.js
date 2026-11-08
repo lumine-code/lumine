@@ -94,6 +94,7 @@ function nsisRecoveryFixture(t, options = {}) {
     nsisChecksums: { [nsisVersion]: { [nsisArchive]: hash(fixtureArchive) } },
     getMakeNsisPath: async (...args) => {
       calls.push(args);
+      if (args[0]?.url === `file://${path.join(directory, nsisArchive)}`) return compiler;
       if (calls.length === 1) throw error;
       assert.equal(calls.length, 2, "one recovery, never retry native assertions");
       return compiler;
@@ -146,7 +147,8 @@ test("NSIS recovery supplies its explicit token only to the shared official API 
       { Accept: "application/octet-stream", Authorization: "Bearer fixture-token" },
     ],
   );
-  assert.deepEqual(fixture.calls[0], [undefined, fixture.settings.resourcesDirectory]);
+  assert.equal(fixture.calls.length, 1);
+  assert.equal(fixture.calls[0][0].version, nsisVersion);
 });
 
 test("an NSIS signed asset redirect has no credential and still needs the pinned checksum", async (t) => {
@@ -166,7 +168,7 @@ test("an NSIS signed asset redirect has no credential and still needs the pinned
   };
   assert.equal(await fixtureNsisCompiler(fixture.settings), fixture.compiler);
   assert.deepEqual(fs.readFileSync(path.join(fixture.directory, nsisArchive)), fixtureArchive);
-  assert.equal(fixture.calls.length, 2);
+  assert.equal(fixture.calls.length, 1);
 });
 
 test("an NSIS asset API rate limit remains a failure without a transport retry", async (t) => {
@@ -178,7 +180,7 @@ test("an NSIS asset API rate limit remains a failure without a transport retry",
       : new Response(null, { status: 403 });
   };
   await assert.rejects(fixtureNsisCompiler(fixture.settings), /archive HTTP 403/);
-  assert.equal(fixture.calls.length, 1);
+  assert.equal(fixture.calls.length, 0);
   assert.equal(fixture.requests.length, 2);
   assert.deepEqual(fs.readdirSync(fixture.directory), []);
 });
@@ -190,6 +192,82 @@ test("an available NSIS compiler uses the original builder path once", async (t)
   assert.deepEqual(fixture.requests, []);
   assert.deepEqual(fs.readdirSync(fixture.directory), []);
 });
+
+test("authenticated NSIS provisioning does not wait for a slow original browser download", async (t) => {
+  const fixture = nsisRecoveryFixture(t, { env: { GITHUB_TOKEN: "fixture-token" } });
+  const gate = Promise.withResolvers();
+  let originalEntered = false;
+  fixture.settings.getMakeNsisPath = async (...args) => {
+    fixture.calls.push(args);
+    if (args[0] == null) {
+      originalEntered = true;
+      return gate.promise;
+    }
+    return fixture.compiler;
+  };
+  const operation = fixtureNsisCompiler(fixture.settings);
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(originalEntered, false, "API provisioning must not await the slow browser route");
+    assert.equal(await operation, fixture.compiler);
+    assert.equal(fixture.calls.length, 1);
+    assert.equal(fixture.calls[0][0].version, nsisVersion);
+    assert.equal(fixture.calls[0][0].checksum, hash(fixtureArchive));
+    assert.equal(fixture.requests.length, 2);
+  } finally {
+    gate.resolve(fixture.compiler);
+    await operation.catch(() => {});
+  }
+});
+
+for (const selector of [undefined, null, "latest", nsisVersion]) {
+  test(`authenticated provisioning retains the reviewed NSIS selector ${JSON.stringify(selector)}`, async (t) => {
+    const fixture = nsisRecoveryFixture(t, { selector, env: { GITHUB_TOKEN: "fixture-token" } });
+    assert.equal(await fixtureNsisCompiler(fixture.settings), fixture.compiler);
+    assert.equal(fixture.calls.length, 1);
+    assert.equal(fixture.calls[0][0].version, nsisVersion);
+    assert.equal(fixture.calls[0][0].checksum, hash(fixtureArchive));
+  });
+}
+
+test("a changed default bundle catalogue keeps the original builder selection", async (t) => {
+  const fixture = nsisRecoveryFixture(t, { env: { GITHUB_TOKEN: "fixture-token" } });
+  fixture.settings.nsisChecksums["1.2.2"] = { [nsisArchive]: "a".repeat(64) };
+  fixture.settings.getMakeNsisPath = async (...args) => {
+    fixture.calls.push(args);
+    return fixture.compiler;
+  };
+  assert.equal(await fixtureNsisCompiler(fixture.settings), fixture.compiler);
+  assert.deepEqual(fixture.calls, [[undefined, fixture.settings.resourcesDirectory]]);
+  assert.deepEqual(fixture.requests, []);
+});
+
+for (const key of [
+  "NPM_CONFIG_ELECTRON_BUILDER_BINARIES_MIRROR",
+  "npm_config_electron_builder_binaries_mirror",
+  "npm_package_config_electron_builder_binaries_mirror",
+  "ELECTRON_BUILDER_BINARIES_MIRROR",
+]) {
+  test(`authenticated provisioning preserves the configured ${key}`, async (t) => {
+    const fixture = nsisRecoveryFixture(t, {
+      env: { GITHUB_TOKEN: "fixture-token", [key]: "https://mirror.invalid/" },
+    });
+    await assert.rejects(fixtureNsisCompiler(fixture.settings), (error) => error === fixture.error);
+    assert.equal(fixture.calls.length, 1);
+    assert.deepEqual(fixture.requests, []);
+  });
+}
+
+for (const key of ["HTTPS_PROXY", "https_proxy"]) {
+  test(`authenticated provisioning preserves the configured ${key} route`, async (t) => {
+    const fixture = nsisRecoveryFixture(t, {
+      env: { GITHUB_TOKEN: "fixture-token", [key]: "http://proxy.invalid:8080" },
+    });
+    await assert.rejects(fixtureNsisCompiler(fixture.settings), (error) => error === fixture.error);
+    assert.equal(fixture.calls.length, 1);
+    assert.deepEqual(fixture.requests, []);
+  });
+}
 
 for (const key of ["HTTPS_PROXY", "https_proxy"]) {
   test(`NSIS recovery preserves an explicitly configured ${key}`, async (t) => {

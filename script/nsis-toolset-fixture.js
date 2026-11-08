@@ -10,8 +10,9 @@ const releases =
   "https://api.github.com/repos/electron-userland/electron-builder-binaries/releases";
 const maximumArchiveSize = 256 * 1024 * 1024;
 
-// Keep the builder's ordinary cache, version selection and failures. Only its
-// exact official NSIS archive's temporary HTTP failure has another transport.
+// Keep the builder's version, checksum and extraction. An explicit API token
+// avoids a slow browser download for its one reviewed default bundle; anonymous
+// requests retain the original path and its temporary-error recovery.
 async function fixtureNsisCompiler({
   selector,
   resourcesDirectory,
@@ -23,35 +24,64 @@ async function fixtureNsisCompiler({
   env = process.env,
   report = () => {},
 }) {
-  let originalError;
-  try {
-    return await getMakeNsisPath(selector, resourcesDirectory);
-  } catch (error) {
-    originalError = error;
-  }
-  signal?.throwIfAborted();
-  const match =
-    /^Response code (408|429|5\d\d) \([^\r\n]*\) for (https:\/\/github\.com\/electron-userland\/electron-builder-binaries\/releases\/download\/nsis@([\d.]+)\/([^/?#\s]+))$/.exec(
-      originalError?.message || "",
-    );
-  if (originalError?.name !== "HTTPError" || !match) throw originalError;
   // The builder may be using an explicitly configured HTTPS proxy. Native
   // fetch does not share that transport, so never bypass it with a direct API.
-  if (
-    Object.entries(env).some(([key, value]) => key.toUpperCase() === "HTTPS_PROXY" && value?.trim())
-  ) {
-    throw originalError;
+  const proxyConfigured = Object.entries(env).some(
+    ([key, value]) => key.toUpperCase() === "HTTPS_PROXY" && value?.trim(),
+  );
+  const mirrorConfigured = [
+    "NPM_CONFIG_ELECTRON_BUILDER_BINARIES_MIRROR",
+    "npm_config_electron_builder_binaries_mirror",
+    "npm_package_config_electron_builder_binaries_mirror",
+    "ELECTRON_BUILDER_BINARIES_MIRROR",
+  ].some((key) => env[key]?.trim());
+  const reviewedVersion = "1.2.1";
+  const reviewedArchive = "nsis-bundle-3.12.tar.gz";
+  const bundledVersions = Object.entries(nsisChecksums)
+    .filter(([, files]) => Object.keys(files).some((name) => name.startsWith("nsis-bundle-")))
+    .map(([version]) => version);
+  const apiFirst =
+    env.GITHUB_TOKEN &&
+    !proxyConfigured &&
+    !mirrorConfigured &&
+    (selector == null || selector === "latest" || selector === reviewedVersion) &&
+    bundledVersions.length === 1 &&
+    bundledVersions[0] === reviewedVersion &&
+    /^[a-f0-9]{64}$/.test(nsisChecksums[reviewedVersion]?.[reviewedArchive] || "");
+  let originalURL;
+  let version;
+  let filename;
+  let checksum;
+  if (apiFirst) {
+    version = reviewedVersion;
+    filename = reviewedArchive;
+    checksum = nsisChecksums[version][filename];
+    originalURL = `https://github.com/electron-userland/electron-builder-binaries/releases/download/nsis@${version}/${filename}`;
+  } else {
+    let originalError;
+    try {
+      return await getMakeNsisPath(selector, resourcesDirectory);
+    } catch (error) {
+      originalError = error;
+    }
+    signal?.throwIfAborted();
+    const match =
+      /^Response code (408|429|5\d\d) \([^\r\n]*\) for (https:\/\/github\.com\/electron-userland\/electron-builder-binaries\/releases\/download\/nsis@([\d.]+)\/([^/?#\s]+))$/.exec(
+        originalError?.message || "",
+      );
+    if (originalError?.name !== "HTTPError" || !match || proxyConfigured || mirrorConfigured)
+      throw originalError;
+    [, , originalURL, version, filename] = match;
+    checksum = nsisChecksums[version]?.[filename];
+    if (
+      (selector != null && selector !== "latest" && selector !== version) ||
+      !/^[a-f0-9]{64}$/.test(checksum || "") ||
+      !/^nsis-bundle-[\d.]+\.tar\.gz$/.test(filename)
+    ) {
+      throw originalError;
+    }
   }
-  const [, , originalURL, version, filename] = match;
-  const checksum = nsisChecksums[version]?.[filename];
-  if (
-    (selector != null && selector !== "latest" && selector !== version) ||
-    !/^[a-f0-9]{64}$/.test(checksum || "") ||
-    !/^nsis-bundle-[\d.]+\.tar\.gz$/.test(filename)
-  ) {
-    throw originalError;
-  }
-
+  signal?.throwIfAborted();
   const realDirectory = await fs.realpath(directory);
   if (
     !path.isAbsolute(directory) ||
