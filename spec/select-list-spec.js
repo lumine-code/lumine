@@ -1480,6 +1480,81 @@ describe("SelectList", () => {
   });
 
   describe("selection", () => {
+    it("keeps navigation available without a list scrollport for empty, loading and unmatched sources", async () => {
+      view = textItemView({ items: [], emptyMessage: "Nothing", search: { worker: false } });
+      await addHost().show();
+      const reveal = spyOn(lumine.scrollbars, "reveal").and.callThrough();
+      const commands = [
+        "core:move-up",
+        "core:move-down",
+        "core:move-to-top",
+        "core:move-to-bottom",
+      ];
+      const navigate = () => {
+        expect(view.component.refs.items).toBeUndefined();
+        for (const command of commands) {
+          expect(() => lumine.commands.dispatch(view.getQueryEditor().getElement(), command))
+            .withContext(command)
+            .not.toThrow();
+          expect(view.getSelectedItem()).toBeNull();
+        }
+        expect(reveal).not.toHaveBeenCalled();
+      };
+      navigate();
+      await view.update({ loadingMessage: "Loading…" });
+      navigate();
+      await view.update({ loadingMessage: null });
+      await view.setItems(["one"]);
+      await view.setQuery("no matching item");
+      navigate();
+    });
+
+    for (const [command, selected] of [
+      ["core:move-up", "two"],
+      ["core:move-down", "one"],
+      ["core:move-to-top", "one"],
+      ["core:move-to-bottom", "two"],
+    ]) {
+      it(`handles ${command} before the first source paint without requiring a scrollport`, async () => {
+        view = textItemView({
+          items: [],
+          selection: { allowEmpty: true, initial: { mode: "none" } },
+        });
+        await addHost().show();
+        const reveal = spyOn(lumine.scrollbars, "reveal").and.callThrough();
+        const paint = view.setItems(["one", "two"]);
+        expect(view.component.refs.items).toBeUndefined();
+        expect(() =>
+          lumine.commands.dispatch(view.getQueryEditor().getElement(), command),
+        ).not.toThrow();
+        expect(view.getSelectedItem()).toBe(selected);
+        expect(reveal).not.toHaveBeenCalled();
+        await paint;
+        expect(view.component.refs.items).toBe(find('[role="listbox"]'));
+      });
+    }
+
+    it("reveals the actual rendered scrollport for navigation and repeated boundary actions", async () => {
+      view = textItemView();
+      await addHost().show();
+      const scrollport = find('[role="listbox"]');
+      expect(scrollport.isConnected).toBe(true);
+      const reveal = spyOn(lumine.scrollbars, "reveal").and.callThrough();
+      const actions = [
+        ["core:move-up", "three"],
+        ["core:move-down", "one"],
+        ["core:move-to-top", "one"],
+        ["core:move-to-bottom", "three"],
+        ["core:move-to-bottom", "three"],
+      ];
+      for (const [index, [command, selected]] of actions.entries()) {
+        lumine.commands.dispatch(view.getQueryEditor().getElement(), command);
+        expect(view.getSelectedItem()).toBe(selected);
+        expect(reveal).toHaveBeenCalledTimes(index + 1);
+        expect(reveal.calls.mostRecent().args).toEqual([scrollport]);
+      }
+    });
+
     it("wraps when navigating past the ends of the list", async () => {
       view = textItemView();
       expect(view.getSelectedItem()).toBe("one");
