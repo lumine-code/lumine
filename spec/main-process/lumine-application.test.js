@@ -1820,10 +1820,12 @@ describe("LumineApplication", function () {
         {
           pathsToOpen: [scenario.convertEditorPath("a/1.md")],
           windowStateId: crypto.randomUUID(),
+          windowGeometryId: w1.windowGeometryId,
         },
       );
       await app.openPaths.lastCall.returnValue;
       assert.isFalse(Object.hasOwn(app.openPaths.lastCall.args[0], "windowStateId"));
+      assert.isFalse(Object.hasOwn(app.openPaths.lastCall.args[0], "windowGeometryId"));
       await scenario.assert("[a 1.md] [_ _] [b _]");
 
       electron.ipcMain.emit("open", {}, { pathsToOpen: [scenario.convertRootPath("c")] });
@@ -1852,6 +1854,7 @@ describe("LumineApplication", function () {
             newWindow: true,
             devMode: true,
             windowStateId: suppliedWindowStateId,
+            windowGeometryId: w1.windowGeometryId,
           },
         );
 
@@ -1867,6 +1870,7 @@ describe("LumineApplication", function () {
           require.resolve("../../src/initialize-application-window"),
         );
         assert.notStrictEqual(opened.windowStateId, suppliedWindowStateId);
+        assert.notStrictEqual(opened.windowGeometryId, w1.windowGeometryId);
         await scenario.assert("[a _] [_ _] [b _] [_ _]");
       });
     }

@@ -1641,6 +1641,7 @@ module.exports = class LumineApplication extends EventEmitter {
           // Persistent identities belong to restored or explicitly replaced
           // main-process windows; renderer callers always open a new identity.
           delete options.windowStateId;
+          delete options.windowGeometryId;
           if (typeof options.pathsToOpen === "string") {
             options.pathsToOpen = [options.pathsToOpen];
           }
