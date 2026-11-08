@@ -9,6 +9,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { runNativeFixture } = require("./native-process-fixture");
 const { whatToBuild } = require("./electron-builder");
+const { fixtureNsisCompiler } = require("./nsis-toolset-fixture");
 
 const root = path.resolve(__dirname, "..");
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -52,6 +53,187 @@ function execute(command, args, options = {}) {
   return result;
 }
 
+const nsisVersion = "1.2.1";
+const nsisArchive = "nsis-bundle-3.12.tar.gz";
+const nsisURL = `https://github.com/electron-userland/electron-builder-binaries/releases/download/nsis@${nsisVersion}/${nsisArchive}`;
+const nsisAPI = "https://api.github.com/repos/electron-userland/electron-builder-binaries/releases";
+const fixtureArchive = Buffer.from("isolated transport test bytes");
+
+function nsisRecoveryFixture(t, options = {}) {
+  const temporaryBase = fs.realpathSync.native(os.tmpdir());
+  const directory = fs.realpathSync.native(
+    fs.mkdtempSync(path.join(temporaryBase, "lumine-nsis-transport-")),
+  );
+  t.after(() => {
+    assert.equal(path.dirname(directory), temporaryBase);
+    assert.equal(fs.lstatSync(directory).isSymbolicLink(), false);
+    assert.equal(fs.realpathSync.native(directory), directory);
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  const error = Object.assign(new Error(`Response code 504 (Gateway Time-out) for ${nsisURL}`), {
+    name: "HTTPError",
+  });
+  const compiler = { path: "verified compiler" };
+  const calls = [];
+  const requests = [];
+  const metadata = {
+    tag_name: `nsis@${nsisVersion}`,
+    assets: [
+      {
+        id: 123,
+        name: nsisArchive,
+        size: fixtureArchive.length,
+        browser_download_url: nsisURL.replace("nsis@", "nsis%40"),
+      },
+    ],
+  };
+  const settings = {
+    resourcesDirectory: path.join(root, "resources"),
+    directory,
+    nsisChecksums: { [nsisVersion]: { [nsisArchive]: hash(fixtureArchive) } },
+    getMakeNsisPath: async (...args) => {
+      calls.push(args);
+      if (calls.length === 1) throw error;
+      assert.equal(calls.length, 2, "one recovery, never retry native assertions");
+      return compiler;
+    },
+    fetch: async (url, request) => {
+      requests.push({ url, request });
+      if (requests.length === 1) return Response.json(metadata);
+      assert.equal(requests.length, 2, "one exact official asset request");
+      return new Response(fixtureArchive);
+    },
+    ...options,
+  };
+  return { settings, error, compiler, calls, requests, metadata, directory };
+}
+
+test("NSIS recovery keeps the pinned archive and delegates extraction to the builder", async (t) => {
+  const fixture = nsisRecoveryFixture(t);
+  const signal = new AbortController().signal;
+  fixture.settings.signal = signal;
+  assert.equal(await fixtureNsisCompiler(fixture.settings), fixture.compiler);
+  assert.deepEqual(fixture.calls[0], [undefined, fixture.settings.resourcesDirectory]);
+  assert.deepEqual(fixture.calls[1], [
+    {
+      url: `file://${path.join(fixture.directory, nsisArchive)}`,
+      checksum: hash(fixtureArchive),
+      version: nsisVersion,
+    },
+    fixture.settings.resourcesDirectory,
+  ]);
+  assert.deepEqual(fs.readFileSync(path.join(fixture.directory, nsisArchive)), fixtureArchive);
+  assert.deepEqual(fixture.requests, [
+    {
+      url: `${nsisAPI}/tags/nsis%401.2.1`,
+      request: { headers: { Accept: "application/vnd.github+json" }, signal },
+    },
+    {
+      url: `${nsisAPI}/assets/123`,
+      request: { headers: { Accept: "application/octet-stream" }, signal },
+    },
+  ]);
+});
+
+test("an available NSIS compiler uses the original builder path once", async (t) => {
+  const fixture = nsisRecoveryFixture(t);
+  fixture.settings.getMakeNsisPath = async () => fixture.compiler;
+  assert.equal(await fixtureNsisCompiler(fixture.settings), fixture.compiler);
+  assert.deepEqual(fixture.requests, []);
+  assert.deepEqual(fs.readdirSync(fixture.directory), []);
+});
+
+for (const key of ["HTTPS_PROXY", "https_proxy"]) {
+  test(`NSIS recovery preserves an explicitly configured ${key}`, async (t) => {
+    const fixture = nsisRecoveryFixture(t, { env: { [key]: "http://proxy.invalid:8080" } });
+    await assert.rejects(fixtureNsisCompiler(fixture.settings), (error) => error === fixture.error);
+    assert.equal(fixture.calls.length, 1);
+    assert.deepEqual(fixture.requests, []);
+    assert.deepEqual(fs.readdirSync(fixture.directory), []);
+  });
+}
+
+for (const message of [
+  `Response code 403 (Forbidden) for ${nsisURL}`,
+  `Response code 404 (Not Found) for ${nsisURL}`,
+  `Response code 504 (Gateway Time-out) for ${nsisURL}?mirror=1`,
+  `Response code 504 (Gateway Time-out) for ${nsisURL.replace("github.com/", "mirror.invalid/")}`,
+  `Response code 504 (Gateway Time-out) for ${nsisURL.replace("1.2.1/", "1.2.2/")}`,
+  "checksum mismatch",
+]) {
+  test(`NSIS recovery preserves the original error: ${message}`, async (t) => {
+    const fixture = nsisRecoveryFixture(t);
+    fixture.error.message = message;
+    await assert.rejects(fixtureNsisCompiler(fixture.settings), (error) => error === fixture.error);
+    assert.equal(fixture.calls.length, 1);
+    assert.deepEqual(fixture.requests, []);
+  });
+}
+
+for (const selector of ["0.0.0", "1.2.2", { url: "https://custom.invalid/archive" }]) {
+  test(`a different NSIS selector remains the builder's responsibility: ${JSON.stringify(selector)}`, async (t) => {
+    const fixture = nsisRecoveryFixture(t, { selector });
+    await assert.rejects(fixtureNsisCompiler(fixture.settings), (error) => error === fixture.error);
+    assert.equal(fixture.calls.length, 1);
+    assert.deepEqual(fixture.requests, []);
+  });
+}
+
+for (const change of [
+  (metadata) => (metadata.tag_name = "nsis@1.2.2"),
+  (metadata) => metadata.assets.push(metadata.assets[0]),
+  (metadata) => (metadata.assets[0].id = -1),
+  (metadata) => (metadata.assets[0].size = 0),
+  (metadata) => (metadata.assets[0].browser_download_url = "https://mirror.invalid/archive"),
+]) {
+  test("unmatched NSIS release metadata cannot select another toolset", async (t) => {
+    const fixture = nsisRecoveryFixture(t);
+    change(fixture.metadata);
+    await assert.rejects(fixtureNsisCompiler(fixture.settings), /official NSIS release/i);
+    assert.equal(fixture.calls.length, 1);
+    assert.equal(fixture.requests.length, 1);
+    assert.deepEqual(fs.readdirSync(fixture.directory), []);
+  });
+}
+
+test("corrupt NSIS bytes fail before the builder receives a custom toolset", async (t) => {
+  const fixture = nsisRecoveryFixture(t);
+  fixture.settings.nsisChecksums[nsisVersion][nsisArchive] = "0".repeat(64);
+  await assert.rejects(fixtureNsisCompiler(fixture.settings), /pinned builder checksum/);
+  assert.equal(fixture.calls.length, 1);
+  assert.equal(fixture.requests.length, 2);
+  assert.deepEqual(fs.readdirSync(fixture.directory), []);
+});
+
+test("NSIS recovery does not overwrite an existing owned archive", async (t) => {
+  const fixture = nsisRecoveryFixture(t);
+  fs.writeFileSync(path.join(fixture.directory, nsisArchive), "existing fixture");
+  await assert.rejects(fixtureNsisCompiler(fixture.settings), { code: "EEXIST" });
+  assert.equal(
+    fs.readFileSync(path.join(fixture.directory, nsisArchive), "utf8"),
+    "existing fixture",
+  );
+  assert.equal(fixture.calls.length, 1);
+});
+
+test("NSIS recovery stops on API errors without another attempt", async (t) => {
+  const fixture = nsisRecoveryFixture(t);
+  fixture.settings.fetch = async () => new Response(null, { status: 403 });
+  await assert.rejects(fixtureNsisCompiler(fixture.settings), /metadata HTTP 403/);
+  assert.equal(fixture.calls.length, 1);
+  assert.deepEqual(fs.readdirSync(fixture.directory), []);
+});
+
+test("cancellation prevents the NSIS alternative asset request", async (t) => {
+  const fixture = nsisRecoveryFixture(t);
+  const controller = new AbortController();
+  controller.abort();
+  fixture.settings.signal = controller.signal;
+  await assert.rejects(fixtureNsisCompiler(fixture.settings), { name: "AbortError" });
+  assert.equal(fixture.calls.length, 1);
+  assert.deepEqual(fixture.requests, []);
+});
+
 test(
   "NSIS removes only shell entries owned by the uninstalling installation",
   {
@@ -64,6 +246,7 @@ test(
       fs.mkdtempSync(path.join(temporaryBase, "lumine-shell-uninstall-")),
     );
     let pendingNative;
+    let pendingToolset;
     const executeNative = (...args) => {
       pendingNative = runNativeFixture(...args);
       return pendingNative;
@@ -88,7 +271,7 @@ test(
     };
     t.after(async () => {
       // Cancellation may start this hook while the body still awaits its child.
-      await Promise.allSettled(pendingNative ? [pendingNative] : []);
+      await Promise.allSettled([pendingToolset, pendingNative].filter(Boolean));
       try {
         execute(registry, ["delete", fixtureKey(), "/f", "/reg:32"]);
         assert.equal(query().status, 1, "The exact isolated registry fixture must be gone.");
@@ -113,13 +296,19 @@ test(
       "Use the toolset implementation belonging to the pinned builder.",
     );
     const toolsetModule = path.join(builderDirectory, "toolsets", "nsis.js");
-    const { getMakeNsisPath } = require(toolsetModule);
+    const { getMakeNsisPath, nsisChecksums } = require(toolsetModule);
     // The same default toolset as the actual builder configuration. Its official
     // archive checksum and cache/download handling belong to electron-builder.
-    const compiler = await getMakeNsisPath(
-      whatToBuild().toolsets?.nsis,
-      path.join(root, "resources"),
-    );
+    pendingToolset = fixtureNsisCompiler({
+      selector: whatToBuild().toolsets?.nsis,
+      resourcesDirectory: path.join(root, "resources"),
+      directory,
+      signal: t.signal,
+      getMakeNsisPath,
+      nsisChecksums,
+      report: (message) => t.diagnostic(message),
+    });
+    const compiler = await pendingToolset;
     if (path.extname(compiler.path).toLowerCase() === ".cmd") {
       // The official wrapper sets NSISDIR and invokes windows/makensis.exe.
       // Run that native child directly so cancellation cannot orphan a shell.
