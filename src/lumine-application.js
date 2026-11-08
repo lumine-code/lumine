@@ -1068,11 +1068,14 @@ module.exports = class LumineApplication extends EventEmitter {
       shouldReopenPreviousWindows = this.config.get("core.restorePreviousState") !== "no";
     }
 
-    if (shouldReopenPreviousWindows) {
-      optionsForWindowsToOpen = [
-        ...(await this.loadPreviousWindowOptions()),
-        ...optionsForWindowsToOpen,
-      ];
+    if (!options.test) {
+      const previousWindowOptions = await this.loadPreviousWindowOptions();
+      if (this.getAllWindows().length === 0) {
+        this.lastWindowGeometryId = previousWindowOptions.at(-1)?.windowGeometryId;
+      }
+      if (shouldReopenPreviousWindows) {
+        optionsForWindowsToOpen = [...previousWindowOptions, ...optionsForWindowsToOpen];
+      }
     }
 
     if (optionsForWindowsToOpen.length === 0) {
@@ -1119,6 +1122,7 @@ module.exports = class LumineApplication extends EventEmitter {
     const {
       pathsToOpen,
       windowStateId,
+      windowGeometryId,
       executedFrom,
       foldersToOpen,
       urlsToOpen,
@@ -1156,6 +1160,7 @@ module.exports = class LumineApplication extends EventEmitter {
         pathsToOpen,
         foldersToOpen,
         windowStateId,
+        windowGeometryId,
         executedFrom,
         pidToKillWhenClosed,
         newWindow,
@@ -1176,6 +1181,7 @@ module.exports = class LumineApplication extends EventEmitter {
       return this.openPath({
         pathToOpen: null,
         windowStateId,
+        windowGeometryId,
         pidToKillWhenClosed,
         newWindow,
         devMode,
@@ -1209,6 +1215,9 @@ module.exports = class LumineApplication extends EventEmitter {
     this.projectStateCoordinator.releaseWindow(window);
     this.unregisterLumineWindow(window);
     this.windowStack.removeWindow(window);
+    if (!window.isSpec && this.getAllWindows().length === 0) {
+      this.lastWindowGeometryId = window.windowGeometryId;
+    }
     if (!window.isSpec) this.requestSessionStateCleanup();
     if (this.getAllWindows().length === 0 && process.platform !== "darwin") {
       if (this.pendingWindowOpenCount > 0) this.quitAfterOpening = true;
@@ -2042,6 +2051,12 @@ module.exports = class LumineApplication extends EventEmitter {
     }
   }
 
+  getWindowGeometryIdForNewWindow(windowStateId) {
+    // A fresh document session still inherits the last desktop window's
+    // geometry. Reusing its session identity would also reopen its documents.
+    if (!windowStateId && this.getAllWindows().length === 0) return this.lastWindowGeometryId;
+  }
+
   /**
    * @public
    * @status public
@@ -2061,6 +2076,7 @@ module.exports = class LumineApplication extends EventEmitter {
   openPath({
     pathToOpen,
     windowStateId,
+    windowGeometryId,
     pidToKillWhenClosed,
     newWindow,
     devMode,
@@ -2074,6 +2090,7 @@ module.exports = class LumineApplication extends EventEmitter {
     return this.openPaths({
       pathsToOpen: [pathToOpen],
       windowStateId,
+      windowGeometryId,
       pidToKillWhenClosed,
       newWindow,
       devMode,
@@ -2129,6 +2146,7 @@ module.exports = class LumineApplication extends EventEmitter {
     uriFragment,
     foldersToOpen,
     windowStateId,
+    windowGeometryId,
     executedFrom,
     pidToKillWhenClosed,
     newWindow,
@@ -2284,6 +2302,7 @@ module.exports = class LumineApplication extends EventEmitter {
       openedWindow = this.createWindow({
         locationsToOpen,
         windowStateId,
+        windowGeometryId: windowGeometryId ?? this.getWindowGeometryIdForNewWindow(windowStateId),
         windowInitializationScript,
         resourcePath,
         devMode,
@@ -2379,6 +2398,7 @@ module.exports = class LumineApplication extends EventEmitter {
       windows: Array.from(windowsByStateId.values()).map((window) => ({
         projectRoots: window.projectRoots,
         windowStateId: window.windowStateId,
+        windowGeometryId: window.windowGeometryId,
       })),
     };
     state.windows.reverse();
@@ -2397,10 +2417,12 @@ module.exports = class LumineApplication extends EventEmitter {
 
     if (state.version === APPLICATION_STATE_VERSION) {
       // Lumine >=1.36.1
-      // Schema: {version: '1', windows: [{projectRoots: ['<root-dir>', ...], windowStateId: '<uuid>'}, ...]}
+      // Geometry identities are independent of document sessions. Older records
+      // used the session identity for both.
       return state.windows.map((each) => ({
         foldersToOpen: each.projectRoots,
         windowStateId: each.windowStateId,
+        windowGeometryId: each.windowGeometryId ?? each.windowStateId,
         devMode: this.devMode,
         safeMode: this.safeMode,
         newWindow: true,
@@ -2513,6 +2535,7 @@ module.exports = class LumineApplication extends EventEmitter {
       devMode,
       safeMode,
       windowDimensions,
+      windowGeometryId: this.getWindowGeometryIdForNewWindow(),
       env,
     });
     this.addWindow(window);
@@ -2539,6 +2562,7 @@ module.exports = class LumineApplication extends EventEmitter {
       safeMode,
       urlToOpen,
       windowDimensions,
+      windowGeometryId: this.getWindowGeometryIdForNewWindow(),
       env,
     });
     this.addWindow(window);

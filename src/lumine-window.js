@@ -57,6 +57,9 @@ module.exports = class LumineWindow extends EventEmitter {
     this.windowStateId = UUID_PATTERN.test(settings.windowStateId)
       ? settings.windowStateId
       : crypto.randomUUID();
+    this.windowGeometryId = UUID_PATTERN.test(settings.windowGeometryId)
+      ? settings.windowGeometryId
+      : this.windowStateId;
     this.lumineApplication = lumineApplication;
     this.fileRecoveryService = fileRecoveryService;
     this.isSpec = settings.isSpec;
@@ -86,7 +89,7 @@ module.exports = class LumineWindow extends EventEmitter {
       height: workArea.height,
       ...settings.windowDimensions,
       ...windowStateOptions(
-        `lumine-workspace-${this.windowStateId}`,
+        `lumine-workspace-${this.windowGeometryId}`,
         { enabled: this.persistWindowState, clear: this.clearWindowState },
         BrowserWindowConstructor,
       ),

@@ -16,6 +16,8 @@ Bulk node writes run in a short-lived Node child with one acknowledged batch in 
 
 Separate snapshots let two windows keep their own pane layout and documents. An active window's snapshots for other projects remain available when it switches back, and restoring previous windows reuses their saved identities. Sessions without project folders are durable too: their private key uses the window identity, so unrelated empty windows do not share a snapshot.
 
+Native window geometry has its own persistent identity, separate from document sessions and browser storage. When startup opens a fresh session, it inherits the last focused window's size, position and display mode even if `core.restorePreviousState` disables document restoration or startup supplies a file, folder or `--new-window`. Additional windows retain their own geometry and the usual cascade. `--clear-window-state` clears the selected native geometry before opening the window.
+
 ## Project changes
 
 `lumine.project.setState(paths)` shares one operation queue with automatic saves. It saves the outgoing session before confirming closure and prepares every asynchronous item-close listener before taking the final snapshot. A durable copy is saved while the documents remain alive. A synchronous refresh then captures edits made during that write immediately before the prepared center teardown; any changed snapshot is persisted before switching project storage and is retained for rollback if that write fails. Restoring a project replaces the workspace center while keeping docks and their retained buffers alive. Incoming document recovery is hydrated before buffers and views are restored.

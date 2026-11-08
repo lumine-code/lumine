@@ -2028,10 +2028,12 @@ describe("LumineApplication", function () {
             {
               projectRoots: [scenario.convertRootPath("a")],
               windowStateId: firstWindow.windowStateId,
+              windowGeometryId: firstWindow.windowGeometryId,
             },
             {
               projectRoots: [scenario.convertRootPath("b"), scenario.convertRootPath("c")],
               windowStateId: secondWindow.windowStateId,
+              windowGeometryId: secondWindow.windowGeometryId,
             },
           ],
         }),
@@ -2053,6 +2055,7 @@ describe("LumineApplication", function () {
             {
               projectRoots: [scenario.convertRootPath("a")],
               windowStateId: remainingWindow.windowStateId,
+              windowGeometryId: remainingWindow.windowGeometryId,
             },
           ],
         }),
@@ -2079,6 +2082,10 @@ describe("LumineApplication", function () {
         windows.map((window) => window.windowStateId),
         [firstId, secondId],
       );
+      assert.deepEqual(
+        windows.map((window) => window.windowGeometryId),
+        [firstId, secondId],
+      );
     });
 
     it("serializes only the replacement while a state identity is transferred", async function () {
@@ -2096,6 +2103,7 @@ describe("LumineApplication", function () {
         {
           projectRoots: [scenario.convertRootPath("b")],
           windowStateId: replacementWindow.windowStateId,
+          windowGeometryId: replacementWindow.windowGeometryId,
         },
       ]);
     });
@@ -2105,6 +2113,166 @@ describe("LumineApplication", function () {
       const promise = emitterEventPromise(scenario.getApplication(0), "application:did-save-state");
       w.browserWindow.emit("blur");
       await promise;
+    });
+  });
+
+  describe("window geometry without restoring the previous session", function () {
+    let app, savedState, previousStateId, previousGeometryId;
+
+    beforeEach(function () {
+      previousStateId = crypto.randomUUID();
+      previousGeometryId = crypto.randomUUID();
+      savedState = {
+        version: "1",
+        windows: [
+          {
+            projectRoots: [scenario.convertRootPath("b")],
+            windowStateId: previousStateId,
+            windowGeometryId: previousGeometryId,
+          },
+        ],
+      };
+      app = scenario.addApplication({ applicationJson: savedState });
+      app.config.set("core.restorePreviousState", "no");
+    });
+
+    for (const { description, args, restore, layout } of [
+      {
+        description: "a blank launch with session restoration disabled",
+        args: [],
+        restore: "no",
+        layout: "[_ _]",
+      },
+      {
+        description: "an explicit file with session restoration disabled",
+        args: ["a/1.md"],
+        restore: "no",
+        layout: "[_ 1.md]",
+      },
+      {
+        description: "an explicit project with session restoration disabled",
+        args: ["a"],
+        restore: "no",
+        layout: "[a _]",
+      },
+      {
+        description: "an initial --new-window launch",
+        args: ["--new-window"],
+        restore: "always",
+        layout: "[_ _]",
+      },
+      {
+        description: "explicit paths that suppress normal session restoration",
+        args: ["a"],
+        restore: "yes",
+        layout: "[a _]",
+      },
+    ]) {
+      it(`keeps the last window's geometry and a fresh session for ${description}`, async function () {
+        app.config.set("core.restorePreviousState", restore);
+
+        const [opened] = await scenario.launch({ app, ...parseCommandLine(args) });
+
+        assert.strictEqual(opened.windowGeometryId, previousGeometryId);
+        assert.notStrictEqual(opened.windowStateId, previousStateId);
+        await scenario.assert(layout);
+      });
+    }
+
+    it("uses the most recently focused saved window and supports the old state format", async function () {
+      const latestStateId = crypto.randomUUID();
+      savedState.windows.push({
+        projectRoots: [scenario.convertRootPath("c")],
+        windowStateId: latestStateId,
+      });
+
+      const [opened] = await scenario.launch({ app });
+
+      assert.strictEqual(opened.windowGeometryId, latestStateId);
+      assert.notStrictEqual(opened.windowStateId, latestStateId);
+      await scenario.assert("[_ _]");
+    });
+
+    it("keeps the borrowed geometry identity across later fresh launches", async function () {
+      const [first] = await scenario.launch({ app });
+      await app.saveCurrentWindowOptions();
+      const serialized = app.storageFolder.store.lastCall.args[1];
+      assert.deepEqual(serialized.windows, [
+        {
+          projectRoots: [],
+          windowStateId: first.windowStateId,
+          windowGeometryId: previousGeometryId,
+        },
+      ]);
+      const nextApplication = scenario.addApplication({ applicationJson: serialized });
+      nextApplication.config.set("core.restorePreviousState", "no");
+
+      const [second] = await scenario.launch({ app: nextApplication });
+
+      assert.strictEqual(second.windowGeometryId, previousGeometryId);
+      assert.notStrictEqual(second.windowStateId, first.windowStateId);
+      assert.isFalse(second.hasProjectPaths());
+    });
+
+    it("restores a saved session's separate geometry identity", async function () {
+      app.config.set("core.restorePreviousState", "always");
+
+      const [opened] = await scenario.launch({ app });
+
+      assert.strictEqual(opened.windowStateId, previousStateId);
+      assert.strictEqual(opened.windowGeometryId, previousGeometryId);
+      await scenario.assert("[b _]");
+    });
+
+    it("gives an additional live window its own geometry identity and cascaded bounds", async function () {
+      const [first] = await scenario.launch({ app, pathsToOpen: ["a"] });
+      first._dimensions = { x: 120, y: 80, width: 900, height: 700 };
+
+      const second = await scenario.open({ app, pathsToOpen: ["c"], newWindow: true });
+
+      assert.strictEqual(second.windowGeometryId, second.windowStateId);
+      assert.notStrictEqual(second.windowGeometryId, first.windowGeometryId);
+      const offset = app.getWindowOffsetForCurrentPlatform();
+      assert.deepEqual(second.loadSettings.windowDimensions, {
+        x: 120 + offset,
+        y: 80 + offset,
+        width: 900,
+        height: 700,
+      });
+      await scenario.assert("[a _] [c _]");
+    });
+
+    for (const urlMain of [undefined, "some/url-main"]) {
+      it(`keeps the last window's geometry for a fresh URI ${urlMain ? "urlMain" : "handler"} window`, async function () {
+        app.packages = {
+          getAvailablePackageMetadata: () => [{ name: "geometry-package", urlMain }],
+          resolvePackagePath: () => path.resolve("packages/geometry-package"),
+        };
+
+        const [[opened]] = await scenario.launch({
+          app,
+          urlsToOpen: ["lumine://geometry-package/open"],
+        });
+
+        assert.strictEqual(opened.windowGeometryId, previousGeometryId);
+        assert.notStrictEqual(opened.windowStateId, previousStateId);
+        await scenario.assert("[_ _]");
+      });
+    }
+
+    it("uses the last closed window's geometry when reopening within the same process", async function () {
+      const [first] = await scenario.launch({ app, pathsToOpen: ["a"] });
+      const last = await scenario.open({ app, pathsToOpen: ["c"], newWindow: true });
+      app.removeWindow(first);
+      first.close();
+      app.removeWindow(last);
+      last.close();
+
+      const reopened = await scenario.open({ app });
+
+      assert.strictEqual(reopened.windowGeometryId, last.windowGeometryId);
+      assert.notStrictEqual(reopened.windowStateId, last.windowStateId);
+      assert.notStrictEqual(reopened.windowGeometryId, previousGeometryId);
     });
   });
 
@@ -2660,7 +2828,9 @@ class StubWindow extends EventEmitter {
 
     this.loadSettings = loadSettings;
     this.windowStateId = loadSettings.windowStateId || crypto.randomUUID();
+    this.windowGeometryId = loadSettings.windowGeometryId || this.windowStateId;
     this.loadSettings.windowStateId = this.windowStateId;
+    this.loadSettings.windowGeometryId = this.windowGeometryId;
     this.windowStateTransferPending = false;
     this.closing = false;
     this.closed = false;
@@ -2672,6 +2842,7 @@ class StubWindow extends EventEmitter {
     this._position = { x: 0, y: 0 };
     this._locations = [];
     this._rootPaths = new Set();
+    this.projectRoots = [];
     this._editorPaths = new Set();
 
     let resolveClosePromise;

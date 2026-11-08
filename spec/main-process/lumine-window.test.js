@@ -1411,6 +1411,33 @@ describe("LumineWindow", function () {
       assert.strictEqual(w.getLoadSettingsForRenderer().windowStateId, windowStateId);
     });
 
+    it("inherits native geometry without inheriting the document or browser storage identity", function () {
+      const windowGeometryId = "11111111-1111-4111-8111-111111111111";
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+        windowGeometryId,
+      });
+
+      assert.strictEqual(w.windowGeometryId, windowGeometryId);
+      assert.notStrictEqual(w.windowStateId, windowGeometryId);
+      assert.strictEqual(w.browserWindow.options.name, `lumine-workspace-${windowGeometryId}`);
+      assert.strictEqual(w.getLoadSettingsForRenderer().windowStateId, w.windowStateId);
+      assert.strictEqual(
+        w.browserWindow.options.webPreferences.partition,
+        `persist:lumine-workspace-${w.windowStateId}`,
+      );
+    });
+
+    it("ignores invalid geometry identities", function () {
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+        windowGeometryId: "invalid",
+      });
+
+      assert.strictEqual(w.windowGeometryId, w.windowStateId);
+      assert.strictEqual(w.browserWindow.options.name, `lumine-workspace-${w.windowStateId}`);
+    });
+
     for (const mode of ["isSpec", "headless", "offscreen"]) {
       it(`does not persist geometry in ${mode} windows`, function () {
         const w = new LumineWindow(app, service, {
@@ -1426,6 +1453,7 @@ describe("LumineWindow", function () {
 
     it("clears a restored native identity before constructing its replacement", function () {
       const windowStateId = "11111111-1111-4111-8111-111111111111";
+      const windowGeometryId = "22222222-2222-4222-8222-222222222222";
       const cleared = [];
       class ResetWindow extends StubBrowserWindow {
         static clearPersistedState(name) {
@@ -1439,9 +1467,10 @@ describe("LumineWindow", function () {
       const w = new LumineWindow(app, service, {
         browserWindowConstructor: ResetWindow,
         windowStateId,
+        windowGeometryId,
         clearWindowState: true,
       });
-      assert.strictEqual(w.browserWindow.options.name, `lumine-workspace-${windowStateId}`);
+      assert.strictEqual(w.browserWindow.options.name, `lumine-workspace-${windowGeometryId}`);
     });
 
     it("gives native restoration precedence over explicit initial geometry", function () {
