@@ -3,13 +3,14 @@
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const { setTimeout: delay } = require("node:timers/promises");
+const { githubReleaseRequest } = require("./github-release-request");
 
 const installerPath = path.resolve(__dirname, "../node_modules/electron/install.js");
 
 // GitHub's release download front end can fail while its documented release
 // asset API still serves the same bytes. Only the installer child uses this
 // transport fallback; Electron still owns extraction, caching and checksums.
-function releaseAssetFetch(fetch, report = (message) => process.stderr.write(message)) {
+function releaseAssetFetch(fetch, report = (message) => process.stderr.write(message), token) {
   return async function download(input, options) {
     const url = typeof input === "string" ? input : input?.href;
     const match =
@@ -40,8 +41,9 @@ function releaseAssetFetch(fetch, report = (message) => process.stderr.write(mes
     const signal = options?.signal
       ? AbortSignal.any([options.signal, AbortSignal.timeout(120000)])
       : AbortSignal.timeout(120000);
-    const metadata = await fetch(`${api}/tags/${tag}`, {
-      headers: { Accept: "application/vnd.github+json" },
+    const metadata = await githubReleaseRequest(fetch, `${api}/tags/${tag}`, {
+      accept: "application/vnd.github+json",
+      token,
       signal,
     });
     // Preserve HTTP failures so the upstream downloader and the outer bounded
@@ -59,10 +61,9 @@ function releaseAssetFetch(fetch, report = (message) => process.stderr.write(mes
       throw new Error("The official Electron release asset has no valid identifier");
     }
     report(`Downloading ${filename} through the official GitHub release asset API.\n`);
-    // Public release assets require no credential. Do not forward any caller
-    // headers to the API or its signed asset redirect.
-    return fetch(`${api}/assets/${asset.id}`, {
-      headers: { Accept: "application/octet-stream" },
+    return githubReleaseRequest(fetch, `${api}/assets/${asset.id}`, {
+      accept: "application/octet-stream",
+      token,
       signal,
     });
   };
@@ -108,7 +109,7 @@ async function installElectron({
 module.exports = { installElectron, releaseAssetFetch };
 
 if (require.main === module && process.argv[2] === "--install") {
-  globalThis.fetch = releaseAssetFetch(globalThis.fetch);
+  globalThis.fetch = releaseAssetFetch(globalThis.fetch, undefined, process.env.GITHUB_TOKEN);
   require(installerPath);
 } else if (require.main === module) {
   installElectron().then(

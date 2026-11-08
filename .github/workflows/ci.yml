@@ -214,6 +214,8 @@ jobs:
       - name: Test filesystem removal and Node child arguments
         run: node --test script/electron-rm-sync-compatibility.test.js script/buffered-node-process-arguments.test.js
       - name: Download the Electron binary
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node script/install-electron.js
       - name: Rebuild native modules for Electron
         run: npm run build -- --types prod,optional
@@ -231,6 +233,8 @@ jobs:
       - name: Test Tree-sitter runtime
         run: npm run test:tree-sitter-runtime
       - name: Test command-line launchers
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: npm run test:launchers
       # The full CI suite uses a visible, focused window so focus-dependent
       # specs retain their coverage. Exercise the local-only Windows offscreen

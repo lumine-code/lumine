@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { installElectron, releaseAssetFetch } = require("./install-electron");
+const { githubReleaseRequest } = require("./github-release-request");
 
 async function install(results) {
   let attempts = 0;
@@ -219,3 +220,129 @@ for (const status of [403, 404, 408, 429, 503]) {
     assert.equal(requests, 2);
   });
 }
+
+test("an explicit Actions token is sent only to the official API, never its signed asset redirect", async () => {
+  const signal = new AbortController().signal;
+  const requests = [];
+  const bytes = new Response("verified archive bytes");
+  const storage = "https://release-assets.githubusercontent.com/asset?signature=fixture";
+  const result = await githubReleaseRequest(
+    async (url, options) => {
+      requests.push({ url, options });
+      return requests.length === 1
+        ? new Response(null, { status: 302, headers: { Location: storage } })
+        : bytes;
+    },
+    `${releaseAPI}/assets/123`,
+    { accept: "application/octet-stream", token: "fixture", signal },
+  );
+  assert.equal(result, bytes);
+  assert.deepEqual(requests, [
+    {
+      url: `${releaseAPI}/assets/123`,
+      options: {
+        headers: { Accept: "application/octet-stream", Authorization: "Bearer fixture" },
+        signal,
+        redirect: "manual",
+      },
+    },
+    { url: storage, options: { signal, redirect: "error" } },
+  ]);
+});
+
+test("authenticated metadata cannot redirect credentials", async () => {
+  let calls = 0;
+  await githubReleaseRequest(
+    async (url, options) => {
+      calls++;
+      assert.equal(url, `${releaseAPI}/tags/v45.2.3`);
+      assert.deepEqual(options.headers, {
+        Accept: "application/vnd.github+json",
+        Authorization: "Bearer fixture",
+      });
+      assert.equal(options.redirect, "error");
+      return Response.json({});
+    },
+    `${releaseAPI}/tags/v45.2.3`,
+    { accept: "application/vnd.github+json", token: "fixture" },
+  );
+  assert.equal(calls, 1);
+});
+
+for (const token of ["fixture\nsecret", "fixture secret", 123]) {
+  test("invalid credentials fail without a request or their value in the diagnostic", async () => {
+    await assert.rejects(
+      githubReleaseRequest(() => assert.fail("must not request"), `${releaseAPI}/assets/123`, {
+        accept: "application/octet-stream",
+        token,
+      }),
+      (error) => error.message === "Invalid GitHub release credential",
+    );
+  });
+}
+
+for (const url of [
+  "http://api.github.com/asset",
+  "https://api.github.com.invalid/asset",
+  "https://user:pass@api.github.com/asset",
+  "https://api.github.com:8443/asset",
+]) {
+  test(`a credential is never sent to an untrusted API URL: ${url}`, async () => {
+    await assert.rejects(
+      githubReleaseRequest(() => assert.fail("must not request"), url, {
+        accept: "application/octet-stream",
+        token: "fixture",
+      }),
+      /official GitHub API/,
+    );
+  });
+}
+
+for (const location of [
+  "http://release-assets.githubusercontent.com/asset",
+  "https://other.invalid/asset",
+  "https://release-assets.githubusercontent.com.invalid/asset",
+  "https://user:pass@release-assets.githubusercontent.com/asset",
+  "https://release-assets.githubusercontent.com:8443/asset",
+]) {
+  test(`an asset cannot redirect to an untrusted storage URL: ${location}`, async () => {
+    let calls = 0;
+    await assert.rejects(
+      githubReleaseRequest(
+        async () => {
+          assert.equal(++calls, 1, "no request may reach the untrusted redirect");
+          return new Response(null, { status: 302, headers: { Location: location } });
+        },
+        `${releaseAPI}/assets/123`,
+        { accept: "application/octet-stream", token: "fixture" },
+      ),
+      /official storage/,
+    );
+  });
+}
+
+test("the Electron fallback forwards an explicit token to its two API requests only", async () => {
+  const requests = [];
+  const storage = "https://objects.githubusercontent.com/asset?signature=fixture";
+  const fetch = releaseAssetFetch(
+    async (url, options) => {
+      requests.push({ url, options });
+      if (requests.length === 1) return new Response(null, { status: 504 });
+      if (requests.length === 2)
+        return Response.json({ tag_name: "v45.2.3", assets: [releaseAsset] });
+      if (requests.length === 3)
+        return new Response(null, { status: 302, headers: { Location: storage } });
+      assert.equal(requests.length, 4);
+      return new Response("archive");
+    },
+    () => {},
+    "fixture",
+  );
+  assert.equal(await (await fetch(releaseURL)).text(), "archive");
+  assert.equal(requests[0].options, undefined);
+  assert.equal(requests[1].options.headers.Authorization, "Bearer fixture");
+  assert.equal(requests[2].options.headers.Authorization, "Bearer fixture");
+  assert.equal(requests[3].url, storage);
+  assert.equal(requests[3].options.headers, undefined);
+  assert.equal(requests[3].options.redirect, "error");
+});

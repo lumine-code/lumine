@@ -64,6 +64,8 @@ jobs:
           install() { npm ci --ignore-scripts; }
           install || install || install
       - name: Download the Electron binary
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node script/install-electron.js
       - name: Rebuild native modules for Electron
         run: npm run build
