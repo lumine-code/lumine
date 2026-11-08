@@ -90,6 +90,7 @@ function nsisRecoveryFixture(t, options = {}) {
   const settings = {
     resourcesDirectory: path.join(root, "resources"),
     directory,
+    env: {},
     nsisChecksums: { [nsisVersion]: { [nsisArchive]: hash(fixtureArchive) } },
     getMakeNsisPath: async (...args) => {
       calls.push(args);
