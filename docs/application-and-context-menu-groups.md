@@ -182,6 +182,8 @@ Rows with `commandDetail` do not automatically borrow the command's shortcut, be
 
 ## Visibility and lifecycle
 
+An open context menu retains the source's hover feedback without selecting it. Core marks the original target and its ancestor path with `data-context-menu-hover` for the popup's lifetime, then removes its ownership on action, dismissal, replacement or failure. List and table components match `:is(:hover, [data-context-menu-hover])` in their hover rules so their existing theme colors and selected/current states remain intact. Packages must not remember a global context row merely to paint this state; commands still resolve their saved target and verify that its domain object remains available.
+
 Register runtime contributions during synchronous package activation and dispose their registrations during deactivation. `lumine.menu.add()` and `lumine.contextMenu.add()` return disposables; menu files are managed by the package lifecycle. Runtime context items can retain `shouldDisplay` and `created` callbacks, so event-specific visibility, labels and command details are resolved for each deployment before layout.
 
 Context callbacks receive `(event, context)`: the original clicked event remains available for ownership checks, while `context.commandTarget` resolves the row's saved dispatch target. `context.contextTarget` is the clicked element and `context.focusTarget` is the captured focus. Compute an action's checked and enabled state from its command target so a focus-targeted status menu describes the same surface it will operate on.

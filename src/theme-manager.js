@@ -39,6 +39,7 @@ const BASE_STYLESHEETS = [
   "lumine-ui/styles/badges.css",
   "lumine-ui/styles/button-groups.css",
   "lumine-ui/styles/buttons.css",
+  "lumine-ui/styles/data-table.css",
   "lumine-ui/styles/git-status.css",
   "lumine-ui/styles/icons.css",
   "lumine-ui/styles/inputs.css",

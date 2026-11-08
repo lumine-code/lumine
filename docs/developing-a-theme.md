@@ -169,6 +169,10 @@ The bars own layout while the theme owns appearance. Their complete tile contrac
 
 An action can add `.accent-control` to use the primary button's accent colors, hover and active feedback, and keyboard focus indicator while retaining its own dimensions, spacing and border shape. Theme these states together with `.btn-primary`; shared paint overrides on `.btn` also need to cover `.accent-control`. Exclude `.accent-control` from ordinary bar-tile hover rules so they preserve the primary action's feedback.
 
+## Pointer feedback follows the component
+
+Rows and application controls use the default arrow cursor, including sortable headers and action buttons. Navigation links use `pointer`; disabled buttons use their standard disabled cursor. Text inputs and resize handles retain their own interaction cursors. Apply the shared component classes instead of overriding every descendant's cursor: `.data-table` supplies the row cursor while links, controls and handles keep their own semantics. An inline action uses a native button with `.btn-link.data-table-action.native-key-bindings`, rather than an anchor that only performs an action. The Styleguide's Data Table section demonstrates this contract. Standard table hover and current-row feedback is immediate, like the shared lists and buttons; it does not introduce a package-specific background transition.
+
 ## Icon geometry belongs to the editor
 
 Every icon in the interface — tree-view rows, tabs, lists, the status bar — renders in one frame, defined once by the editor's base stylesheet: a square of `--ui-icon-size` whose `line-height` equals its height, aligned `vertical-align: text-bottom`. The box centers itself in any line, and each font's ink centers inside the box, so the same glyph sits at the same height in every surface without per-surface tuning.

@@ -84,7 +84,7 @@
          the text colour also keeps the affordance visible on a light palette,
          where lightening an already-white overlay clamps to no change.
          Themes retune it through --select-list-hover-tint. */
-      &:hover:not(.selected) {
+      &:is(:hover, [data-context-menu-hover]):not(.selected) {
         background-image: linear-gradient(
           var(--select-list-hover-tint),
           var(--select-list-hover-tint)

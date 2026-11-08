@@ -6,6 +6,7 @@ const { Disposable } = require("@lumine-code/event-kit");
 const MenuHelpers = require("./menu-helpers");
 const { sortMenuItems } = require("./menu-sort-helpers");
 const menuLayout = require("./menu-layout");
+const retainContextMenuHover = require("./context-menu-hover");
 
 const platformContextMenu = require("../package.json").lumineMetadata?.menu?.["context-menu"];
 
@@ -335,19 +336,31 @@ module.exports = class ContextMenuManager {
    * @returns {Object} the popup controller.
    */
   show(target, menuTemplate, options = {}) {
-    return this.menuManager.showPopup({
-      template: menuTemplate,
-      target,
-      contextTarget: target,
-      focusTarget: Object.hasOwn(options, "focusTarget")
-        ? options.focusTarget
-        : target?.ownerDocument?.activeElement,
-      anchor: options.anchor ?? target,
-      placement: options.placement,
-      alignment: options.alignment,
-      autoSelectFirstItem: options.autoSelectFirstItem,
-      className: "context-menu-popup",
-    });
+    const hover = retainContextMenuHover(target);
+    try {
+      const popup = this.menuManager.showPopup({
+        template: menuTemplate,
+        target,
+        contextTarget: target,
+        focusTarget: Object.hasOwn(options, "focusTarget")
+          ? options.focusTarget
+          : target?.ownerDocument?.activeElement,
+        anchor: options.anchor ?? target,
+        placement: options.placement,
+        alignment: options.alignment,
+        autoSelectFirstItem: options.autoSelectFirstItem,
+        className: "context-menu-popup",
+      });
+      if (popup?.closed || typeof popup?.onDidClose !== "function") {
+        hover.dispose();
+      } else {
+        popup.onDidClose(() => hover.dispose());
+      }
+      return popup;
+    } catch (error) {
+      hover.dispose();
+      throw error;
+    }
   }
 
   clear() {

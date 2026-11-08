@@ -1,0 +1,248 @@
+/* Compact interface tables. Packages own their columns and data; the shared
+   surface follows the same theme contract as canvas data grids. */
+.data-table {
+  --data-table-cell-padding-block: calc(var(--ui-spacing) * 0.3);
+  --data-table-cell-padding-inline: calc(var(--ui-spacing) * 0.5);
+  --data-table-row-height: max(
+    var(--data-grid-row-height),
+    calc(1.4em + var(--data-table-cell-padding-block) * 2 + 1px)
+  );
+  --data-table-header-height: max(
+    var(--data-grid-header-height),
+    calc(1.4em + var(--data-table-cell-padding-block) * 2 + 1px)
+  );
+
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-collapse: collapse;
+  color: var(--data-grid-text-color);
+  font-family: var(--ui-font-family);
+  font-size: var(--ui-font-size);
+  line-height: 1.4;
+  cursor: default;
+
+  > thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background-color: var(--data-grid-header-color);
+  }
+
+  > thead > tr > th,
+  > tbody > tr.data-table-row > td {
+    box-sizing: border-box;
+    min-width: 0;
+    padding: var(--data-table-cell-padding-block) var(--data-table-cell-padding-inline);
+    border: 0;
+    border-bottom: 1px solid var(--data-grid-border-color);
+    vertical-align: middle;
+    text-align: left;
+  }
+
+  > thead > tr > th {
+    height: var(--data-table-header-height);
+    font-weight: 600;
+  }
+
+  > thead > tr > th:has(> .data-table-sort, > .data-table-header-controls) {
+    padding: 0;
+  }
+
+  .data-table-header-controls {
+    display: flex;
+    align-items: stretch;
+    height: 100%;
+    min-width: 0;
+    min-height: calc(var(--data-table-header-height) - 1px);
+
+    > .data-table-sort {
+      flex: 1 1 auto;
+      width: auto;
+      height: auto;
+    }
+  }
+
+  .data-table-header-action {
+    appearance: none;
+    font: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 2em;
+    padding: 0;
+    border: 0;
+    border-inline-start: 1px solid var(--base-border-color);
+    border-radius: 0;
+    background: transparent;
+    color: var(--text-color);
+    cursor: default;
+
+    &::before {
+      margin: 0;
+      width: auto;
+    }
+
+    &:hover:not(:disabled) {
+      background-color: rgb(from var(--text-color-highlight) r g b / 0.1);
+    }
+
+    &:focus-visible {
+      outline: 1px solid var(--text-color-highlight);
+      outline-offset: -2px;
+    }
+
+    &:disabled {
+      color: var(--text-color-subtle);
+      opacity: 0.5;
+    }
+  }
+
+  .data-table-sort {
+    appearance: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(var(--ui-spacing) / 2);
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: calc(var(--data-table-header-height) - 1px);
+    margin: 0;
+    padding: var(--data-table-cell-padding-block) var(--data-table-cell-padding-inline);
+    border: 0;
+    border-radius: 0;
+    color: var(--data-grid-text-color);
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+    font-weight: normal;
+    text-align: left;
+    white-space: nowrap;
+    cursor: default;
+    user-select: none;
+
+    &::after {
+      content: "";
+      flex: none;
+      width: 1em;
+      color: inherit;
+      text-align: center;
+    }
+
+    &:hover {
+      color: var(--text-color-highlight);
+      background-color: color-mix(
+        in srgb,
+        var(--data-grid-text-color) 10%,
+        var(--data-grid-header-color)
+      );
+    }
+
+    &:focus-visible {
+      outline: 1px solid var(--data-grid-accent-color);
+      outline-offset: -2px;
+    }
+  }
+
+  .data-table-sort-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Inline actions retain native button semantics and the theme's btn-link
+     paint without borrowing the geometry of a toolbar button. */
+  .data-table-action {
+    appearance: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: inherit;
+    cursor: default;
+
+    &:focus-visible {
+      outline: 1px solid var(--data-grid-accent-color);
+      outline-offset: 1px;
+    }
+  }
+
+  th:is([aria-sort="ascending"], [aria-sort="descending"]) > .data-table-sort,
+  th:is([aria-sort="ascending"], [aria-sort="descending"])
+    > .data-table-header-controls
+    > .data-table-sort {
+    color: var(--text-color-highlight);
+    background-color: color-mix(
+      in srgb,
+      var(--data-grid-text-color) 12%,
+      var(--data-grid-header-color)
+    );
+    font-weight: 600;
+
+    &:hover {
+      background-color: color-mix(
+        in srgb,
+        var(--data-grid-text-color) 18%,
+        var(--data-grid-header-color)
+      );
+    }
+  }
+
+  th[aria-sort="ascending"] > .data-table-sort::after,
+  th[aria-sort="ascending"] > .data-table-header-controls > .data-table-sort::after {
+    content: "↑";
+  }
+
+  th[aria-sort="descending"] > .data-table-sort::after,
+  th[aria-sort="descending"] > .data-table-header-controls > .data-table-sort::after {
+    content: "↓";
+  }
+
+  .data-table-row {
+    min-height: var(--data-table-row-height);
+
+    > td {
+      height: var(--data-table-row-height);
+      background-color: transparent;
+    }
+
+    &:is(:hover, [data-context-menu-hover]) > td {
+      background-color: color-mix(
+        in srgb,
+        var(--data-table-row-tint, var(--data-grid-text-color)) 8%,
+        transparent
+      );
+    }
+
+    &.current > td {
+      background-color: color-mix(
+        in srgb,
+        var(--data-table-row-tint, var(--data-grid-accent-color)) 25%,
+        transparent
+      );
+    }
+
+    &.current:is(:hover, [data-context-menu-hover]) > td {
+      background-color: color-mix(
+        in srgb,
+        var(--data-table-row-tint, var(--data-grid-accent-color)) 30%,
+        transparent
+      );
+    }
+
+    &:focus-visible {
+      outline: 1px dotted var(--data-grid-accent-color);
+      outline-offset: -2px;
+    }
+  }
+}
+
+:is(.data-table, .data-table-container):focus-within .data-table-row.focused {
+  outline: 1px dotted var(--data-grid-accent-color);
+  outline-offset: -2px;
+}

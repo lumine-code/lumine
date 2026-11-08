@@ -69,7 +69,7 @@ button.list-group-item {
   }
 
   /* Hover state */
-  &:hover,
+  &:is(:hover, [data-context-menu-hover]),
   &:focus-visible {
     text-decoration: none;
     color: #555; /* @list-group-link-hover-color */
@@ -90,7 +90,7 @@ button.list-group-item {
 .list-group-item {
   /* Disabled state */
   &.disabled,
-  &.disabled:hover,
+  &.disabled:is(:hover, [data-context-menu-hover]),
   &.disabled:focus-visible {
     background-color: #eee; /* @list-group-disabled-bg: @gray-lighter */
     color: #777; /* @list-group-disabled-color: @gray-light */
@@ -107,7 +107,7 @@ button.list-group-item {
 
   /* Active class on item itself, not parent */
   &.active,
-  &.active:hover,
+  &.active:is(:hover, [data-context-menu-hover]),
   &.active:focus-visible {
     z-index: 2; /* Place active items above their siblings for proper border styling */
     color: var(--accent-foreground-color); /* @list-group-active-color */
@@ -148,13 +148,13 @@ button.list-group-item {
       color: inherit;
     }
 
-    &:hover,
+    &:is(:hover, [data-context-menu-hover]),
     &:focus-visible {
       color: #3c763d;
       background-color: #d0e9c6; /* darken(#dff0d8, 5%) */
     }
     &.active,
-    &.active:hover,
+    &.active:is(:hover, [data-context-menu-hover]),
     &.active:focus-visible {
       color: #fff;
       background-color: #3c763d;
@@ -174,13 +174,13 @@ button.list-group-item {
       color: inherit;
     }
 
-    &:hover,
+    &:is(:hover, [data-context-menu-hover]),
     &:focus-visible {
       color: #31708f;
       background-color: #c4e3f3; /* darken(#d9edf7, 5%) */
     }
     &.active,
-    &.active:hover,
+    &.active:is(:hover, [data-context-menu-hover]),
     &.active:focus-visible {
       color: #fff;
       background-color: #31708f;
@@ -200,13 +200,13 @@ button.list-group-item {
       color: inherit;
     }
 
-    &:hover,
+    &:is(:hover, [data-context-menu-hover]),
     &:focus-visible {
       color: #8a6d3b;
       background-color: #faf2cc; /* darken(#fcf8e3, 5%) */
     }
     &.active,
-    &.active:hover,
+    &.active:is(:hover, [data-context-menu-hover]),
     &.active:focus-visible {
       color: #fff;
       background-color: #8a6d3b;
@@ -226,13 +226,13 @@ button.list-group-item {
       color: inherit;
     }
 
-    &:hover,
+    &:is(:hover, [data-context-menu-hover]),
     &:focus-visible {
       color: #a94442;
       background-color: #ebcccc; /* darken(#f2dede, 5%) */
     }
     &.active,
-    &.active:hover,
+    &.active:is(:hover, [data-context-menu-hover]),
     &.active:focus-visible {
       color: #fff;
       background-color: #a94442;
