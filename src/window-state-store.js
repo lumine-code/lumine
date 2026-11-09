@@ -174,11 +174,13 @@ function createController(store, window, name, saved, onDispose) {
       if (!restoreCalled || applyingRestore || !restoredModeMatches()) return;
       pendingRestore = false;
     }
-    // Fullscreen transitions can expose a frame-adjusted or maximized native
-    // restored rectangle. The last normal rectangle remains authoritative.
+    // Native backends can expose the work area as the restored rectangle while
+    // fullscreen or already maximized. Read new normal bounds when entering
+    // maximization, then retain them through later presentation-only resizes.
     const fullScreen = mode("isFullScreen");
-    let bounds =
-      fullScreen && state ? state.bounds : (window.getNormalBounds?.() ?? window.getBounds?.());
+    const maximized = mode("isMaximized");
+    const retainBounds = state && (fullScreen || (maximized && state.maximized));
+    let bounds = retainBounds ? state.bounds : (window.getNormalBounds?.() ?? window.getBounds?.());
     if (!bounds && window.getPosition && window.getSize) {
       const [x, y] = window.getPosition();
       const [width, height] = window.getSize();
@@ -190,7 +192,7 @@ function createController(store, window, name, saved, onDispose) {
       bounds: { ...bounds },
       // Fullscreen can temporarily clear the native maximized flag. Retain the
       // backing window's mode so leaving fullscreen restores the same surface.
-      maximized: fullScreen ? (state?.maximized ?? mode("isMaximized")) : mode("isMaximized"),
+      maximized: fullScreen ? (state?.maximized ?? maximized) : maximized,
       fullScreen,
     };
   };

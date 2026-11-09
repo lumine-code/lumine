@@ -358,6 +358,36 @@ test("minimized native bounds cannot replace the last non-minimized normal recta
   assert.deepEqual(store.read("workspace"), snapshot({ maximized: true }));
 });
 
+test("stable maximized resizes cannot replace cached normal bounds with the work area", (t) => {
+  const store = fixture(t);
+  const window = new NativeWindow();
+  const controller = store.track(window, "workspace");
+  window.maximize();
+  window.normalBounds = { x: 0, y: 0, width: 1920, height: 1080 };
+  const readBounds = t.mock.method(window, "getNormalBounds");
+  window.emit("resize");
+  controller.freeze();
+  controller.dispose();
+
+  assert.equal(readBounds.mock.callCount(), 0);
+  assert.deepEqual(store.read("workspace"), snapshot({ maximized: true }));
+});
+
+test("entering maximization still captures a newly changed normal rectangle", (t) => {
+  const store = fixture(t);
+  const window = new NativeWindow();
+  const controller = store.track(window, "workspace");
+  window.normalBounds = { ...INITIAL_BOUNDS, width: 1110, height: 760 };
+  window.maximize();
+  controller.freeze();
+  controller.dispose();
+
+  assert.deepEqual(
+    store.read("workspace"),
+    snapshot({ bounds: { ...INITIAL_BOUNDS, width: 1110, height: 760 }, maximized: true }),
+  );
+});
+
 test("fullscreen native bounds cannot replace the cached normal rectangle", (t) => {
   const store = fixture(t);
   const window = new NativeWindow();
