@@ -98,7 +98,11 @@ module.exports = class AuxiliaryWindowBroker {
         ...request.bounds,
         ...windowStateOptions(
           `lumine-presentation-${this.owner.windowStateId}-${request.persistentId}`,
-          { enabled: this.owner.persistWindowState, clear: this.owner.clearWindowState },
+          {
+            enabled: this.owner.persistWindowState,
+            clear: this.owner.clearWindowState,
+            store: this.owner.lumineApplication.windowStateStore,
+          },
           this.windowClass,
         ),
         frame: false,
@@ -126,6 +130,12 @@ module.exports = class AuxiliaryWindowBroker {
     const contents = window.webContents;
     const id = -contents.id;
     const record = { id, window, persistentId: request.persistentId, closeApproved: false };
+    if (this.owner.persistWindowState) {
+      record.windowState = this.owner.lumineApplication.windowStateStore?.track(
+        window,
+        `lumine-presentation-${this.owner.windowStateId}-${request.persistentId}`,
+      );
+    }
     this.windows.set(id, record);
     record.lastZoomState = windowZoom.getZoomState(this.owner, contents);
     const didChangeZoomFactor = (zoomFactor) => {
@@ -166,9 +176,12 @@ module.exports = class AuxiliaryWindowBroker {
       ) {
         event.preventDefault();
         this.send(id, "close-requested");
+      } else {
+        record.windowState?.freeze();
       }
     });
     window.on("closed", () => {
+      record.windowState?.dispose();
       contents.removeListener("lumine-did-change-zoom-factor", didChangeZoomFactor);
       record.keyboard.dispose();
       this.windows.delete(id);
@@ -259,7 +272,10 @@ module.exports = class AuxiliaryWindowBroker {
     this.pending.delete(token);
     clearTimeout(request.timeout);
     request.resolve(null);
-    if (request.record && !request.record.window.isDestroyed()) request.record.window.destroy();
+    if (request.record && !request.record.window.isDestroyed()) {
+      request.record.windowState?.freeze();
+      request.record.window.destroy();
+    }
   }
 
   state(record) {
@@ -322,7 +338,10 @@ module.exports = class AuxiliaryWindowBroker {
         window.webContents.focus();
         return;
       case "show":
-        if (!this.owner.headless) window.show();
+        if (!this.owner.headless) {
+          record.windowState?.restore();
+          window.show();
+        }
         return;
       case "hide":
         window.hide();
@@ -369,6 +388,7 @@ module.exports = class AuxiliaryWindowBroker {
         return;
       case "close":
         record.closeApproved = true;
+        record.windowState?.freeze();
         return new Promise((resolve) => {
           // The native name is released after the closed callback returns.
           // A following restore must not create the same name in that callback.
@@ -437,6 +457,7 @@ module.exports = class AuxiliaryWindowBroker {
     attempt(() => this.updateRuntimeThrottling());
     for (const record of this.windows.values()) {
       if (!record.window.isDestroyed()) {
+        attempt(() => record.windowState?.freeze());
         // Hidden presentations must report hidden visibility so the shared
         // view scheduler uses its Node timer instead of a suspended frame.
         attempt(() => {
@@ -457,7 +478,10 @@ module.exports = class AuxiliaryWindowBroker {
     }
     this.pending.clear();
     for (const record of this.windows.values()) {
-      if (!record.window.isDestroyed()) record.window.destroy();
+      if (!record.window.isDestroyed()) {
+        record.windowState?.freeze();
+        record.window.destroy();
+      }
     }
     this.windows.clear();
     this.updateRuntimeThrottling();

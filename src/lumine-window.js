@@ -70,6 +70,8 @@ module.exports = class LumineWindow extends EventEmitter {
     this.resourcePath = settings.resourcePath;
     this.persistWindowState = isWindowStatePersistenceEnabled(settings);
     this.clearWindowState = Boolean(settings.clearWindowState);
+    this.windowStateName = `lumine-workspace-${this.windowGeometryId}`;
+    const windowStateStore = this.persistWindowState ? lumineApplication.windowStateStore : null;
 
     const locationsToOpen = settings.locationsToOpen || [];
 
@@ -89,8 +91,12 @@ module.exports = class LumineWindow extends EventEmitter {
       height: workArea.height,
       ...settings.windowDimensions,
       ...windowStateOptions(
-        `lumine-workspace-${this.windowGeometryId}`,
-        { enabled: this.persistWindowState, clear: this.clearWindowState },
+        this.windowStateName,
+        {
+          enabled: this.persistWindowState,
+          clear: this.clearWindowState,
+          store: windowStateStore,
+        },
         BrowserWindowConstructor,
       ),
       frame: false,
@@ -161,6 +167,7 @@ module.exports = class LumineWindow extends EventEmitter {
     }
 
     this.browserWindow = new BrowserWindowConstructor(options);
+    this.windowState = windowStateStore?.track(this.browserWindow, this.windowStateName);
     this.auxiliaryWindowBroker = new AuxiliaryWindowBroker(this);
     this.browserWindow.webContents.setWindowOpenHandler?.((details) =>
       this.auxiliaryWindowBroker.windowOpenHandler(details),
@@ -321,6 +328,7 @@ module.exports = class LumineWindow extends EventEmitter {
     this.browserWindow.on("close", (event) => {
       if (this.isSpecWindow()) return;
       if (this.unloadApproved) {
+        this.windowState?.freeze();
         if (this.unloadRequest) this.unloadRequest.reason = "close";
         this.closeCommitted = true;
         if (this.unloadRequest?.committed) this.hideCommittedClose(this.unloadRequest);
@@ -338,6 +346,7 @@ module.exports = class LumineWindow extends EventEmitter {
     });
 
     this.browserWindow.on("closed", () => {
+      this.windowState?.dispose();
       contents.removeListener("lumine-did-change-zoom-factor", didChangeZoomFactor);
       this.auxiliaryWindowBroker.destroy();
       this.embeddedKeyboardIpc?.dispose();
@@ -359,7 +368,10 @@ module.exports = class LumineWindow extends EventEmitter {
         detail:
           "The editor is not responding. Would you like to force close it or just keep waiting?",
       });
-      if (result.response === 0) this.browserWindow.destroy();
+      if (result.response === 0) {
+        this.windowState?.freeze();
+        this.browserWindow.destroy();
+      }
     });
 
     this.browserWindow.webContents.on("render-process-gone", async (event, details) => {
@@ -401,6 +413,7 @@ module.exports = class LumineWindow extends EventEmitter {
 
       switch (result.response) {
         case 0:
+          this.windowState?.freeze();
           this.browserWindow.destroy();
           break;
         case 1:
@@ -529,6 +542,7 @@ module.exports = class LumineWindow extends EventEmitter {
   hideCommittedClose(request) {
     this.closeCommitted = true;
     if (request.closeTimer || this.browserWindow.isDestroyed()) return;
+    this.windowState?.freeze();
     // Saving and close confirmation have finished. Allow orderly teardown in
     // the hidden renderer, then fall back to its normal beforeunload cleanup.
     request.closeTimer = setTimeout(() => {

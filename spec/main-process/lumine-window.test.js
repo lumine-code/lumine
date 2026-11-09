@@ -8,13 +8,14 @@ const url = require("url");
 const { EventEmitter } = require("events");
 const sandbox = require("sinon").createSandbox();
 const dedent = require("dedent");
-const { BrowserWindow, dialog, webContents, ipcMain } = require("electron");
+const { BrowserWindow, dialog, webContents, ipcMain, screen } = require("electron");
 
 const LumineWindow = require("../../src/lumine-window");
 const LumineApplication = require("../../src/lumine-application");
 const FileWatchService = require("../../src/file-watch-service");
 const TaskProgressManager = require("../../src/task-progress-manager");
 const windowZoom = require("../../src/window-zoom");
+const WindowStateStore = require("../../src/window-state-store");
 const { scanBundledPackageNames } = require("../../src/bundled-packages");
 const { emitterEventPromise, conditionPromise } = require("../helpers/async-spec-helpers");
 
@@ -1438,8 +1439,85 @@ describe("LumineWindow", function () {
       assert.strictEqual(w.browserWindow.options.name, `lumine-workspace-${w.windowStateId}`);
     });
 
+    it("restores core geometry when ready to show and retires its tracker after closing", async function () {
+      const bounds = { x: 120, y: 80, width: 900, height: 700 };
+      const state = { restore: sinon.spy(), freeze: sinon.spy(), dispose: sinon.spy() };
+      app.windowStateStore = {
+        getWindowOptions: sinon.stub().returns(bounds),
+        track: sinon.stub().returns(state),
+      };
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+        windowDimensions: { x: 10, y: 20, width: 400, height: 300 },
+      });
+      const nativeWindow = w.browserWindow;
+      nativeWindow.show = sinon.spy();
+      w.preserveFocus = true;
+      assert.strictEqual(w.windowStateName, `lumine-workspace-${w.windowGeometryId}`);
+      assert.strictEqual(w.windowState, state);
+      assert.isTrue(
+        app.windowStateStore.track.calledOnceWithExactly(nativeWindow, w.windowStateName),
+      );
+      assert.deepEqual(
+        Object.fromEntries(Object.keys(bounds).map((key) => [key, nativeWindow.options[key]])),
+        bounds,
+      );
+      assert.isFalse(nativeWindow.options.windowStatePersistence);
+      assert.isFalse(state.restore.called);
+
+      LumineApplication.prototype.showWindow.call(app, w);
+
+      assert.isTrue(state.restore.calledOnce);
+      assert.isTrue(nativeWindow.show.calledOnce);
+      assert.isTrue(state.restore.calledBefore(nativeWindow.show));
+      const event = { preventDefault: sinon.spy() };
+      w.unloadApproved = true;
+      nativeWindow.emit("close", event);
+      assert.isTrue(state.freeze.calledOnce);
+      assert.isFalse(event.preventDefault.called);
+      nativeWindow.emit("closed");
+      await w.closedPromise;
+      assert.isTrue(state.dispose.calledOnce);
+    });
+
+    it("freezes committed geometry before concealing the window", async function () {
+      const state = { restore: sinon.spy(), freeze: sinon.spy(), dispose: sinon.spy() };
+      app.windowStateStore = {
+        getWindowOptions: sinon.stub(),
+        track: sinon.stub().returns(state),
+      };
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+      });
+      w.browserWindow.hide = sinon.spy();
+      const preparing = w.prepareToUnload({ reason: "close" });
+      const id = w.unloadRequest.id;
+      assert.isFalse(state.freeze.called);
+
+      w.commitUnload(id);
+
+      assert.isTrue(state.freeze.calledOnce);
+      assert.isTrue(state.freeze.calledBefore(w.browserWindow.hide));
+      ipcMain.emit(
+        "did-prepare-to-unload",
+        { sender: w.browserWindow.webContents },
+        {
+          id,
+          approved: true,
+        },
+      );
+      assert.isTrue(await preparing);
+      w.browserWindow.emit("closed");
+      await w.closedPromise;
+    });
+
     for (const mode of ["isSpec", "headless", "offscreen"]) {
       it(`does not persist geometry in ${mode} windows`, function () {
+        app.windowStateStore = {
+          getWindowOptions: sinon.spy(),
+          clear: sinon.spy(),
+          track: sinon.spy(),
+        };
         const w = new LumineWindow(app, service, {
           browserWindowConstructor: StubBrowserWindow,
           [mode]: true,
@@ -1448,6 +1526,9 @@ describe("LumineWindow", function () {
         assert.isUndefined(w.browserWindow.options.name);
         assert.isUndefined(w.browserWindow.options.windowStatePersistence);
         assert.isFalse(w.browserWindow.options.webPreferences.partition.startsWith("persist:"));
+        assert.isFalse(app.windowStateStore.getWindowOptions.called);
+        assert.isFalse(app.windowStateStore.clear.called);
+        assert.isFalse(app.windowStateStore.track.called);
       });
     }
 
@@ -1525,6 +1606,87 @@ describe("LumineWindow", function () {
       } finally {
         if (nativeWindow && !nativeWindow.isDestroyed()) nativeWindow.destroy();
         BrowserWindow.clearPersistedState(name);
+      }
+    });
+
+    it("keeps immediate mode and bounds changes through committed close and native reopening", async function () {
+      const directory = nodeFs.mkdtempSync(path.join(os.tmpdir(), "lumine-window-geometry-"));
+      const windowGeometryId = require("node:crypto").randomUUID();
+      class GeometryWindow extends BrowserWindow {
+        loadURL() {
+          return super.loadURL("about:blank");
+        }
+      }
+      let window;
+      const open = async () => {
+        app.windowStateStore = new WindowStateStore({ directory, displayService: screen });
+        window = new LumineWindow(app, service, {
+          browserWindowConstructor: GeometryWindow,
+          windowGeometryId,
+          resourcePath: path.resolve(__dirname, "../.."),
+          windowDimensions: { x: 120, y: 100, width: 720, height: 540 },
+        });
+        await emitterEventPromise(window.browserWindow.webContents, "did-finish-load");
+        window.preserveFocus = true;
+        LumineApplication.prototype.showWindow.call(app, window);
+      };
+      const close = async () => {
+        const preparing = window.prepareToUnload({ reason: "close" });
+        const id = window.unloadRequest.id;
+        window.commitUnload(id);
+        ipcMain.emit(
+          "did-prepare-to-unload",
+          { sender: window.browserWindow.webContents },
+          {
+            id,
+            approved: true,
+          },
+        );
+        assert.isTrue(await preparing);
+        window.close();
+        await window.closedPromise;
+        // Native names are released after the closed callback returns.
+        await new Promise(setImmediate);
+      };
+      try {
+        await open();
+        const originalBounds = window.browserWindow.getNormalBounds();
+        const maximized = emitterEventPromise(window.browserWindow, "maximize");
+        window.maximize();
+        await maximized;
+        await close();
+
+        await open();
+        await conditionPromise(() => window.isMaximized(), "restored maximized geometry");
+        assert.deepEqual(window.browserWindow.getNormalBounds(), originalBounds);
+        const unmaximized = emitterEventPromise(window.browserWindow, "unmaximize");
+        window.unmaximize();
+        await unmaximized;
+        await close();
+
+        await open();
+        assert.isFalse(window.isMaximized());
+        assert.deepEqual(window.browserWindow.getNormalBounds(), originalBounds);
+        const changedBounds = { x: 160, y: 140, width: 760, height: 580 };
+        window.browserWindow.setBounds(changedBounds);
+        await conditionPromise(() => {
+          const actual = window.browserWindow.getNormalBounds();
+          return Object.keys(changedBounds).every((key) => actual[key] === changedBounds[key]);
+        }, "native normal bounds changed");
+        await close();
+
+        await open();
+        assert.isFalse(window.isMaximized());
+        assert.deepEqual(window.browserWindow.getNormalBounds(), changedBounds);
+        await close();
+      } finally {
+        if (window && !window.browserWindow.isDestroyed()) {
+          window.windowState?.freeze();
+          window.browserWindow.destroy();
+          await window.closedPromise;
+        }
+        BrowserWindow.clearPersistedState(`lumine-workspace-${windowGeometryId}`);
+        nodeFs.rmSync(directory, { recursive: true });
       }
     });
 

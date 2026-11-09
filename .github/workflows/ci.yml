@@ -267,19 +267,40 @@ jobs:
           elif command -v gtimeout >/dev/null 2>&1; then guard="gtimeout 2700"
           else guard=""; fi
           $guard $prefix npm run test:editor
-      # The main-process (Electron main) suite runs under Mocha in a single
-      # short session (a few seconds). Like the editor specs it runs once with a
+      # The main-process (Electron main) suite runs under Jasmine in a single
+      # session. Like the editor specs it runs once with a
       # timeout guard; a failure here is a real regression, not a retry target.
       - name: Run main-process specs
         shell: bash
         timeout-minutes: 15
         run: |
-          prefix=""
-          if [ "$RUNNER_OS" = "Linux" ]; then prefix="xvfb-run --auto-servernum"; fi
           if command -v timeout >/dev/null 2>&1; then guard="timeout 600"
           elif command -v gtimeout >/dev/null 2>&1; then guard="gtimeout 600"
           else guard=""; fi
-          $guard $prefix npm run test:main
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            # Native maximize/fullscreen coverage needs a genuine window manager
+            # on the same display as Electron, including its restarted children.
+            $guard xvfb-run --auto-servernum bash -euo pipefail -c '
+              openbox --sm-disable &
+              wm_pid=$!
+              trap "kill $wm_pid 2>/dev/null || true; wait $wm_pid 2>/dev/null || true" EXIT
+              deadline=$((SECONDS + 15))
+              until xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -Eq "window id # 0x[1-9a-fA-F][0-9a-fA-F]*"; do
+                if ! kill -0 "$wm_pid" 2>/dev/null; then
+                  echo "::error::Openbox exited before becoming ready"
+                  exit 1
+                fi
+                if (( SECONDS >= deadline )); then
+                  echo "::error::Openbox did not publish its window-manager readiness property"
+                  exit 1
+                fi
+                sleep 0.1
+              done
+              npm run test:main
+            '
+          else
+            $guard npm run test:main
+          fi
       # Run each bundled package in its own Electron session. The combined
       # `npm run test:pkgs` session suffers cross-package state leakage (~200
       # spurious failures) and has hung CI runners; per-package isolation

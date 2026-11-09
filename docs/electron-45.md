@@ -12,11 +12,11 @@ The [45.2.1 release](https://github.com/electron/electron/releases/tag/v45.2.1) 
 
 ## Window ownership
 
-Electron owns desktop window geometry through named `windowStatePersistence`. Workspace snapshots retain document layout and persistent window identities, without duplicating native position, size, maximized or fullscreen state in renderer storage. Restarting a workspace in development mode reloads its existing native window; restoring the same auxiliary window identity reuses its presentation. Native window names must never overlap during replacement.
+Core owns desktop window geometry through atomic main-process snapshots captured before native teardown. Named `windowStatePersistence` restores older identities that have no core snapshot yet; once captured, core restores normal bounds and display mode without depending on Electron's delayed native save. Workspace snapshots retain document layout and persistent window identities independently of geometry. Restarting a workspace in development mode reloads its existing native window; restoring the same auxiliary window identity reuses its presentation. Native window names must never overlap during replacement.
 
 Auxiliary presentations explicitly use `sandbox: false` because they share the opener's models and DOM constructors. Electron 45 otherwise creates a separate sandboxed process and returns no scriptable child from `window.open()`. Notebook output remains in its separate opaque-origin sandbox.
 
-Desktop sessions use persistent workspace partitions, retaining browser storage across restarts while keeping each workspace's package resource map independent. Tests, offscreen windows, captures and driven benchmarks use temporary sessions and disable native window persistence. `LUMINE_DISABLE_WINDOW_STATE_PERSISTENCE=1` applies that policy to an isolated capture process; it does not change the normal profile.
+Desktop sessions use persistent workspace partitions, retaining browser storage across restarts while keeping each workspace's package resource map independent. Tests, offscreen windows, captures and driven benchmarks use temporary sessions and disable desktop geometry persistence. `LUMINE_DISABLE_WINDOW_STATE_PERSISTENCE=1` applies that policy to an isolated capture process; it does not change the normal profile.
 
 ## Resources and tasks
 

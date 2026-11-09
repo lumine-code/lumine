@@ -14,6 +14,7 @@ const applicationLauncher = require("./application-launcher");
 const StartupTime = require("./startup-time");
 const ipcHelpers = require("./ipc-helpers");
 const windowZoom = require("./window-zoom");
+const WindowStateStore = require("./window-state-store");
 const { getConfigFilePath } = require("./get-app-details.js");
 const {
   BrowserWindow,
@@ -941,6 +942,12 @@ module.exports = class LumineApplication extends EventEmitter {
     this.waitSessionsByWindow = new Map();
     this.lumineWindowsByWebContentsId = new Map();
     this.windowStack = new WindowStack();
+    this.windowStateStore =
+      options.windowStateStore ||
+      new WindowStateStore({
+        directory: path.join(process.env.LUMINE_HOME, "storage", "window-state"),
+        displayService: screen,
+      });
     this.taskProgress = new TaskProgressManager({
       setBadgeCount: (count) => app.setBadgeCount(count),
     });
@@ -1286,6 +1293,7 @@ module.exports = class LumineApplication extends EventEmitter {
   showWindow(lumineWindow) {
     if (lumineWindow.offscreen || lumineWindow.isClosing()) return;
     const window = lumineWindow.browserWindow;
+    lumineWindow.windowState?.restore();
     window.show();
     if (lumineWindow.preserveFocus) {
       lumineWindow.preserveFocus = false;

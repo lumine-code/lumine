@@ -7,6 +7,8 @@ const fs = require("node:fs"),
   { spawnSync } = require("node:child_process");
 const PACKAGES = Object.freeze([
   "xvfb",
+  "openbox",
+  "x11-utils",
   "libx11-dev",
   "libxkbfile-dev",
   "libsecret-1-dev",

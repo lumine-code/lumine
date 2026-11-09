@@ -16,9 +16,11 @@ const files = [
     text: "Types: deb\nURIs: https://packages.microsoft.com/ubuntu/26.04/prod\nSuites: resolute\nComponents: main\nSigned-By: /usr/share/keyrings/microsoft.gpg\n",
   },
 ];
-test("preserves every original font/display dependency and ordinary recommended-package policy", () => {
+test("provisions a window manager and readiness probe while preserving font/display dependencies", () => {
   assert.deepEqual(p.PACKAGES, [
     "xvfb",
+    "openbox",
+    "x11-utils",
     "libx11-dev",
     "libxkbfile-dev",
     "libsecret-1-dev",

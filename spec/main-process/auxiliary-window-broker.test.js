@@ -645,6 +645,159 @@ test("auxiliary native state is scoped to its workspace and logical presentation
   broker.destroy();
 });
 
+test("core presentation geometry restores before showing and freezes before approved closing", async () => {
+  const { broker, owner, window } = fixture();
+  const calls = [];
+  const bounds = { x: 120, y: 80, width: 900, height: 700 };
+  owner.windowStateId = "11111111-1111-4111-8111-111111111111";
+  owner.persistWindowState = true;
+  const persistentId = "740492e4-e8a1-4dea-965c-fd542a685589";
+  const name = `lumine-presentation-${owner.windowStateId}-${persistentId}`;
+  const state = {
+    restore: () => calls.push("restore"),
+    freeze: () => calls.push("freeze"),
+    dispose: () => calls.push("dispose"),
+  };
+  owner.lumineApplication.windowStateStore = {
+    getWindowOptions(identity) {
+      assert.equal(identity, name);
+      return bounds;
+    },
+    track(nativeWindow, identity) {
+      assert.equal(nativeWindow, window);
+      assert.equal(identity, name);
+      return state;
+    },
+  };
+  const token = broker.prepare({ persistentId, bounds: { width: 400, height: 300 } });
+  const { overrideBrowserWindowOptions: options } = broker.windowOpenHandler({
+    url: "about:blank",
+    frameName: token,
+  });
+  assert.deepEqual(
+    Object.fromEntries(Object.keys(bounds).map((key) => [key, options[key]])),
+    bounds,
+  );
+  assert.equal(options.windowStatePersistence, false);
+  broker.didCreateWindow(window, { frameName: token });
+  const { id } = await broker.resolve(token);
+  assert.deepEqual(calls, []);
+  window.show = () => calls.push("show");
+  broker.invoke(id, "show");
+  assert.deepEqual(calls, ["restore", "show"]);
+  const nativeClose = window.close;
+  window.close = () => {
+    calls.push("close");
+    nativeClose();
+  };
+  const closing = broker.invoke(id, "close");
+  assert.ok(calls.indexOf("freeze") < calls.indexOf("close"));
+  window.destroy();
+  await closing;
+  assert.equal(calls.at(-1), "dispose");
+  broker.destroy();
+});
+
+test("a vetoed presentation close keeps its geometry tracker active", async () => {
+  const { broker, owner, window } = fixture();
+  owner.persistWindowState = true;
+  let frozen = false;
+  owner.lumineApplication.windowStateStore = {
+    track: () => ({
+      freeze: () => {
+        frozen = true;
+      },
+      dispose() {},
+    }),
+  };
+  const token = broker.prepare();
+  broker.didCreateWindow(window, { frameName: token });
+  await broker.resolve(token);
+
+  window.close();
+
+  assert.equal(window.vetoed, true);
+  assert.equal(frozen, false);
+  broker.destroy();
+});
+
+for (const closingState of ["unloading", "quitting"]) {
+  test(`a native presentation close freezes geometry while its owner is ${closingState}`, () => {
+    const { broker, owner, window } = fixture();
+    owner.persistWindowState = true;
+    if (closingState === "quitting") owner.lumineApplication.quitting = true;
+    else owner.unloading = true;
+    let frozen = false;
+    owner.lumineApplication.windowStateStore = {
+      track: () => ({
+        freeze: () => {
+          frozen = true;
+        },
+        dispose() {},
+      }),
+    };
+    const token = broker.prepare();
+    broker.didCreateWindow(window, { frameName: token });
+
+    window.close();
+
+    assert.equal(window.vetoed, undefined);
+    assert.equal(frozen, true);
+    broker.destroy();
+  });
+}
+
+for (const action of ["hide", "destroy", "cancel"]) {
+  test(`workspace ${action} freezes presentation geometry before hiding or destroying it`, () => {
+    const { broker, owner, window } = fixture();
+    const calls = [];
+    owner.persistWindowState = true;
+    owner.lumineApplication.windowStateStore = {
+      track: () => ({
+        freeze: () => calls.push("freeze"),
+        dispose: () => calls.push("dispose"),
+      }),
+    };
+    window.hide = () => calls.push("hide");
+    const nativeDestroy = window.destroy;
+    window.destroy = () => {
+      calls.push("destroy");
+      nativeDestroy();
+    };
+    const token = broker.prepare();
+    broker.didCreateWindow(window, { frameName: token });
+
+    if (action === "cancel") broker.cancel(token);
+    else broker[action]();
+
+    const nativeAction = action === "hide" ? "hide" : "destroy";
+    assert.ok(calls.indexOf("freeze") >= 0);
+    assert.ok(calls.indexOf("freeze") < calls.indexOf(nativeAction));
+    if (action !== "hide") assert.equal(calls.at(-1), "dispose");
+    broker.destroy();
+  });
+}
+
+test("nonpersistent presentations never consult or attach the desktop state store", () => {
+  const { broker, owner, window } = fixture();
+  owner.persistWindowState = false;
+  owner.clearWindowState = true;
+  owner.lumineApplication.windowStateStore = {
+    getWindowOptions: () => assert.fail("A nonpersistent presentation read desktop state"),
+    clear: () => assert.fail("A nonpersistent presentation cleared desktop state"),
+    track: () => assert.fail("A nonpersistent presentation tracked desktop state"),
+  };
+  const token = broker.prepare();
+  const { overrideBrowserWindowOptions: options } = broker.windowOpenHandler({
+    url: "about:blank",
+    frameName: token,
+  });
+  assert.equal(options.name, undefined);
+  assert.equal(options.windowStatePersistence, undefined);
+  broker.didCreateWindow(window, { frameName: token });
+  broker.destroy();
+});
+
 test("a close resolves after native destruction has released the presentation name", async () => {
   const { broker, window } = fixture();
   const persistentId = "740492e4-e8a1-4dea-965c-fd542a685589";
