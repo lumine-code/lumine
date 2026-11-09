@@ -18,6 +18,8 @@ Interactive input uses `mode.prepareInputIndentation({ changes, ranges, tabLengt
 
 While interactive indentation is preparing, the worker pauses presentation queries at their cooperative boundaries. Offscreen warming, streamed tiles, timeout retries and provisional previews resume after the input reply can be delivered. Fold preparation yields after a 4 ms allowance and checks cancellation and input priority before continuing. Waiting presentation requests retain independent cancellation; failed, cancelled and overlapping input requests release the shared priority barrier without adding a debounce delay.
 
+Private input candidates also carry an explicit parser priority ahead of preview, focused-document and background parsing. They keep their own buffer and session identity rather than borrowing focus from the parent. This priority applies to root and embedded parse slices; scheduler aging still grants overdue background work service. Bulk indentation keeps its ordinary scheduling policy.
+
 ## Scheduling and resource budgets
 
 Parsing resumes in slices under one shared 4 ms allowance per worker turn. A suspended parse occupies no concurrency slot. The scheduler rechecks the active document between slices, preserves FIFO ordering at equal priority and gives waiting work a turn after 100 ms. Injection layers share the same scheduler and revision budget as their root. These are cooperative allowances: Tree-sitter must reach a progress callback before yielding, so they are not a hard upper bound on one native call.

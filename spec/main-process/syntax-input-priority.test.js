@@ -2,6 +2,8 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const Host = require("../../src/syntax-worker-host");
 const Mode = require("../../src/tree-sitter-language-mode");
+const Parser = require("../../src/tree-sitter-parser");
+const scheduler = require("../../src/tree-sitter-scheduler");
 const { configuration } = require("../../src/syntax-worker-environment");
 
 function deferred() {
@@ -10,21 +12,31 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function setup(text = "class Record:\n    field = 1\n") {
+async function setup(
+  text = "class Record:\n    field = 1\n",
+  files = ["language-python/grammars/python.json"],
+) {
   const host = new Host();
   try {
     for (const [key, schema] of Object.entries(require("../../src/config-schema")))
       host.config.setSchema(key, schema);
-    const file = require.resolve("language-python/grammars/python.json");
-    const definition = require("@lumine-code/season").readFileSync(file);
+    const grammars = files.map((name) => {
+      const file = require.resolve(name);
+      return { file, definition: require("@lumine-code/season").readFileSync(file) };
+    });
     await host.dispatch("environment", {
       version: 1,
       configuration: configuration(host.config),
-      grammars: [{ file, definition }],
+      grammars,
       modules: [],
       specMode: true,
     });
-    const data = { session: 1, revision: 0, scopeName: definition.scopeName, path: "example.py" };
+    const data = {
+      session: 1,
+      revision: 0,
+      scopeName: grammars[0].definition.scopeName,
+      path: "example.py",
+    };
     await host.dispatch("open", data);
     await host.dispatch("append", { session: 1, text });
     await host.dispatch("initialize", data);
@@ -562,6 +574,83 @@ test(
     } finally {
       releaseInput.resolve();
       await cleanup(host, [], tasks);
+    }
+  },
+);
+
+test(
+  "resumable input root and injected parsers outrank preview and focused work while bulk keeps its background priority",
+  { timeout: 10000 },
+  async (t) => {
+    const source = "# %%\nclass Record:\n    field = 1\n";
+    const { host, data } = await setup(source, [
+      "language-ipython/grammars/ipython.json",
+      "language-python/grammars/python.json",
+    ]);
+    const install = host.installModeCurrent;
+    t.mock.method(host, "installModeCurrent", function (session) {
+      const result = install.call(this, session);
+      // Exercise resumable WASM work even though this fixture could otherwise
+      // complete inside the synchronous allowance and never enter the queue.
+      if (session.parent) session.mode.syncTimeoutMicros = 0;
+      return result;
+    });
+    const contexts = new WeakMap(),
+      records = [];
+    let phase = "input";
+    const parse = Parser.prototype.parse;
+    t.mock.method(Parser.prototype, "parse", function (text, options) {
+      contexts.set(options.priority, options.runtimeContext.scopeName);
+      return parse.call(this, text, options);
+    });
+    const run = scheduler.runSlices;
+    t.mock.method(scheduler, "runSlices", function (operation, options) {
+      records.push({
+        phase,
+        scopeName: contexts.get(options.priority),
+        priority: options.priority(),
+      });
+      return run.call(this, operation, options);
+    });
+    host.control({ operation: "focus", session: data.session });
+    const request = {
+      ...data,
+      changes: [{ startIndex: 18, oldEndIndex: 18, text: "\n" }],
+      ranges: [[2, 2]],
+      inline: true,
+      tabLength: 4,
+      options: {
+        isPastedText: false,
+        rowOptions: new Map([[2, { preserveLeadingWhitespace: true, skipBlankLines: false }]]),
+      },
+    };
+    try {
+      const plannedInput = await host.dispatch("input-indent", { ...request, target: 2 });
+      phase = "bulk";
+      const plannedBulk = await host.dispatch("prepared-indent", { ...request, target: 3 });
+      assert.deepEqual(plannedInput.value.levels, [[2, 1]]);
+      assert.deepEqual(plannedBulk.value, plannedInput.value);
+      for (const name of ["input", "bulk"]) {
+        const submitted = records.filter((record) => record.phase === name);
+        const root = submitted.find((record) => record.scopeName === "source.python.ipy"),
+          child = submitted.find((record) => record.scopeName === "source.python");
+        assert.ok(root, `Missing ${name} root parser submission`);
+        assert.ok(child, `Missing ${name} injected parser submission`);
+        assert.equal(child.priority - root.priority, 1);
+        if (name === "input") {
+          for (const { priority } of submitted) {
+            assert.ok(priority < -10, "Input must outrank preview parsing");
+            assert.ok(priority < 0, "Input must outrank focused-document background parsing");
+          }
+        } else {
+          for (const { priority } of submitted)
+            assert.ok(priority >= 100, "Bulk private documents keep ordinary background priority");
+        }
+      }
+      assert.equal(host.sessions.size, 1);
+      assert.equal(host.sessions.get(1).buffer.getText(), source);
+    } finally {
+      host.close();
     }
   },
 );

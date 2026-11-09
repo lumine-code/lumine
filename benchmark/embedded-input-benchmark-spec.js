@@ -1,7 +1,9 @@
 const fs = require("node:fs");
 const crypto = require("node:crypto");
+const assert = require("node:assert/strict");
 
-// Run with npm run test:only -- benchmark/embedded-input-benchmark-spec.js.
+// Set LUMINE_SYNTAX_EXECUTION=worker, then run:
+// npm run test:only -- benchmark/embedded-input-benchmark-spec.js.
 // Optional LUMINE_EMBEDDED_INPUT_BENCH_CONFIG:
 // {sizes:[100,300], samples:5, warmups:1, cases:["ipython"], modes:["single"]}.
 // LUMINE_EMBEDDED_INPUT_BENCH_OUTPUT writes JSON; otherwise the report is logged.
@@ -65,6 +67,11 @@ function fixture(definition, size) {
 describe("Embedded syntax input performance", () => {
   it("measures edit-to-publication separately from grammar settlement and checks history", async () => {
     jasmine.useRealClock();
+    assert.equal(
+      lumine.grammars.syntaxExecution,
+      "worker",
+      "Set LUMINE_SYNTAX_EXECUTION=worker: the test runner otherwise defaults to inline syntax",
+    );
     for (const name of packages) await lumine.packages.activatePackage(name);
     lumine.config.set("autocomplete.enableAutoActivation", false);
     const workspace = lumine.workspace.getElement();
@@ -92,6 +99,19 @@ describe("Embedded syntax input performance", () => {
         true,
       );
       await competitor.whenGrammarSettled();
+      const competitorMode = competitor.getBuffer().getLanguageMode();
+      assert.equal(
+        competitorMode.asynchronousSyntax,
+        true,
+        "The competing document must use the syntax worker",
+      );
+      report.backend = {
+        requestedExecution: process.env.LUMINE_SYNTAX_EXECUTION,
+        registryExecution: lumine.grammars.syntaxExecution,
+        languageMode: competitorMode.constructor.name,
+        asynchronousSyntax: competitorMode.asynchronousSyntax,
+        sharedService: true,
+      };
       let competitionRevision = 0;
       for (const definition of definitions.filter(
         (entry) => !config.cases || config.cases.includes(entry.id),
@@ -118,6 +138,17 @@ describe("Embedded syntax input performance", () => {
                 true,
               );
               await editor.whenGrammarSettled();
+              const languageMode = editor.getBuffer().getLanguageMode();
+              assert.equal(
+                languageMode.asynchronousSyntax,
+                true,
+                "The measured editor must use the syntax worker",
+              );
+              assert.equal(
+                languageMode.service,
+                competitorMode.service,
+                "Foreground and competing input must share one worker service",
+              );
               const metrics = {
                 commandReturn: [],
                 firstPublish: [],
@@ -157,6 +188,11 @@ describe("Embedded syntax input performance", () => {
                 let complete, layout, settle, competitorSettle, commandReturn;
                 try {
                   const newline = editor.insertNewline();
+                  assert.equal(
+                    typeof newline?.then,
+                    "function",
+                    "Worker indentation must return an asynchronous input result",
+                  );
                   const queued = mode === "queued-input" ? editor.insertText("work()") : null;
                   commandReturn = performance.now() - started;
                   await newline;
@@ -177,7 +213,7 @@ describe("Embedded syntax input performance", () => {
                 expect(publications.map((entry) => entry.text))
                   .withContext(context)
                   .toEqual(mode === "queued-input" ? [input.expected, expected] : [expected]);
-                expect(buffer.getLanguageMode().tree.revision)
+                expect(languageMode.typingContextRevision)
                   .withContext(context)
                   .toBe(buffer.getTextRevision());
                 if (mode === "competing-document") {
@@ -218,6 +254,11 @@ describe("Embedded syntax input performance", () => {
               }
               report.results.push({
                 id: definition.id,
+                backend: {
+                  asynchronousSyntax: languageMode.asynchronousSyntax,
+                  languageMode: languageMode.constructor.name,
+                  sharedService: languageMode.service === competitorMode.service,
+                },
                 scope: definition.scope,
                 size,
                 mode,

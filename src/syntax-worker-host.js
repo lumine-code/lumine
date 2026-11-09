@@ -19,6 +19,7 @@ const {
   canPrepareInputIndentation,
 } = require("./syntax-worker-protocol");
 const { Point, Range } = TextBuffer;
+const INPUT_PARSE_PRIORITY = -100;
 
 function aborted(message = "Syntax snapshot is obsolete") {
   const error = new Error(message);
@@ -241,6 +242,7 @@ class SyntaxWorkerHost {
       },
       initialSyntaxSnapshot: session.initialSyntaxSnapshot,
       initialSyntaxChanges: session.initialSyntaxChanges,
+      parsePriority: session.purpose === "input" ? INPUT_PARSE_PRIORITY : undefined,
       indentationOnly: Boolean(session.parent),
       indentationRanges: session.indentationRanges,
       editedIndentationRows: session.editedIndentationRows,
@@ -440,6 +442,9 @@ class SyntaxWorkerHost {
           { session: session.id, revision: data.revision, target },
           { signal },
         );
+        const candidate = this.sessions.get(target);
+        if (!candidate) throw aborted("Syntax candidate was closed");
+        if (operation === "input-indent") candidate.purpose = "input";
         await this.dispatch(
           "edit",
           { session: target, beforeRevision: 0, revision: 1, changes: data.changes },
