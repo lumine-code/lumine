@@ -742,3 +742,50 @@ test("automatic write failures are reported while explicit operations still thro
   assert.equal(failures.length, 3);
   assert.ok(failures.every((entry) => entry.error === failure && entry.name === "workspace"));
 });
+
+test("a failed queued maximize check abandons pending fullscreen restoration", async (t) => {
+  const failures = [];
+  const store = fixture(t, { onError: (error) => failures.push(error) });
+  store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+  const window = new NativeWindow();
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  controller.restore();
+  const failure = new Error("Native maximize state is unavailable");
+  const original = window.isMaximized.bind(window);
+  let failNext = true;
+  window.isMaximized = () => {
+    if (failNext) {
+      failNext = false;
+      throw failure;
+    }
+    return original();
+  };
+  await new Promise(setImmediate);
+
+  assert.deepEqual(failures, [failure]);
+  assert.deepEqual(window.calls, ["maximize"]);
+  window.emit("resize");
+  window.emit("maximize");
+  await new Promise(setImmediate);
+
+  assert.deepEqual(window.calls, ["maximize"]);
+  assert.deepEqual(failures, [failure]);
+});
+
+for (const stop of ["freeze", "dispose"]) {
+  test(`${stop} during maximize prevents the next native restore operation`, async (t) => {
+    const store = fixture(t);
+    store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+    const window = new NativeWindow();
+    const controller = store.track(window, "workspace");
+    t.after(controller.dispose);
+    window.once("maximize", () => controller[stop]());
+    controller.restore();
+
+    assert.deepEqual(window.calls, ["maximize"]);
+    await new Promise(setImmediate);
+    assert.deepEqual(window.calls, ["maximize"]);
+    assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+  });
+}

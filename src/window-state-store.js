@@ -300,6 +300,7 @@ function createController(store, window, name, saved, onDispose) {
             applyingRestore = false;
           }
         } catch (error) {
+          cancelRestoreContinuation();
           pendingRestore = false;
           report(error);
         }
@@ -311,6 +312,7 @@ function createController(store, window, name, saved, onDispose) {
       });
       fullscreenRestore.unref?.();
     } catch (error) {
+      cancelRestoreContinuation();
       report(error);
     }
   };
@@ -327,6 +329,7 @@ function createController(store, window, name, saved, onDispose) {
           maximizeRestoreObserved = false;
           window.maximize?.();
         }
+        if (frozen || disposed || isDestroyed()) return;
         const deferFullscreen = awaitingMaximizedRestore || fullscreenRestore;
         if (!deferFullscreen && saved.fullScreen !== mode("isFullScreen"))
           window.setFullScreen?.(saved.fullScreen);
