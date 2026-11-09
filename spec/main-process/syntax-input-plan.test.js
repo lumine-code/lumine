@@ -347,6 +347,8 @@ for (const [name, input] of [
 
 test("a direct input-indent request returns all 128 allowed rows inline", async () => {
   const state = await setup("value = 1\n".repeat(128));
+  // This verifies transport cardinality, not elapsed query time under load.
+  state.host.sessions.get(1).mode.queryBudget = { now: () => 0 };
   let chunks = 0;
   try {
     const result = await state.host.dispatch(
