@@ -68,7 +68,14 @@ class Probe {
     );
     const compiled = await runNativeFixture(
       compiler,
-      ["/nologo", "/target:exe", `/out:${executable}`, source],
+      [
+        "/nologo",
+        "/noconfig",
+        "/reference:System.dll",
+        "/target:exe",
+        `/out:${executable}`,
+        source,
+      ],
       {
         encoding: "utf8",
         windowsHide: true,
