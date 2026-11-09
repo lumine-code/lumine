@@ -40,7 +40,7 @@ describe("Atomic input marker publication", () => {
     const request = service.client.request.bind(service.client);
     spyOn(service.client, "request").and.callFake(async (operation, ...args) => {
       const result = request(operation, ...args);
-      if (operation === "prepared-indent") {
+      if (operation === "prepared-indent" || operation === "input-indent") {
         entered();
         await gate;
       }

@@ -85,12 +85,10 @@ describe("Syntax worker cancellation boundaries", () => {
 
   it("does not retry a cancelled indentation request against unchanged syntax", async () => {
     let attempts = 0;
-    spyOn(mode, "scanPreparedIndentation").and.callFake(() =>
-      (async function* () {
-        attempts++;
-        yield await Promise.reject(abort());
-      })(),
-    );
+    spyOn(mode, "prepareInputIndentation").and.callFake(async () => {
+      attempts++;
+      throw abort();
+    });
     const before = editor.getText();
     await editor.insertNewline();
     expect(attempts).toBe(1);
@@ -102,13 +100,11 @@ describe("Syntax worker cancellation boundaries", () => {
     let release;
     const gate = new Promise((resolve) => (release = resolve));
     let attempts = 0;
-    spyOn(mode, "scanPreparedIndentation").and.callFake(() =>
-      (async function* () {
-        attempts++;
-        await gate;
-        yield await Promise.reject(abort());
-      })(),
-    );
+    spyOn(mode, "prepareInputIndentation").and.callFake(async () => {
+      attempts++;
+      await gate;
+      throw abort();
+    });
     const before = editor.getText();
     const newline = editor.insertNewline();
     const typing = editor.insertText("next = 2");
@@ -122,12 +118,10 @@ describe("Syntax worker cancellation boundaries", () => {
     it(`discards delayed indentation after ${action} and releases its markers`, async () => {
       let release;
       const gate = new Promise((resolve) => (release = resolve));
-      spyOn(mode, "scanPreparedIndentation").and.callFake(() =>
-        (async function* () {
-          await gate;
-          yield [[2, 3]];
-        })(),
-      );
+      spyOn(mode, "prepareInputIndentation").and.callFake(async () => {
+        await gate;
+        return { kind: "ready", levels: [[2, 3]] };
+      });
       const pending = editor.insertNewline();
       if (action.startsWith("undo")) editor.undo();
       if (action === "undo-redo") editor.redo();
@@ -146,12 +140,10 @@ describe("Syntax worker cancellation boundaries", () => {
   it("retains an explicit read-only bypass through delayed newline indentation", async () => {
     let release;
     const gate = new Promise((resolve) => (release = resolve));
-    spyOn(mode, "scanPreparedIndentation").and.callFake(() =>
-      (async function* () {
-        await gate;
-        yield [[2, 2]];
-      })(),
-    );
+    spyOn(mode, "prepareInputIndentation").and.callFake(async () => {
+      await gate;
+      return { kind: "ready", levels: [[2, 2]] };
+    });
     editor.setReadOnly(true);
     const pending = editor.insertNewline({ bypassReadOnly: true });
     release(new Map([[2, 2]]));

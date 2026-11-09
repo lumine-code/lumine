@@ -16,6 +16,7 @@ const {
   PAINT_PACKET_EVENTS,
   INLINE_INDENT_ROWS,
   canInlineIndentation,
+  canPrepareInputIndentation,
 } = require("./syntax-worker-protocol");
 const { Point, Range } = TextBuffer;
 
@@ -238,13 +239,13 @@ class SyntaxWorkerHost {
         if (this.sessions.get(session.id) === session && session.mode === mode)
           this.failSession(session, error);
       },
-      initialSyntaxTree: session.initialSyntaxTree,
+      initialSyntaxSnapshot: session.initialSyntaxSnapshot,
       initialSyntaxChanges: session.initialSyntaxChanges,
       indentationOnly: Boolean(session.parent),
       indentationRanges: session.indentationRanges,
       editedIndentationRows: session.editedIndentationRows,
     });
-    session.initialSyntaxTree = null;
+    session.initialSyntaxSnapshot = null;
     session.initialSyntaxChanges = null;
     session.captureInitialChanges?.dispose();
     // The renderer owns presentation windows. Semantic work must not also
@@ -325,6 +326,7 @@ class SyntaxWorkerHost {
     this.sessions.delete(id);
     this.sessions.get(session.parent)?.forks?.delete(id);
     session.captureInitialChanges?.dispose();
+    session.initialSyntaxSnapshot?.close();
     session.rootRanges?.dispose();
     session.pendingEdit?.reject(aborted("Syntax document was closed"));
     this.previews.release(session);
@@ -384,7 +386,15 @@ class SyntaxWorkerHost {
     }
     const session = this.sessions.get(data.session);
     if (!session) throw aborted("Syntax document was closed");
-    if (operation === "prepared-indent" && data.target != null) {
+    if (
+      operation === "input-indent" &&
+      (!data.inline ||
+        !data.ranges?.length ||
+        !canInlineIndentation(data.ranges) ||
+        (data.target != null && !canPrepareInputIndentation(data.changes, data.ranges)))
+    )
+      throw new RangeError("Interactive indentation exceeds its request budget");
+    if ((operation === "prepared-indent" || operation === "input-indent") && data.target != null) {
       const target = data.target;
       if (!Number.isSafeInteger(target) || this.sessions.has(target))
         throw new Error("Invalid speculative syntax session");
@@ -405,7 +415,7 @@ class SyntaxWorkerHost {
           { signal },
         );
         const result = await this.dispatch(
-          "prepared-indent",
+          operation,
           {
             session: target,
             revision: 1,
@@ -657,10 +667,8 @@ class SyntaxWorkerHost {
     }
     try {
       if (!session.initialized) throw new Error("Syntax document is not initialized");
-      // A fork consumes immutable text, not semantic results. Waiting for the
-      // parent's complete injection parse serializes every typed character
-      // behind highlighting. Reuse a current root tree when one is available;
-      // otherwise the private candidate parses its own current source.
+      // Retain available syntax baselines without waiting for parent parsing.
+      // Fresh reconciliation validates the complete embedded-language graph.
       if (operation === "fork") {
         if (!Number.isSafeInteger(data.target) || this.sessions.has(data.target))
           throw new Error("Invalid speculative syntax session");
@@ -683,12 +691,9 @@ class SyntaxWorkerHost {
           runtime.registerBuffer(copy, () => this.contextFor(fork));
           const policy = this.grammars.rootLanguageRangesByBuffer.get(buffer)?.descriptor;
           if (policy) fork.rootRanges = this.grammars.setRootLanguageRanges(copy, policy);
-          const tree = mode.rootLanguageLayer?.backgroundTree;
-          if (tree?.revision === buffer.getTextRevision())
-            fork.initialSyntaxTree = require("./tree-sitter-parser").copySnapshot(
-              tree,
-              copy.getTextRevision(),
-            );
+          fork.initialSyntaxSnapshot = mode
+            .captureSyntaxSnapshot({ indentationOnly: true })
+            ?.fork(copy);
           fork.captureInitialChanges = copy.onDidApplyChanges((batch) =>
             fork.initialSyntaxChanges.push(batch),
           );
@@ -756,7 +761,7 @@ class SyntaxWorkerHost {
         throw aborted("Syntax analysis is unavailable");
       }
       let value;
-      if (operation === "prepared-indent") {
+      if (operation === "prepared-indent" || operation === "input-indent") {
         const { IndentationLevels } = require("./tree-sitter-indentation-stream");
         const history = new IndentationLevels();
         const levels = data.inline && canInlineIndentation(data.ranges) ? [] : null;

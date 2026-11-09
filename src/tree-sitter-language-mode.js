@@ -12,6 +12,7 @@ const HighlightCache = require("./tree-sitter-highlight-cache");
 const TreeSitterPresentation = require("./tree-sitter-presentation");
 const captureQuery = require("./tree-sitter-query-cache");
 const TreeSitterDocument = require("./tree-sitter-document");
+const SyntaxSnapshot = require("./tree-sitter-syntax-snapshot");
 const parserScheduler = require("./tree-sitter-scheduler");
 const { Point, Range } = require("./text-buffer");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
@@ -218,7 +219,7 @@ class TreeSitterLanguageMode {
     parsePriority,
     queryBudget,
     reportFailure,
-    initialSyntaxTree,
+    initialSyntaxSnapshot,
     initialSyntaxChanges,
     indentationOnly = false,
     indentationRanges = null,
@@ -227,6 +228,7 @@ class TreeSitterLanguageMode {
     this.buffer = buffer;
     this.document = new TreeSitterDocument(buffer);
     for (const batch of initialSyntaxChanges ?? []) this.document.apply(batch);
+    this.initialSyntaxSnapshot = initialSyntaxSnapshot;
     this.indentationOnly = indentationOnly;
     this.indentationRanges = indentationOnly ? indentationRanges : null;
     this.editedIndentationRows = indentationOnly ? editedIndentationRows : null;
@@ -355,12 +357,6 @@ class TreeSitterLanguageMode {
         this.rootLanguage = language;
         this.registerGrammarForLanguage(language, grammar);
         this.rootLanguageLayer = new LanguageLayer(null, this, grammar, 0);
-        if (initialSyntaxTree?.language === language) {
-          this.backgroundSnapshots.add(initialSyntaxTree);
-          this.rootLanguageLayer.setBackgroundTree(initialSyntaxTree);
-        }
-        initialSyntaxTree = null;
-        initialSyntaxChanges = null;
         this.subscriptions.add(
           ScopeResolver.onDidChangeConfiguration(this.config, (event) =>
             this.highlightConfigurationChanged(event),
@@ -401,6 +397,8 @@ class TreeSitterLanguageMode {
     if (this.destroyed) return;
     // Queued and running initial parses observe destruction before publishing.
     this.destroyed = true;
+    this.initialSyntaxSnapshot?.close();
+    this.initialSyntaxSnapshot = null;
     this.invalidateSyntaxConfiguration();
     this.cancelPendingRootUpdate();
     this.document.close();
@@ -1272,6 +1270,10 @@ class TreeSitterLanguageMode {
 
   injectionCanAffectIndentation(grammar) {
     if (!this.indentationOnly) return true;
+    return this.grammarCanAffectIndentation(grammar);
+  }
+
+  grammarCanAffectIndentation(grammar) {
     if (!grammar) return false;
     // An explicitly empty indents query still controls indentation. Keep
     // intermediate languages too: their descendants may provide the query.
@@ -1364,6 +1366,10 @@ class TreeSitterLanguageMode {
   // Mutation owners advance this counter without scanning layers on each read.
   getSyntaxGeneration() {
     return this.syntaxGeneration;
+  }
+
+  captureSyntaxSnapshot(options) {
+    return SyntaxSnapshot.capture(this, options);
   }
 
   // Requests survive parse publication at the same configuration. Grammar,
@@ -4870,6 +4876,17 @@ class LanguageLayer {
       generation,
       revision,
     };
+    if (!this.backgroundTree && this.languageMode.initialSyntaxSnapshot) {
+      const tree = this.languageMode.initialSyntaxSnapshot.claim(
+        this.languageMode,
+        this,
+        includedRanges,
+      );
+      if (tree?.language === language) {
+        this.languageMode.backgroundSnapshots.add(tree);
+        this.setBackgroundTree(tree);
+      }
+    }
     if (nodeRangeSet?.rangesUnchanged && this.backgroundTree && !this.treeIsDirty) {
       // An owner can change inside a hole without changing any parser input.
       // Preserve this optimization with a new immutable snapshot: callbacks

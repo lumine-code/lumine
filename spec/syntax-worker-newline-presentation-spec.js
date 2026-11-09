@@ -155,7 +155,7 @@ describe("Worker newline presentation", () => {
         const request = service.client.request.bind(service.client);
         spyOn(service.client, "request").and.callFake(async (operation, ...args) => {
           const result = request(operation, ...args);
-          if (operation === "prepared-indent") await gate;
+          if (operation === "prepared-indent" || operation === "input-indent") await gate;
           return result;
         });
         const beforePositions = worker.getCursorBufferPositions();

@@ -677,7 +677,7 @@ test("paste candidates share the saved source and reuse a private incremental tr
     await host.dispatch("fork", { ...data, target: 2 });
     const fork = host.sessions.get(2);
     assert.equal(fork.buffer.getTextSnapshot(), source);
-    assert.notEqual(fork.initialSyntaxTree, tree);
+    assert.equal(fork.initialSyntaxSnapshot.snapshot.layers[0].tree, tree);
     await host.dispatch("edit", {
       session: 2,
       beforeRevision: 0,
@@ -696,6 +696,7 @@ test("paste candidates share the saved source and reuse a private incremental tr
       [2, 1],
     ]);
     assert.equal(fork.mode.tree.incremental, true);
+    assert.notEqual(fork.mode.tree, tree);
     assert.equal(parent.buffer.getText(), original);
     assert.equal(parent.mode.tree, tree);
     assert.equal(parent.revision, 0);

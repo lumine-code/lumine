@@ -1134,6 +1134,13 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     return this.service.scanPreparedIndentation(this.session, changes, ranges, tabLength, options);
   }
 
+  // Plan an interactive mutation against exact private syntax. The bounded
+  // result covers every requested row; the editor publishes text, indentation
+  // and selections together. Bulk edits use scanPreparedIndentation instead.
+  prepareInputIndentation(request) {
+    return this.service.prepareInputIndentation(this.session, request);
+  }
+
   async getFoldRangeForRow(...args) {
     const range = await this.builtin("getFoldRangeForRow", args);
     return range && Range.fromObject(range);

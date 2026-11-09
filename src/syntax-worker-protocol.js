@@ -27,3 +27,23 @@ exports.canInlineIndentation = (ranges) => {
   }
   return true;
 };
+
+// Interactive input has one bounded request/reply. Large edits retain the
+// streamed preparation contract rather than silently expanding this budget.
+exports.canPrepareInputIndentation = (changes, ranges) => {
+  if (
+    !exports.canInlineIndentation(ranges) ||
+    !ranges.length ||
+    !Array.isArray(changes) ||
+    changes.length > 128
+  )
+    return false;
+  let units = 0;
+  for (const change of changes) {
+    const source = change.newTextSource ?? change.inserted ?? change.newText ?? change.text;
+    if (source == null || !Number.isSafeInteger(source.length) || source.length < 0) return false;
+    units += source.length;
+    if (units > 65536) return false;
+  }
+  return true;
+};

@@ -35,7 +35,7 @@ describe("Atomic input indentation", () => {
     const request = service.client.request.bind(service.client);
     spyOn(service.client, "request").and.callFake(async (operation, ...args) => {
       const result = request(operation, ...args);
-      if (operation === "prepared-indent") {
+      if (operation === "prepared-indent" || operation === "input-indent") {
         entered();
         await gate;
       }
@@ -104,9 +104,11 @@ describe("Atomic input indentation", () => {
       expect(Boolean(result?.then)).toBe(false);
     }
     expect(editor.getText()).toBe("class Record:\n    field = hello_world_1234567890");
-    expect(request.calls.allArgs().some(([operation]) => operation === "prepared-indent")).toBe(
-      false,
-    );
+    expect(
+      request.calls
+        .allArgs()
+        .some(([operation]) => operation === "prepared-indent" || operation === "input-indent"),
+    ).toBe(false);
   });
 
   it("uses a grammar-owned content policy for synchronous injected typing across unsettled edits", async () => {
@@ -145,9 +147,11 @@ describe("Atomic input indentation", () => {
         expect(mode.typingContextRevision).toBe(editor.getBuffer().getTextRevision());
         expect(mode.typingContext).not.toBeNull();
       }
-      expect(request.calls.allArgs().some(([operation]) => operation === "prepared-indent")).toBe(
-        false,
-      );
+      expect(
+        request.calls
+          .allArgs()
+          .some(([operation]) => operation === "prepared-indent" || operation === "input-indent"),
+      ).toBe(false);
       expect(editor.lineTextForBufferRow(1)).toBe("    value = 'text',abcdefghijklmnopqrst");
       await editor.whenGrammarSettled();
       const boundary = editor.insertText("'");
@@ -364,7 +368,7 @@ describe("Atomic input indentation", () => {
     editor.setCursorBufferPosition([1, Infinity]);
     const scan = spyOn(
       editor.getBuffer().getLanguageMode(),
-      "scanPreparedIndentation",
+      "prepareInputIndentation",
     ).and.callThrough();
     editor.onWillPublishTextInsertion(({ editor: target, range }) =>
       target.setIndentationForBufferRow(range.start.row, 0),
@@ -397,7 +401,7 @@ describe("Atomic input indentation", () => {
     const mode = await start(original, "text.plain");
     expect(mode.canIndentNewlineWithoutSyntax()).toBe(true);
     editor.setCursorBufferPosition([0, 0]);
-    const scan = spyOn(mode, "scanPreparedIndentation").and.callThrough();
+    const scan = spyOn(mode, "prepareInputIndentation").and.callThrough();
     for (let i = 0; i < 20; i++) await dispatchInput(editor, () => editor.insertNewline());
     expect(scan).not.toHaveBeenCalled();
     expect(editor.getText()).toBe("\n".repeat(20) + original);
@@ -410,7 +414,7 @@ describe("Atomic input indentation", () => {
     const original = "# generated header\n" + "class Record:\n    field = 1\n\n".repeat(10000);
     const mode = await start(original);
     editor.setCursorBufferPosition([0, 0]);
-    const scan = spyOn(mode, "scanPreparedIndentation").and.callFake(() => {
+    const scan = spyOn(mode, "prepareInputIndentation").and.callFake(() => {
       throw new Error("Leading blank rows must not request indentation syntax");
     });
     const publications = [];
@@ -430,7 +434,7 @@ describe("Atomic input indentation", () => {
   it("still resolves indentation when a blank row follows real code", async () => {
     const mode = await start("if ready:\n\n    value = 1");
     editor.setCursorBufferPosition([2, 0]);
-    const scan = spyOn(mode, "scanPreparedIndentation").and.callThrough();
+    const scan = spyOn(mode, "prepareInputIndentation").and.callThrough();
     await editor.insertNewline();
     expect(scan).toHaveBeenCalled();
     expect(editor.getText()).toBe("if ready:\n\n\n    value = 1");
@@ -576,12 +580,17 @@ describe("Atomic input indentation", () => {
     while (source.canMaterialize()) source = source.replace(source.length, source.length, source);
     editor.getBuffer().setTextInRange(editor.getBuffer().getRange(), source);
     const mode = editor.getBuffer().getLanguageMode();
-    mode.scanPreparedIndentation = async function* (changes, ranges) {
+    mode.scanPreparedIndentation = () => {
+      throw new Error("Bounded input must not use the bulk indentation stream");
+    };
+    mode.prepareInputIndentation = async ({ changes, ranges }) => {
       expect(changes.length).toBe(128);
       expect(changes.every((c) => c.newTextSource.length === 1)).toBe(true);
+      const levels = [];
       for (const [start, end] of ranges) {
-        for (let row = start; row <= end; row++) yield [[row, 1]];
+        for (let row = start; row <= end; row++) levels.push([row, 1]);
       }
+      return { kind: "ready", levels };
     };
     editor.setSelectedBufferRanges(
       Array.from({ length: 128 }, (_, i) => [

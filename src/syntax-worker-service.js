@@ -2,7 +2,7 @@ const { CompositeDisposable } = require("@lumine-code/event-kit");
 const Client = require("./syntax-worker-client");
 const { environment, configuration } = require("./syntax-worker-environment");
 const { watchFile } = require("./file-watch");
-const { canInlineIndentation } = require("./syntax-worker-protocol");
+const { canInlineIndentation, canPrepareInputIndentation } = require("./syntax-worker-protocol");
 const insertedSource = (change) => change.newTextSource ?? change.inserted ?? change.newText;
 
 const yieldTask = () => new Promise((resolve) => setImmediate(resolve));
@@ -571,106 +571,100 @@ class SyntaxWorkerService {
   }
 
   scanPreparedIndentation(session, changes, ranges, tabLength, options = {}) {
-    return require("./syntax-result-stream")(async (onChunk, signal) => {
-      const id = ++this.nextSession;
-      const revision = session.buffer.getTextRevision();
-      const epoch = session.epoch,
-        syntaxEpoch = this.syntaxEpoch;
-      let client;
-      const check = () => {
-        signal.throwIfAborted();
-        if (
-          session.closed ||
-          session.failure ||
-          session.buffer.getTextRevision() !== revision ||
-          session.epoch !== epoch ||
-          this.syntaxEpoch !== syntaxEpoch ||
-          (client && client !== this.client) ||
-          options.isCurrent?.() === false
-        )
-          throw Client.abortError("Prepared paste is obsolete");
-      };
-      try {
-        const units =
-          changes.length < 128
-            ? changes.reduce((total, change) => total + insertedSource(change).length, 0)
-            : Infinity;
-        if (units <= 64 * 1024) {
-          const { signal: _signal, isCurrent: _isCurrent, ...parameters } = options;
-          const result = await this.request(
-            session,
-            "prepared-indent",
-            {
-              target: id,
-              ranges,
-              tabLength,
-              inline: canInlineIndentation(ranges),
-              options: parameters,
-              changes: changes.map((change) => {
-                const source = insertedSource(change);
-                return {
-                  range: change.oldRange.serialize(),
-                  startIndex: change.startIndex,
-                  oldEndIndex: change.oldEndIndex,
-                  text: source.slice(0, source.length),
-                };
-              }),
-            },
-            {
-              signal,
-              revision,
-              onChunk: async (batch) => {
-                check();
-                await onChunk(batch);
-                check();
-              },
-            },
-          );
-          check();
-          if (result.levels?.length) {
-            // requestCurrent has already checked the response revision and
-            // generation. Keep the iterator's local backpressure/cancellation
-            // contract without holding a worker-side acknowledgement open.
-            await onChunk(result.levels);
-            check();
-          }
-          return result;
-        }
-        await this.request(session, "fork", { target: id }, { signal, revision });
-        client = this.client;
-        check();
-        await this.sendEdits(
-          client,
-          { id, controller: { signal } },
-          {
-            beforeRevision: 0,
-            afterRevision: 1,
-            changes,
-          },
-        );
-        check();
-        await client.request(
-          "initialize",
-          {
-            session: id,
-            indentationRanges: ranges,
-            indentationOptions: { rowOptions: options.rowOptions },
-          },
-          { signal },
-        );
-        check();
+    return require("./syntax-result-stream")(
+      (onChunk, signal) =>
+        this.prepareIndentation(
+          session,
+          changes,
+          ranges,
+          tabLength,
+          { ...options, signal },
+          onChunk,
+        ),
+      options,
+    );
+  }
+
+  async prepareInputIndentation(
+    session,
+    { changes, ranges, tabLength, options = {}, signal, isCurrent },
+  ) {
+    if (!canPrepareInputIndentation(changes, ranges))
+      throw new RangeError("Interactive indentation exceeds its request budget");
+    let levels;
+    const result = await this.prepareIndentation(
+      session,
+      changes,
+      ranges,
+      tabLength,
+      { ...options, signal, isCurrent },
+      (batch) => {
+        levels = batch;
+      },
+      "input-indent",
+    );
+    if (!levels || result.count !== levels.length)
+      throw new TypeError("Incomplete interactive indentation plan");
+    return { kind: "ready", levels };
+  }
+
+  async prepareIndentation(
+    session,
+    changes,
+    ranges,
+    tabLength,
+    options,
+    onChunk,
+    operation = "prepared-indent",
+  ) {
+    const signal = options.signal ?? session.controller.signal;
+    const id = ++this.nextSession;
+    const revision = session.buffer.getTextRevision();
+    const epoch = session.epoch,
+      syntaxEpoch = this.syntaxEpoch;
+    let client;
+    const check = () => {
+      signal.throwIfAborted();
+      if (
+        session.closed ||
+        session.failure ||
+        session.buffer.getTextRevision() !== revision ||
+        session.epoch !== epoch ||
+        this.syntaxEpoch !== syntaxEpoch ||
+        (client && client !== this.client) ||
+        options.isCurrent?.() === false
+      )
+        throw Client.abortError("Prepared paste is obsolete");
+    };
+    try {
+      const units =
+        changes.length <= 128
+          ? changes.reduce((total, change) => total + insertedSource(change).length, 0)
+          : Infinity;
+      if (units <= 64 * 1024) {
         const { signal: _signal, isCurrent: _isCurrent, ...parameters } = options;
-        const result = await client.request(
-          "prepared-indent",
+        const result = await this.request(
+          session,
+          operation,
           {
-            session: id,
-            revision: 1,
+            target: id,
             ranges,
             tabLength,
+            inline: canInlineIndentation(ranges),
             options: parameters,
+            changes: changes.map((change) => {
+              const source = insertedSource(change);
+              return {
+                range: change.oldRange.serialize(),
+                startIndex: change.startIndex,
+                oldEndIndex: change.oldEndIndex,
+                text: source.slice(0, source.length),
+              };
+            }),
           },
           {
             signal,
+            revision,
             onChunk: async (batch) => {
               check();
               await onChunk(batch);
@@ -679,13 +673,64 @@ class SyntaxWorkerService {
           },
         );
         check();
-        return result.value;
-      } finally {
-        // The id is known before requesting the fork, including cancellation
-        // after the worker created it but before its reply was delivered.
-        (client ?? this.client)?.send({ type: "control", operation: "release", session: id });
+        if (result.levels?.length) {
+          // requestCurrent has already checked the response revision and
+          // generation. Keep the iterator's local backpressure/cancellation
+          // contract without holding a worker-side acknowledgement open.
+          await onChunk(result.levels);
+          check();
+        }
+        return result;
       }
-    }, options);
+      await this.request(session, "fork", { target: id }, { signal, revision });
+      client = this.client;
+      check();
+      await this.sendEdits(
+        client,
+        { id, controller: { signal } },
+        {
+          beforeRevision: 0,
+          afterRevision: 1,
+          changes,
+        },
+      );
+      check();
+      await client.request(
+        "initialize",
+        {
+          session: id,
+          indentationRanges: ranges,
+          indentationOptions: { rowOptions: options.rowOptions },
+        },
+        { signal },
+      );
+      check();
+      const { signal: _signal, isCurrent: _isCurrent, ...parameters } = options;
+      const result = await client.request(
+        "prepared-indent",
+        {
+          session: id,
+          revision: 1,
+          ranges,
+          tabLength,
+          options: parameters,
+        },
+        {
+          signal,
+          onChunk: async (batch) => {
+            check();
+            await onChunk(batch);
+            check();
+          },
+        },
+      );
+      check();
+      return result.value;
+    } finally {
+      // The id is known before requesting the fork, including cancellation
+      // after the worker created it but before its reply was delivered.
+      (client ?? this.client)?.send({ type: "control", operation: "release", session: id });
+    }
   }
 
   async requestCurrent(

@@ -682,9 +682,9 @@ describe("Package syntax analyses with a worker owner", () => {
     editor.setCursorBufferPosition([0, 9]);
     let release;
     const gate = new Promise((resolve) => (release = resolve));
-    editor.getBuffer().getLanguageMode().scanPreparedIndentation = async function* () {
+    editor.getBuffer().getLanguageMode().prepareInputIndentation = async () => {
       await gate;
-      yield [[1, 1]];
+      return { kind: "ready", levels: [[1, 1]] };
     };
     const inserting = editor.insertNewline();
     const activation = lumine.commands.dispatch(editor.getElement(), "autocomplete:activate");

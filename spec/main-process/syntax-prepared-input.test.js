@@ -481,6 +481,7 @@ for (const stop of ["complete", "break", "obsolete"])
         return { count: 1, levels: [[1, 1]] };
       },
     };
+    Object.setPrototypeOf(service, Service.prototype);
     const session = { buffer: { getTextRevision: () => 9 }, epoch: 0 };
     const stream = Service.prototype.scanPreparedIndentation.call(
       service,
@@ -626,7 +627,7 @@ test("forking text neither waits for parent syntax nor seeds a stale root tree",
       assert.fail("Fork must not wait for syntax"),
     );
     await host.dispatch("fork", { ...data, target: 2 });
-    assert.ok(host.sessions.get(2).initialSyntaxTree);
+    assert.ok(host.sessions.get(2).initialSyntaxSnapshot);
     host.closeSession(2);
     const previousTree = parent.mode.rootLanguageLayer.backgroundTree;
     await host.dispatch("edit", {
@@ -638,7 +639,7 @@ test("forking text neither waits for parent syntax nor seeds a stale root tree",
     parent.mode.rootLanguageLayer.backgroundTree = previousTree;
     await host.dispatch("fork", { ...data, revision: 10, target: 3 });
     assert.equal(host.sessions.get(3).buffer.getText(), "class Record:\n");
-    assert.equal(host.sessions.get(3).initialSyntaxTree, undefined);
+    assert.equal(host.sessions.get(3).initialSyntaxSnapshot, undefined);
     host.closeSession(3);
     assert.equal(host.sessions.size, 1);
   } finally {

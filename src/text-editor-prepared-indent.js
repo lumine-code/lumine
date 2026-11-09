@@ -4,6 +4,7 @@ const { PieceTree } = require("./text-model");
 const TextChangeMap = require("./text-change-map");
 const { inspectRows, indentSource } = require("./text-editor-comment-operations");
 const { autoIndentRanges, mergeRanges } = require("./text-editor-auto-indent");
+const { canPrepareInputIndentation } = require("./syntax-worker-protocol");
 const { insertPreparedSource, insertedSourceEvent } = require("./text-editor-snapshot-operations");
 const pending = new WeakMap();
 const queues = new WeakMap();
@@ -376,16 +377,41 @@ async function prepare(editor, data, options, queue) {
         delta += inserted.length - (end - start);
         return result;
       });
-      draft.getLanguageMode().scanSuggestedIndentation = () =>
-        mode.scanPreparedIndentation(changes, ranges, tabLength, {
-          signal,
-          isCurrent,
-          softTabs,
-          isPastedText: !data.move && !mutation,
-          rowOptions: mutation?.rowOptions,
-          preserveLeadingWhitespace: options.preserveLeadingWhitespace,
-          insertedIndentLengths: options.insertedIndentLengths,
-        });
+      const indentationOptions = {
+        softTabs,
+        isPastedText: !data.move && !mutation,
+        rowOptions: mutation?.rowOptions,
+        preserveLeadingWhitespace: options.preserveLeadingWhitespace,
+        insertedIndentLengths: options.insertedIndentLengths,
+      };
+      const inputIndentation =
+        mutation &&
+        typeof mode.prepareInputIndentation === "function" &&
+        canPrepareInputIndentation(changes, ranges);
+      // Input planning has one complete, bounded answer. Large mutations,
+      // moves and pastes keep their cooperative range stream. Both answers
+      // pass through the same validation and private-buffer application.
+      draft.getLanguageMode().scanSuggestedIndentation = inputIndentation
+        ? async function* () {
+            const result = await mode.prepareInputIndentation({
+              changes,
+              ranges,
+              tabLength,
+              options: indentationOptions,
+              signal,
+              isCurrent,
+            });
+            check();
+            if (result?.kind !== "ready" || !Array.isArray(result.levels))
+              throw new TypeError("Invalid prepared input indentation result");
+            yield result.levels;
+          }
+        : () =>
+            mode.scanPreparedIndentation(changes, ranges, tabLength, {
+              ...indentationOptions,
+              signal,
+              isCurrent,
+            });
       await autoIndentRanges(staged, ranges, {
         ...options,
         signal,
