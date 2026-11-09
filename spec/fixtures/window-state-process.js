@@ -12,12 +12,13 @@ async function change(window, event, operation, complete) {
   if (complete()) return;
   await new Promise((resolve, reject) => {
     const events = [...new Set([event, "move", "resize"])];
+    let observed = event === "resize";
     const cleanup = () => {
       clearTimeout(timeout);
-      for (const name of events) window.removeListener(name, changed);
+      for (const [name, listener] of listeners) window.removeListener(name, listener);
     };
     const changed = () => {
-      if (complete()) {
+      if (observed && complete()) {
         cleanup();
         resolve();
       }
@@ -26,10 +27,26 @@ async function change(window, event, operation, complete) {
       cleanup();
       reject(new Error(`Missing native ${event} event`));
     }, 10000);
-    for (const name of events) window.on(name, changed);
+    const listeners = events.map((name) => [
+      name,
+      () => {
+        if (name === event) observed = true;
+        changed();
+      },
+    ]);
+    for (const [name, listener] of listeners) window.on(name, listener);
     operation();
-    changed();
+    if (event === "resize") changed();
   });
+}
+
+function modeEvent(window, event) {
+  return change(
+    window,
+    event,
+    () => {},
+    () => (event === "maximize" ? window.isMaximized() : window.isFullScreen()),
+  );
 }
 
 const matchesBounds = (window, expected) => {
@@ -69,24 +86,15 @@ app
     });
     const state = store.track(window, name);
     await window.loadURL("about:blank");
+    const snapshot = store.read(name);
+    const restored = snapshot?.fullScreen
+      ? modeEvent(window, "enter-full-screen")
+      : snapshot?.maximized
+        ? modeEvent(window, "maximize")
+        : Promise.resolve();
     state.restore();
     window.showInactive();
-    if (["unmaximize", "minimize", "final", "fullscreen"].includes(stage)) {
-      await change(
-        window,
-        "maximize",
-        () => {},
-        () => window.isMaximized(),
-      );
-    }
-    if (["verify-fullscreen", "leave-fullscreen"].includes(stage)) {
-      await change(
-        window,
-        "enter-full-screen",
-        () => {},
-        () => window.isFullScreen(),
-      );
-    }
+    await restored;
     const start = {
       bounds: window.getNormalBounds(),
       maximized: window.isMaximized(),
@@ -179,7 +187,19 @@ app
     state.freeze();
     assert.equal(Object.hasOwn(store.read(name), "kiosk"), false);
     console.log(
-      `WINDOW_STATE_RESULT ${JSON.stringify({ stage, start, targets: bounds, area, saved: store.read(name) })}`,
+      `WINDOW_STATE_RESULT ${JSON.stringify({
+        stage,
+        start,
+        targets: bounds,
+        area,
+        actual: {
+          maximized: window.isMaximized(),
+          fullScreen: window.isFullScreen(),
+          minimized: window.isMinimized(),
+          bounds: window.getNormalBounds(),
+        },
+        saved: store.read(name),
+      })}`,
     );
     window.close();
   })

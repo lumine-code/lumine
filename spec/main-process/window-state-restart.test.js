@@ -74,8 +74,13 @@ test("immediate native changes survive full process restarts", { timeout: 120000
         "fullscreen",
         "verify-fullscreen",
       ].includes(stage),
+      `${stage}: saved maximized state: ${JSON.stringify(result)}`,
     );
-    assert.equal(result.saved.fullScreen, ["fullscreen", "verify-fullscreen"].includes(stage));
+    assert.equal(
+      result.saved.fullScreen,
+      ["fullscreen", "verify-fullscreen"].includes(stage),
+      `${stage}: saved fullscreen state: ${JSON.stringify(result)}`,
+    );
     const expectedBounds = ["initial", "maximize", "unmaximize"].includes(stage)
       ? targets.initial
       : stage === "resize"
