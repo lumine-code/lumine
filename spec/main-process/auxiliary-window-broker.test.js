@@ -655,6 +655,7 @@ test("core presentation geometry restores before showing and freezes before appr
   const name = `lumine-presentation-${owner.windowStateId}-${persistentId}`;
   const state = {
     restore: () => calls.push("restore"),
+    boundsChanged: () => calls.push("bounds-changed"),
     freeze: () => calls.push("freeze"),
     dispose: () => calls.push("dispose"),
   };
@@ -685,6 +686,12 @@ test("core presentation geometry restores before showing and freezes before appr
   window.show = () => calls.push("show");
   broker.invoke(id, "show");
   assert.deepEqual(calls, ["restore", "show"]);
+  window.setBounds = (value) => {
+    assert.deepEqual(value, bounds);
+    calls.push("set-bounds");
+  };
+  broker.invoke(id, "setBounds", bounds);
+  assert.deepEqual(calls.slice(-2), ["set-bounds", "bounds-changed"]);
   const nativeClose = window.close;
   window.close = () => {
     calls.push("close");

@@ -25,6 +25,8 @@ test("immediate native changes survive full process restarts", { timeout: 120000
     "verify-fullscreen",
     "leave-fullscreen",
     "verify-normal",
+    "explicit-resize",
+    "verify-explicit-resize",
   ]) {
     const env = {
       ...process.env,
@@ -88,7 +90,7 @@ test("immediate native changes survive full process restarts", { timeout: 120000
     );
     const expectedBounds = ["initial", "maximize", "unmaximize"].includes(stage)
       ? targets.initial
-      : stage === "resize"
+      : ["resize", "explicit-resize", "verify-explicit-resize"].includes(stage)
         ? targets.resized
         : targets.final;
     assert.deepEqual(result.saved.bounds, expectedBounds, `${stage}: saved normal bounds`);

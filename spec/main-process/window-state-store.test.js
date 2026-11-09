@@ -426,6 +426,61 @@ test("normal geometry is accepted after the mode exit event, including an earlie
   assert.deepEqual(store.read("workspace"), snapshot({ bounds: changedBounds }));
 });
 
+test("terminal manual resize accepts normal geometry when leaving zoomed mode emits no unmaximize", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const store = fixture(t);
+  const window = new NativeWindow();
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  window.maximize();
+  window.maximized = false;
+  window.normalBounds = { x: 0, y: 0, width: 1920, height: 1080 };
+  window.emit("resize");
+  t.mock.timers.tick(100);
+  assert.deepEqual(store.read("workspace"), snapshot());
+  const normalBounds = { x: 200, y: 150, width: 1100, height: 760 };
+  window.changeBounds(normalBounds);
+  t.mock.timers.tick(100);
+  assert.deepEqual(store.read("workspace"), snapshot());
+  window.emit("resized");
+  controller.freeze();
+
+  assert.deepEqual(store.read("workspace"), snapshot({ bounds: normalBounds }));
+});
+
+test("completed explicit sizing accepts normal geometry without a native unmaximize event", (t) => {
+  const store = fixture(t);
+  const window = new NativeWindow();
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  window.maximize();
+  window.maximized = false;
+  const normalBounds = { x: 200, y: 150, width: 1100, height: 760 };
+  window.changeBounds(normalBounds);
+  controller.boundsChanged();
+  controller.freeze();
+
+  assert.deepEqual(store.read("workspace"), snapshot({ bounds: normalBounds }));
+});
+
+for (const mode of ["maximized", "fullScreen"]) {
+  test(`completed sizing while still ${mode} retains the cached normal rectangle`, (t) => {
+    const store = fixture(t);
+    const window = new NativeWindow();
+    const controller = store.track(window, "workspace");
+    t.after(controller.dispose);
+    if (mode === "maximized") window.maximize();
+    else window.completeFullScreen(true);
+    window.normalBounds = { x: 0, y: 0, width: 1920, height: 1080 };
+    const readBounds = t.mock.method(window, "getNormalBounds");
+    controller.boundsChanged();
+    controller.freeze();
+
+    assert.equal(readBounds.mock.callCount(), 0);
+    assert.deepEqual(store.read("workspace"), snapshot({ [mode]: true }));
+  });
+}
+
 test("fullscreen native bounds cannot replace the cached normal rectangle", (t) => {
   const store = fixture(t);
   const window = new NativeWindow();

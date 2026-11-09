@@ -372,6 +372,7 @@ const handleWindowAction = async (event, action, ...args) => {
       assertInteger(args[0], "width", { positive: true });
       assertInteger(args[1], "height", { positive: true });
       window.setSize(args[0], args[1]);
+      lumineWindow.windowState?.boundsChanged();
       return;
     case "getPosition": {
       const [x, y] = window.getPosition();
@@ -381,9 +382,11 @@ const handleWindowAction = async (event, action, ...args) => {
       assertInteger(args[0], "x");
       assertInteger(args[1], "y");
       window.setPosition(args[0], args[1]);
+      lumineWindow.windowState?.boundsChanged();
       return;
     case "center":
       window.center();
+      lumineWindow.windowState?.boundsChanged();
       return;
     case "focus":
       // A nested Electron spec process can become macOS's active application.

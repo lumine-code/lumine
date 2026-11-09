@@ -185,6 +185,11 @@ function createController(store, window, name, saved, onDispose) {
     if (specialMode) {
       awaitingNormalGeometry = false;
       normalExitObserved = false;
+    } else if (event === "resized" || event === "bounds-changed") {
+      // macOS can leave its zoomed mode through setFrame or a manual resize
+      // without emitting unmaximize. Accept the completed normal rectangle.
+      awaitingNormalGeometry = false;
+      normalExitObserved = false;
     } else if (event === "unmaximize" || event === "leave-full-screen") {
       // A window manager can publish the normal mode before configuring its
       // restored rectangle. Closing from this event must keep the cached bounds.
@@ -275,6 +280,15 @@ function createController(store, window, name, saved, onDispose) {
       }
       capture();
     },
+    boundsChanged() {
+      if (frozen || disposed || isDestroyed()) return;
+      try {
+        if (mode("isMinimized") || mode("isMaximized") || mode("isFullScreen")) return;
+        changed("bounds-changed", false);
+      } catch (error) {
+        report(error);
+      }
+    },
     freeze() {
       if (frozen || disposed) return;
       try {
@@ -296,7 +310,7 @@ function createController(store, window, name, saved, onDispose) {
     window.on(event, listener);
     listeners.push([event, listener]);
   };
-  for (const event of ["move", "resize"]) listen(event, () => changed(event, false));
+  for (const event of ["move", "resize", "resized"]) listen(event, () => changed(event, false));
   for (const event of [
     "maximize",
     "unmaximize",

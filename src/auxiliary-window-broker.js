@@ -372,6 +372,7 @@ module.exports = class AuxiliaryWindowBroker {
       case "setBounds":
         assertBounds(args[0]);
         window.setBounds(args[0]);
+        record.windowState?.boundsChanged();
         return;
       case "setFullScreen":
         if (typeof args[0] !== "boolean") throw new TypeError("Fullscreen must be a boolean.");

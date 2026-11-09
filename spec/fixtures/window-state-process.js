@@ -8,7 +8,7 @@ const stage = process.env.LUMINE_WINDOW_STATE_STAGE;
 app.setPath("userData", process.env.LUMINE_WINDOW_STATE_PROFILE);
 app.on("window-all-closed", () => app.quit());
 
-async function change(window, event, operation, complete) {
+async function change(window, event, operation, complete, description = event) {
   if (complete()) return;
   await new Promise((resolve, reject) => {
     const events = [...new Set([event, "move", "resize"])];
@@ -25,7 +25,17 @@ async function change(window, event, operation, complete) {
     };
     const timeout = setTimeout(() => {
       cleanup();
-      reject(new Error(`Missing native ${event} event`));
+      reject(
+        new Error(
+          `Missing native ${description}: ${JSON.stringify({
+            bounds: window.getBounds(),
+            normalBounds: window.getNormalBounds(),
+            maximized: window.isMaximized(),
+            fullScreen: window.isFullScreen(),
+            minimized: window.isMinimized(),
+          })}`,
+        ),
+      );
     }, 10000);
     const listeners = events.map((name) => [
       name,
@@ -92,8 +102,10 @@ app
       : snapshot?.maximized
         ? modeEvent(window, "maximize")
         : Promise.resolve();
-    state.restore();
+    // Maximizing a hidden macOS window emits a synthetic early event. Show it
+    // first so the armed listener observes completion of the native zoom.
     window.showInactive();
+    state.restore();
     await restored;
     const start = {
       bounds: window.getNormalBounds(),
@@ -181,6 +193,34 @@ app
       assert.deepEqual(window.getNormalBounds(), bounds.final);
     } else if (stage === "verify-normal") {
       assert.deepEqual(start, { bounds: bounds.final, maximized: false });
+    } else if (stage === "explicit-resize") {
+      assert.deepEqual(start, { bounds: bounds.final, maximized: false });
+      // On macOS setBounds exits zoom directly through setFrame, without the
+      // unmaximize event. Exercise that platform's implicit mode change too.
+      if (process.platform === "darwin") {
+        await change(
+          window,
+          "maximize",
+          () => window.maximize(),
+          () => window.isMaximized(),
+        );
+      }
+      // Start the next native operation after the mode delegate has unwound.
+      await new Promise((resolve) => setImmediate(resolve));
+      await change(
+        window,
+        "resize",
+        () => {
+          window.setBounds(bounds.resized);
+          state.boundsChanged();
+        },
+        () => matchesBounds(window, bounds.resized),
+        "explicit resize target",
+      );
+      assert.equal(window.isMaximized(), false);
+      assert.deepEqual(window.getNormalBounds(), bounds.resized);
+    } else if (stage === "verify-explicit-resize") {
+      assert.deepEqual(start, { bounds: bounds.resized, maximized: false });
     }
     // No persistence-settle delay: save and tear down in the same turn as the
     // observed native change, including a resize immediately before maximizing.

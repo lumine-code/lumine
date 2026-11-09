@@ -1455,6 +1455,7 @@ describe("LumineApplication", function () {
       window.setSize = sinon.spy();
       window.setPosition = sinon.spy();
       window.center = sinon.spy();
+      w1.windowState = { boundsChanged: sinon.spy() };
       window.hide = sinon.spy();
       window.isMaximized = sinon.stub().returns(true);
       window.isFullScreen = sinon.stub().returns(false);
@@ -1490,8 +1491,13 @@ describe("LumineApplication", function () {
       });
 
       await LumineApplication.handleWindowAction(event, "setSize", 900, 700);
+      assert.isTrue(w1.windowState.boundsChanged.firstCall.calledAfter(window.setSize.firstCall));
       await LumineApplication.handleWindowAction(event, "setPosition", 30, 40);
+      assert.isTrue(
+        w1.windowState.boundsChanged.secondCall.calledAfter(window.setPosition.firstCall),
+      );
       await LumineApplication.handleWindowAction(event, "center");
+      assert.isTrue(w1.windowState.boundsChanged.thirdCall.calledAfter(window.center.firstCall));
       await LumineApplication.handleWindowAction(event, "focus");
       await LumineApplication.handleWindowAction(event, "hide");
       await LumineApplication.handleWindowAction(event, "minimize");
