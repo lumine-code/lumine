@@ -645,7 +645,7 @@ test("auxiliary native state is scoped to its workspace and logical presentation
   broker.destroy();
 });
 
-test("core presentation geometry restores before showing and freezes before approved closing", async () => {
+test("core presentation geometry restores from a shown window and freezes before approved closing", async () => {
   const { broker, owner, window } = fixture();
   const calls = [];
   const bounds = { x: 120, y: 80, width: 900, height: 700 };
@@ -685,7 +685,7 @@ test("core presentation geometry restores before showing and freezes before appr
   assert.deepEqual(calls, []);
   window.show = () => calls.push("show");
   broker.invoke(id, "show");
-  assert.deepEqual(calls, ["restore", "show"]);
+  assert.deepEqual(calls, ["show", "restore"]);
   window.setBounds = (value) => {
     assert.deepEqual(value, bounds);
     calls.push("set-bounds");

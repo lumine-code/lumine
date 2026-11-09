@@ -1296,8 +1296,8 @@ module.exports = class LumineApplication extends EventEmitter {
   showWindow(lumineWindow) {
     if (lumineWindow.offscreen || lumineWindow.isClosing()) return;
     const window = lumineWindow.browserWindow;
-    lumineWindow.windowState?.restore();
     window.show();
+    lumineWindow.windowState?.restore();
     if (lumineWindow.preserveFocus) {
       lumineWindow.preserveFocus = false;
       return;

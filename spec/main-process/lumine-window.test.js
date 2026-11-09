@@ -1469,7 +1469,8 @@ describe("LumineWindow", function () {
 
       assert.isTrue(state.restore.calledOnce);
       assert.isTrue(nativeWindow.show.calledOnce);
-      assert.isTrue(state.restore.calledBefore(nativeWindow.show));
+      // Visible restoration avoids macOS's synthetic hidden-maximize event.
+      assert.isTrue(state.restore.calledAfter(nativeWindow.show));
       const event = { preventDefault: sinon.spy() };
       w.unloadApproved = true;
       nativeWindow.emit("close", event);
@@ -1635,7 +1636,11 @@ describe("LumineWindow", function () {
         });
         await emitterEventPromise(window.browserWindow.webContents, "did-finish-load");
         window.preserveFocus = true;
+        const restored = app.windowStateStore.read(window.windowStateName)?.maximized
+          ? emitterEventPromise(window.browserWindow, "maximize")
+          : Promise.resolve();
         LumineApplication.prototype.showWindow.call(app, window);
+        await restored;
       };
       const close = async () => {
         const preparing = window.prepareToUnload({ reason: "close" });
@@ -1665,7 +1670,9 @@ describe("LumineWindow", function () {
 
         await open();
         await conditionPromise(() => window.isMaximized(), "restored maximized geometry");
-        assert.deepEqual(window.browserWindow.getNormalBounds(), originalBounds);
+        // Native backends can report the work area while maximized. The core
+        // snapshot retains the normal rectangle until it is presented again.
+        assert.deepEqual(app.windowStateStore.read(window.windowStateName).bounds, originalBounds);
         const unmaximized = emitterEventPromise(window.browserWindow, "unmaximize");
         window.unmaximize();
         await unmaximized;

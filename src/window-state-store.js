@@ -151,6 +151,9 @@ function createController(store, window, name, saved, onDispose) {
   let restoreCalled = false;
   let pendingRestore = Boolean(saved);
   let applyingRestore = false;
+  let awaitingMaximizedRestore = false;
+  let maximizeRestoreObserved = false;
+  let fullscreenRestore;
   let awaitingNormalGeometry = false;
   let normalExitObserved = false;
   const listeners = [];
@@ -159,6 +162,12 @@ function createController(store, window, name, saved, onDispose) {
   const cancelWrite = () => {
     clearTimeout(timer);
     timer = undefined;
+  };
+  const cancelRestoreContinuation = () => {
+    clearImmediate(fullscreenRestore);
+    fullscreenRestore = undefined;
+    awaitingMaximizedRestore = false;
+    maximizeRestoreObserved = false;
   };
   const mode = (method) => window[method]?.() === true;
 
@@ -255,11 +264,55 @@ function createController(store, window, name, saved, onDispose) {
 
   const stop = (save) => {
     if (disposed) return;
+    cancelRestoreContinuation();
     if (save) flush();
     disposed = true;
     cancelWrite();
     for (const [event, listener] of listeners) window.removeListener(event, listener);
     onDispose();
+  };
+
+  const continueFullscreenRestore = () => {
+    if (
+      !awaitingMaximizedRestore ||
+      !maximizeRestoreObserved ||
+      fullscreenRestore ||
+      frozen ||
+      disposed ||
+      isDestroyed()
+    )
+      return;
+    try {
+      // Cocoa reports maximize inside its zoom-completion delegate. Start the
+      // next native transition after that callback has finished unwinding. A
+      // backend may also publish its maximized getter only after notification.
+      fullscreenRestore = setImmediate(() => {
+        fullscreenRestore = undefined;
+        if (frozen || disposed || isDestroyed()) return;
+        try {
+          if (!mode("isMaximized")) return;
+          awaitingMaximizedRestore = false;
+          maximizeRestoreObserved = false;
+          applyingRestore = true;
+          try {
+            if (!mode("isFullScreen")) window.setFullScreen?.(true);
+          } finally {
+            applyingRestore = false;
+          }
+        } catch (error) {
+          pendingRestore = false;
+          report(error);
+        }
+        try {
+          capture();
+        } catch (error) {
+          report(error);
+        }
+      });
+      fullscreenRestore.unref?.();
+    } catch (error) {
+      report(error);
+    }
   };
 
   const controller = {
@@ -269,10 +322,17 @@ function createController(store, window, name, saved, onDispose) {
       if (!saved) return;
       applyingRestore = true;
       try {
-        if (saved.maximized && !mode("isMaximized")) window.maximize?.();
-        if (saved.fullScreen !== mode("isFullScreen")) window.setFullScreen?.(saved.fullScreen);
+        if (saved.maximized && !mode("isMaximized")) {
+          awaitingMaximizedRestore = saved.fullScreen;
+          maximizeRestoreObserved = false;
+          window.maximize?.();
+        }
+        const deferFullscreen = awaitingMaximizedRestore || fullscreenRestore;
+        if (!deferFullscreen && saved.fullScreen !== mode("isFullScreen"))
+          window.setFullScreen?.(saved.fullScreen);
         if (!saved.maximized && !saved.fullScreen && mode("isMaximized")) window.unmaximize?.();
       } catch (error) {
+        cancelRestoreContinuation();
         pendingRestore = false;
         report(error);
       } finally {
@@ -291,6 +351,7 @@ function createController(store, window, name, saved, onDispose) {
     },
     freeze() {
       if (frozen || disposed) return;
+      cancelRestoreContinuation();
       try {
         capture();
       } catch (error) {
@@ -310,7 +371,11 @@ function createController(store, window, name, saved, onDispose) {
     window.on(event, listener);
     listeners.push([event, listener]);
   };
-  for (const event of ["move", "resize", "resized"]) listen(event, () => changed(event, false));
+  for (const event of ["move", "resize", "resized"])
+    listen(event, () => {
+      changed(event, false);
+      continueFullscreenRestore();
+    });
   for (const event of [
     "maximize",
     "unmaximize",
@@ -318,7 +383,13 @@ function createController(store, window, name, saved, onDispose) {
     "leave-full-screen",
     "restore",
   ])
-    listen(event, () => changed(event, true));
+    listen(event, () => {
+      changed(event, true);
+      if (event === "maximize" && awaitingMaximizedRestore) {
+        maximizeRestoreObserved = true;
+        continueFullscreenRestore();
+      }
+    });
   listen("closed", controller.dispose);
   // Native restoration may still be deferred until Show(). Capture memory now,
   // but never replace native fallback state merely by constructing a window.

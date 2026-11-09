@@ -513,7 +513,88 @@ test("saved maximized intent survives startup resize events and an unfinished as
   assert.deepEqual(store.read("workspace"), snapshot({ maximized: true }));
 });
 
-test("fullscreen restoration preserves intent until its native transition completes", (t) => {
+test("fullscreen restoration waits for maximize completion and the native callback to unwind", async (t) => {
+  const store = fixture(t);
+  store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+  const window = new NativeWindow();
+  window.maximize = () => window.calls.push("maximize");
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  assert.deepEqual(window.calls, []);
+  controller.restore();
+  assert.deepEqual(window.calls, ["maximize"]);
+  window.maximized = true;
+  window.emit("resize");
+  await new Promise(setImmediate);
+  assert.deepEqual(window.calls, ["maximize"]);
+  window.maximized = false;
+  window.emit("maximize");
+  window.maximized = true;
+  assert.deepEqual(window.calls, ["maximize"]);
+  await new Promise(setImmediate);
+
+  assert.deepEqual(window.calls, ["maximize", ["setFullScreen", true]]);
+  assert.equal(window.fullScreen, true);
+  controller.freeze();
+  assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+});
+
+test("a later geometry event can complete the one observed maximize transition without polling", async (t) => {
+  const store = fixture(t);
+  store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+  const window = new NativeWindow();
+  window.maximize = () => window.calls.push("maximize");
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  controller.restore();
+  window.emit("maximize");
+  await new Promise(setImmediate);
+  assert.deepEqual(window.calls, ["maximize"]);
+  assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+  window.maximized = true;
+  window.emit("resize");
+  assert.deepEqual(window.calls, ["maximize"]);
+  await new Promise(setImmediate);
+
+  assert.deepEqual(window.calls, ["maximize", ["setFullScreen", true]]);
+  controller.freeze();
+  assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+});
+
+test("freezing before maximize completes cancels the next native restore transition", async (t) => {
+  const store = fixture(t);
+  store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+  const window = new NativeWindow();
+  window.maximize = () => window.calls.push("maximize");
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  controller.restore();
+  controller.freeze();
+  window.maximized = true;
+  window.emit("maximize");
+  await new Promise(setImmediate);
+
+  assert.deepEqual(window.calls, ["maximize"]);
+  assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+});
+
+for (const stop of ["freeze", "dispose"]) {
+  test(`${stop} cancels a queued fullscreen restore while retaining saved intent`, async (t) => {
+    const store = fixture(t);
+    store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+    const window = new NativeWindow();
+    const controller = store.track(window, "workspace");
+    t.after(controller.dispose);
+    controller.restore();
+    controller[stop]();
+    await new Promise(setImmediate);
+
+    assert.deepEqual(window.calls, ["maximize"]);
+    assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+  });
+}
+
+test("fullscreen restoration preserves intent until its native transition completes", async (t) => {
   const store = fixture(t);
   store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
   const window = new NativeWindow();
@@ -521,6 +602,7 @@ test("fullscreen restoration preserves intent until its native transition comple
   const controller = store.track(window, "workspace");
   t.after(controller.dispose);
   controller.restore();
+  await new Promise(setImmediate);
   window.emit("resize");
   assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
   window.completeFullScreen(true);

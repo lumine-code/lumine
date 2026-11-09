@@ -339,8 +339,8 @@ module.exports = class AuxiliaryWindowBroker {
         return;
       case "show":
         if (!this.owner.headless) {
-          record.windowState?.restore();
           window.show();
+          record.windowState?.restore();
         }
         return;
       case "hide":
