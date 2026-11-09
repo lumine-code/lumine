@@ -221,7 +221,8 @@ describe("file document moves", () => {
     };
     const transaction = lumine.workspace.beginFileMove([effect]);
     await transaction.ready;
-    fs.renameSync(effect.oldPath, effect.newPath);
+    // Allow transient native metadata reads to finish during the external move.
+    await fs.promises.rename(effect.oldPath, effect.newPath);
     await transaction.complete([effect]);
     expect(moved.getPath()).toBe(path.join(root, "renamed", "a.txt"));
     expect(sibling.getPath()).toBe(path.join(root, "dir-other", "a.txt"));
