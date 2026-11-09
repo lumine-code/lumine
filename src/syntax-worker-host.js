@@ -337,9 +337,11 @@ class SyntaxWorkerHost {
 
   async dispatch(operation, data, { signal, emit } = {}) {
     try {
-      return await runtime.run(this.contextFor(this.sessions.get(data.session), operation), () =>
-        this.dispatchOperation(operation, data, { signal, emit }),
-      );
+      const run = () =>
+        runtime.run(this.contextFor(this.sessions.get(data.session), operation), () =>
+          this.dispatchOperation(operation, data, { signal, emit }),
+        );
+      return await (operation === "input-indent" ? this.withInputPriority(run) : run());
     } catch (error) {
       if (error.code === "ERR_SYNTAX_QUERY_BUDGET") {
         const unavailable = aborted("Syntax query exceeded its resource budget");
@@ -349,6 +351,40 @@ class SyntaxWorkerHost {
       }
       throw error;
     }
+  }
+
+  async withInputPriority(callback) {
+    if (this.closed) throw aborted("Syntax worker was closed");
+    if (!this.inputBarrier) {
+      let resolve;
+      const promise = new Promise((done) => {
+        resolve = done;
+      });
+      this.inputBarrier = { promise, resolve, count: 0 };
+    }
+    const barrier = this.inputBarrier;
+    barrier.count++;
+    try {
+      return await callback();
+    } finally {
+      if (--barrier.count === 0 && this.inputBarrier === barrier) {
+        // Deliver the input reply before waking optional presentation. A new
+        // input may join this barrier before the next task; do not release it.
+        barrier.wake = setImmediate(() => {
+          if (barrier.count || this.inputBarrier !== barrier) return;
+          this.inputBarrier = null;
+          barrier.resolve();
+        });
+      }
+    }
+  }
+
+  waitForInput(current, signal) {
+    if (this.closed) throw aborted("Syntax worker was closed");
+    current?.();
+    const barrier = this.inputBarrier;
+    if (!barrier) return null;
+    return waitFor(barrier.promise, signal).then(() => this.waitForInput(current, signal));
   }
 
   async dispatchOperation(operation, data, { signal, emit } = {}) {
@@ -817,6 +853,7 @@ class SyntaxWorkerHost {
           current,
           data.follow,
           data.presentation,
+          combined,
         );
       else if (operation === "builtin") {
         value = await this.builtin(mode, data.method, data.args);
@@ -1028,12 +1065,14 @@ class SyntaxWorkerHost {
     });
   }
 
-  async view(session, ranges, emit, current, follow = false, presentation) {
+  async view(session, ranges, emit, current, follow = false, presentation, signal) {
     const { buffer, mode } = session;
     const tiles = [],
       names = new Map();
     const pending = ranges.map((range) => ({ range, origin: range }));
     while (pending.length) {
+      const input = this.waitForInput(current, signal);
+      if (input) await input;
       current?.();
       const { range, origin } = pending.shift();
       const isWindow = !Array.isArray(range);
@@ -1052,6 +1091,8 @@ class SyntaxWorkerHost {
         // in a cached fallback. Retry once after yielding, with a new iterator's
         // unchanged deadline. Structural/result limits are deliberately stable.
         await new Promise(setImmediate);
+        const input = this.waitForInput(current, signal);
+        if (input) await input;
         current?.();
         iterator = mode.buildHighlightIterator(options);
         scopes = [
@@ -1078,6 +1119,8 @@ class SyntaxWorkerHost {
           header = null;
           events.length = 0;
           names.clear();
+          const input = this.waitForInput(current, signal);
+          if (input) await input;
           current?.();
         }
       }
@@ -1090,12 +1133,20 @@ class SyntaxWorkerHost {
       );
       if (acknowledgement) void Promise.resolve(acknowledgement).catch(() => {});
       if (quality === "exact") {
+        let deadline = performance.now() + 4;
         for (let row = first; row <= endRow; row++) {
           try {
             folds.push([row, mode.getFoldRangeForRow(row, 4)]);
           } catch (error) {
             if (error.code !== "ERR_SYNTAX_QUERY_BUDGET") throw error;
             break;
+          }
+          if (row < endRow && performance.now() >= deadline) {
+            await new Promise(setImmediate);
+            const input = this.waitForInput(current, signal);
+            if (input) await input;
+            current?.();
+            deadline = performance.now() + 4;
           }
         }
       }
@@ -1141,6 +1192,8 @@ class SyntaxWorkerHost {
 
   async previewView(session, range, emit, current, signal) {
     if (!emit) return null;
+    const pendingInput = this.waitForInput(current, signal);
+    if (pendingInput) await pendingInput;
     const [startRow, endRow] = range;
     const preview = await this.previews.get(
       session,
@@ -1150,6 +1203,8 @@ class SyntaxWorkerHost {
         context: () => this.contextFor(session, "preview"),
       },
     );
+    const input = this.waitForInput(current, signal);
+    if (input) await input;
     current();
     if (!preview || !session.mode.publicationPending) return null;
     try {
@@ -1188,6 +1243,8 @@ class SyntaxWorkerHost {
           header = null;
           events.length = 0;
           names.clear();
+          const input = this.waitForInput(current, signal);
+          if (input) await input;
           current();
           if (!session.mode.publicationPending)
             throw aborted("Exact syntax superseded the preview");
@@ -1214,6 +1271,12 @@ class SyntaxWorkerHost {
   }
 
   close() {
+    this.closed = true;
+    if (this.inputBarrier) {
+      clearImmediate(this.inputBarrier.wake);
+      this.inputBarrier.resolve();
+      this.inputBarrier = null;
+    }
     this.runtimeSubscription.dispose();
     this.previews.dispose();
     for (const id of [...this.sessions.keys()]) this.closeSession(id);

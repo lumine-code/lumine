@@ -16,6 +16,8 @@ The candidate rediscovers its own language topology after the proposed edit. A c
 
 Interactive input uses `mode.prepareInputIndentation({ changes, ranges, tabLength, options, signal, isCurrent })` and receives one complete `{ kind: "ready", levels }` reply. The request contains at most 128 changes, 65536 inserted UTF-16 units and 128 requested rows. Larger mutations, moves and pastes retain the acknowledged `scanPreparedIndentation()` stream. Both paths analyze the proposed source and apply the same indentation policy; the interactive contract does not guess from stale syntax or publish a partial correction.
 
+While interactive indentation is preparing, the worker pauses presentation queries at their cooperative boundaries. Offscreen warming, streamed tiles, timeout retries and provisional previews resume after the input reply can be delivered. Fold preparation yields after a 4 ms allowance and checks cancellation and input priority before continuing. Waiting presentation requests retain independent cancellation; failed, cancelled and overlapping input requests release the shared priority barrier without adding a debounce delay.
+
 ## Scheduling and resource budgets
 
 Parsing resumes in slices under one shared 4 ms allowance per worker turn. A suspended parse occupies no concurrency slot. The scheduler rechecks the active document between slices, preserves FIFO ordering at equal priority and gives waiting work a turn after 100 ms. Injection layers share the same scheduler and revision budget as their root. These are cooperative allowances: Tree-sitter must reach a progress callback before yielding, so they are not a hard upper bound on one native call.
