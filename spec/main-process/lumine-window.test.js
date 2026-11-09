@@ -1612,6 +1612,13 @@ describe("LumineWindow", function () {
     it("keeps immediate mode and bounds changes through committed close and native reopening", async function () {
       const directory = nodeFs.mkdtempSync(path.join(os.tmpdir(), "lumine-window-geometry-"));
       const windowGeometryId = require("node:crypto").randomUUID();
+      const area = screen.getPrimaryDisplay().workArea;
+      const rectangle = (inset, size) => ({
+        x: area.x + Math.floor(area.width * inset),
+        y: area.y + Math.floor(area.height * inset),
+        width: Math.floor(area.width * size),
+        height: Math.floor(area.height * size),
+      });
       class GeometryWindow extends BrowserWindow {
         loadURL() {
           return super.loadURL("about:blank");
@@ -1624,7 +1631,7 @@ describe("LumineWindow", function () {
           browserWindowConstructor: GeometryWindow,
           windowGeometryId,
           resourcePath: path.resolve(__dirname, "../.."),
-          windowDimensions: { x: 120, y: 100, width: 720, height: 540 },
+          windowDimensions: rectangle(0.1, 0.5),
         });
         await emitterEventPromise(window.browserWindow.webContents, "did-finish-load");
         window.preserveFocus = true;
@@ -1667,7 +1674,7 @@ describe("LumineWindow", function () {
         await open();
         assert.isFalse(window.isMaximized());
         assert.deepEqual(window.browserWindow.getNormalBounds(), originalBounds);
-        const changedBounds = { x: 160, y: 140, width: 760, height: 580 };
+        const changedBounds = rectangle(0.15, 0.55);
         window.browserWindow.setBounds(changedBounds);
         await conditionPromise(() => {
           const actual = window.browserWindow.getNormalBounds();

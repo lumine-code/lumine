@@ -5,11 +5,6 @@ const { windowStateOptions } = require("../../src/window-state-persistence");
 
 const name = "lumine-window-restart-spec";
 const stage = process.env.LUMINE_WINDOW_STATE_STAGE;
-const bounds = {
-  initial: { x: 120, y: 100, width: 720, height: 540 },
-  resized: { x: 150, y: 120, width: 760, height: 560 },
-  final: { x: 180, y: 140, width: 800, height: 580 },
-};
 app.setPath("userData", process.env.LUMINE_WINDOW_STATE_PROFILE);
 app.on("window-all-closed", () => app.quit());
 
@@ -45,6 +40,21 @@ const matchesBounds = (window, expected) => {
 app
   .whenReady()
   .then(async () => {
+    const area = screen.getPrimaryDisplay().workArea;
+    const rectangle = (inset, size) => ({
+      x: area.x + Math.floor(area.width * inset),
+      y: area.y + Math.floor(area.height * inset),
+      width: Math.floor(area.width * size),
+      height: Math.floor(area.height * size),
+    });
+    // Reuse the initial display's exact targets across every process and mode.
+    const bounds = process.env.LUMINE_WINDOW_STATE_TARGET_BOUNDS
+      ? JSON.parse(process.env.LUMINE_WINDOW_STATE_TARGET_BOUNDS)
+      : {
+          initial: rectangle(0.08, 0.5),
+          resized: rectangle(0.1, 0.55),
+          final: rectangle(0.12, 0.6),
+        };
     const store = new WindowStateStore({
       directory: process.env.LUMINE_WINDOW_STATE_DIRECTORY,
       displayService: screen,
@@ -53,7 +63,8 @@ app
       ...(stage === "initial" ? bounds.initial : { x: 16, y: 16, width: 400, height: 300 }),
       ...windowStateOptions(name, { enabled: true, store }, BrowserWindow),
       frame: false,
-      focusable: false,
+      // Non-focusable Linux windows bypass the window manager and cannot maximize.
+      focusable: process.platform !== "win32",
       show: false,
     });
     const state = store.track(window, name);
@@ -167,7 +178,9 @@ app
     // observed native change, including a resize immediately before maximizing.
     state.freeze();
     assert.equal(Object.hasOwn(store.read(name), "kiosk"), false);
-    console.log(`WINDOW_STATE_RESULT ${JSON.stringify({ stage, start, saved: store.read(name) })}`);
+    console.log(
+      `WINDOW_STATE_RESULT ${JSON.stringify({ stage, start, targets: bounds, area, saved: store.read(name) })}`,
+    );
     window.close();
   })
   .catch((error) => {

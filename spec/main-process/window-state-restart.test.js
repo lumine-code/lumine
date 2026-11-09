@@ -12,6 +12,7 @@ test("immediate native changes survive full process restarts", { timeout: 120000
   const profile = path.join(directory, "electron");
   fs.mkdirSync(profile);
   const fixture = path.resolve(__dirname, "../fixtures/window-state-process.js");
+  let targets;
   for (const stage of [
     "initial",
     "maximize",
@@ -30,6 +31,7 @@ test("immediate native changes survive full process restarts", { timeout: 120000
       LUMINE_WINDOW_STATE_STAGE: stage,
       LUMINE_WINDOW_STATE_PROFILE: profile,
       LUMINE_WINDOW_STATE_DIRECTORY: path.join(directory, "state"),
+      LUMINE_WINDOW_STATE_TARGET_BOUNDS: targets ? JSON.stringify(targets) : "",
     };
     for (const key of ["CI", "ELECTRON_RUN_AS_NODE", "NODE_OPTIONS", "NODE_TEST_CONTEXT"]) {
       delete env[key];
@@ -53,6 +55,15 @@ test("immediate native changes survive full process restarts", { timeout: 120000
     const line = output.split(/\r?\n/).find((value) => value.startsWith("WINDOW_STATE_RESULT "));
     assert.ok(line, `${stage}: missing native result: ${output}`);
     const result = JSON.parse(line.slice("WINDOW_STATE_RESULT ".length));
+    if (!targets) {
+      targets = result.targets;
+      for (const bounds of Object.values(targets)) {
+        assert.ok(bounds.x >= result.area.x && bounds.y >= result.area.y);
+        assert.ok(bounds.x + bounds.width <= result.area.x + result.area.width);
+        assert.ok(bounds.y + bounds.height <= result.area.y + result.area.height);
+      }
+    }
+    assert.deepEqual(result.targets, targets);
     assert.equal(
       result.saved.maximized,
       [
@@ -66,10 +77,10 @@ test("immediate native changes survive full process restarts", { timeout: 120000
     );
     assert.equal(result.saved.fullScreen, ["fullscreen", "verify-fullscreen"].includes(stage));
     const expectedBounds = ["initial", "maximize", "unmaximize"].includes(stage)
-      ? { x: 120, y: 100, width: 720, height: 540 }
+      ? targets.initial
       : stage === "resize"
-        ? { x: 150, y: 120, width: 760, height: 560 }
-        : { x: 180, y: 140, width: 800, height: 580 };
+        ? targets.resized
+        : targets.final;
     assert.deepEqual(result.saved.bounds, expectedBounds, `${stage}: saved normal bounds`);
   }
 });
