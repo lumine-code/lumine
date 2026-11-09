@@ -212,6 +212,20 @@ test("restored rectangles fit the selected work area, including a negative-posit
   });
 });
 
+test("closing a clamped restored window commits its adjusted rectangle to disk", (t) => {
+  const store = fixture(t);
+  store.write("workspace", snapshot({ bounds: { ...INITIAL_BOUNDS, x: 3000, y: 1600 } }));
+  const adjusted = { ...INITIAL_BOUNDS, x: 1020, y: 380 };
+  assert.deepEqual(store.getWindowOptions("workspace"), adjusted);
+  const window = new NativeWindow({ bounds: adjusted });
+  const controller = store.track(window, "workspace");
+  controller.restore();
+  controller.freeze();
+  controller.dispose();
+
+  assert.deepEqual(store.read("workspace").bounds, adjusted);
+});
+
 test("an unreadable optional snapshot reports errors and permits native restoration and tracking", (t) => {
   const failures = [];
   const store = fixture(t, { onError: (error, name) => failures.push({ error, name }) });

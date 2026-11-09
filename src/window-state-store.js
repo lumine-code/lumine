@@ -130,7 +130,6 @@ module.exports = class WindowStateStore {
     // delayed writes or eventual `closed` event.
     this.#controllers.get(name)?.controller.dispose();
     const saved = this.#readForRestore(name);
-    if (saved) saved.bounds = this.clampBounds(saved.bounds);
     let entry;
     entry = createController(this, window, name, saved, () => {
       if (this.#controllers.get(name) === entry) this.#controllers.delete(name);
@@ -141,8 +140,11 @@ module.exports = class WindowStateStore {
 };
 
 function createController(store, window, name, saved, onDispose) {
-  let state = saved;
+  // Compare against the actual disk record before adapting it to the current
+  // displays, so closing an adjusted window commits the new rectangle.
   let lastWritten = saved && JSON.stringify(saved);
+  if (saved) saved.bounds = store.clampBounds(saved.bounds);
+  let state = saved;
   let timer;
   let frozen = false;
   let disposed = false;
