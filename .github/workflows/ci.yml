@@ -244,10 +244,6 @@ jobs:
         shell: bash
         timeout-minutes: 5
         run: env CI= npm run test:only -- spec/spec-window-rendering-spec.js
-      # A single full-suite Electron session, capped so a wedged session cannot
-      # hang the job. No retries and no per-file fallback: a failure here is a
-      # real regression or a flaky spec, and flaky specs get fixed rather than
-      # absorbed into a 30-minute isolation pass.
       - name: Test trusted scrollbar wheel input
         shell: bash
         timeout-minutes: 5
@@ -255,18 +251,6 @@ jobs:
           prefix=""
           if [ "$RUNNER_OS" = "Linux" ]; then prefix="xvfb-run --auto-servernum"; fi
           $prefix node script/test-overlay-scrollbar-wheel.js
-      - name: Run editor specs
-        shell: bash
-        timeout-minutes: 60
-        run: |
-          prefix=""
-          if [ "$RUNNER_OS" = "Linux" ]; then prefix="xvfb-run --auto-servernum"; fi
-          # macOS runners have no GNU `timeout`; Homebrew coreutils ships it as
-          # `gtimeout`. Without either, the step timeout is the backstop.
-          if command -v timeout >/dev/null 2>&1; then guard="timeout 2700"
-          elif command -v gtimeout >/dev/null 2>&1; then guard="gtimeout 2700"
-          else guard=""; fi
-          $guard $prefix npm run test:editor
       # The main-process (Electron main) suite runs under Jasmine in a single
       # session. Like the editor specs it runs once with a
       # timeout guard; a failure here is a real regression, not a retry target.
@@ -301,6 +285,22 @@ jobs:
           else
             $guard npm run test:main
           fi
+      # A single full-suite Electron session, capped so a wedged session cannot
+      # hang the job. No retries and no per-file fallback: a failure here is a
+      # real regression or a flaky spec, and flaky specs get fixed rather than
+      # absorbed into a 30-minute isolation pass.
+      - name: Run editor specs
+        shell: bash
+        timeout-minutes: 60
+        run: |
+          prefix=""
+          if [ "$RUNNER_OS" = "Linux" ]; then prefix="xvfb-run --auto-servernum"; fi
+          # macOS runners have no GNU `timeout`; Homebrew coreutils ships it as
+          # `gtimeout`. Without either, the step timeout is the backstop.
+          if command -v timeout >/dev/null 2>&1; then guard="timeout 2700"
+          elif command -v gtimeout >/dev/null 2>&1; then guard="gtimeout 2700"
+          else guard=""; fi
+          $guard $prefix npm run test:editor
       # Run each bundled package in its own Electron session. The combined
       # `npm run test:pkgs` session suffers cross-package state leakage (~200
       # spurious failures) and has hung CI runners; per-package isolation
