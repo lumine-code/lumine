@@ -172,18 +172,36 @@ app
       assert.deepEqual(store.read(name).bounds, bounds.final);
       assert.equal(window.isFullScreen(), true);
     } else if (stage === "leave-fullscreen") {
+      const trace = (point) => {
+        if (process.platform !== "linux") return;
+        console.log(
+          `WINDOW_STATE_TRANSITION ${JSON.stringify({
+            point,
+            maximized: window.isMaximized(),
+            fullScreen: window.isFullScreen(),
+            bounds: window.getBounds(),
+            normalBounds: window.getNormalBounds(),
+          })}`,
+        );
+      };
       await change(
         window,
         "leave-full-screen",
         () => window.setFullScreen(false),
         () => !window.isFullScreen(),
       );
+      trace("before-maximize-barrier");
+      // X11 restores the backing maximized mode after leaving fullscreen.
+      if (process.platform === "linux" && snapshot?.maximized)
+        await modeEvent(window, "maximize");
+      trace("after-maximize-barrier");
       await change(
         window,
         "unmaximize",
         () => window.unmaximize(),
         () => !window.isMaximized(),
       );
+      trace("after-unmaximize");
       await change(
         window,
         "resize",
