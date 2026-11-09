@@ -286,6 +286,13 @@ function createScrollbarRuntime() {
 
   class DOMScrollbarController {
     constructor(manager, element, options = {}) {
+      // Capture the initial native offsets before chrome changes styles. This
+      // distinguishes a real first movement from a delayed duplicate event,
+      // including a scrollport restored to a nonzero offset before attaching.
+      this.scrollTop = element.scrollTop;
+      this.scrollLeft = element.scrollLeft;
+      this.positionVersion = 0;
+      this.layoutVersion = 0;
       owners.get(element)?.destroy();
       owners.set(element, this);
       this.manager = manager;
@@ -563,14 +570,15 @@ function createScrollbarRuntime() {
           );
         }
       }
-      this.owner = presentation.focusOwner;
       const persistent = presentation.policy === "always";
       const nativeScrollLeft = element.scrollLeft;
       const scrollLeft = this.rtl
         ? Math.max(0, scrollWidth - width) + nativeScrollLeft
         : nativeScrollLeft;
       const wheelChain = [];
+      const scrollAncestors = [];
       for (let node = element; node; node = node.parentElement) {
+        if (node !== element) scrollAncestors.push(node);
         if (typeof node.scrollBy !== "function") continue;
         const nodeStyle = styleFor(node);
         let overflowX = nodeStyle.overflowX;
@@ -606,7 +614,10 @@ function createScrollbarRuntime() {
               nodeStyle.overscrollBehaviorY === "none",
           });
       }
+      this.manager.updateScrollRouting(this, scrollAncestors);
       return {
+        owner: presentation.focusOwner,
+        scrollAncestors,
         parent,
         layout: presentation.layout,
         documentTrack,
@@ -646,7 +657,8 @@ function createScrollbarRuntime() {
         canScrollVertically,
         scrollTop: element.scrollTop,
         scrollLeft,
-        nativeScrollLeft,
+        positionVersion: this.positionVersion,
+        layoutVersion: this.layoutVersion,
         wheelChain,
         wheelLineHeight: parseFloat(style.lineHeight) || 16,
         // Match native defaults: macOS preserves the delivered axes; other
@@ -657,6 +669,7 @@ function createScrollbarRuntime() {
 
     write(snapshot) {
       if (this.destroyed || !snapshot) return;
+      if (snapshot.layoutVersion !== this.layoutVersion) return;
       for (const [property, state] of this.endStyles) {
         const value = this.element.style.getPropertyValue(property);
         const priority = this.element.style.getPropertyPriority(property);
@@ -684,6 +697,14 @@ function createScrollbarRuntime() {
         this.manager.invalidate(this);
         return;
       }
+      if (snapshot.positionVersion !== this.positionVersion) {
+        // Input may arrive between the shared read and write phases. Project
+        // the latest captured native offsets without another layout read.
+        snapshot.scrollTop = this.scrollTop;
+        snapshot.scrollLeft = this.rtl
+          ? Math.max(0, snapshot.scrollWidth - snapshot.viewportWidth) + this.scrollLeft
+          : this.scrollLeft;
+      }
       if (this.paddingScrollPosition) {
         const { top, expected, atEnd } = this.paddingScrollPosition;
         this.paddingScrollPosition = null;
@@ -699,15 +720,13 @@ function createScrollbarRuntime() {
       }
       const old = this.geometry;
       this.geometry = snapshot;
-      if (!old) {
-        this.scrollTop = snapshot.scrollTop;
-        this.scrollLeft = snapshot.nativeScrollLeft;
-      }
       if (snapshot.followSibling) {
         if (this.element.nextSibling !== this.layer)
           snapshot.parent.insertBefore(this.layer, this.element.nextSibling);
       } else if (this.layer.parentElement !== snapshot.parent)
         snapshot.parent.appendChild(this.layer);
+      this.owner = snapshot.owner;
+      this.manager.updateRouting(this, snapshot);
       const style = this.layer.style;
       for (const [key, value] of Object.entries({
         left: `${snapshot.left}px`,
@@ -782,19 +801,18 @@ function createScrollbarRuntime() {
     }
 
     syncPosition() {
-      if (!this.geometry) {
-        this.reveal();
-        return;
-      }
       const top = this.element.scrollTop;
       const left = this.element.scrollLeft;
       const moved = top !== this.scrollTop || left !== this.scrollLeft;
       this.scrollTop = top;
       this.scrollLeft = left;
-      this.vertical.updatePosition(top);
-      this.horizontal.updatePosition(
-        this.rtl ? this.geometry.scrollWidth - this.geometry.viewportWidth + left : left,
-      );
+      if (moved) this.positionVersion++;
+      if (this.geometry) {
+        this.vertical.updatePosition(top);
+        this.horizontal.updatePosition(
+          this.rtl ? this.geometry.scrollWidth - this.geometry.viewportWidth + left : left,
+        );
+      }
       if (moved) this.reveal();
     }
 
@@ -931,6 +949,7 @@ function createScrollbarRuntime() {
       this.destroyed = true;
       this.activity?.dispose();
       this.activity = null;
+      this.manager.removeRouting(this);
       this.observer.disconnect();
       this.layer.removeEventListener("wheel", this.wheel);
       this.vertical.destroy();
@@ -965,18 +984,19 @@ function createScrollbarRuntime() {
         });
       this.scheduleWrite = scheduleWrite || ((callback) => callback());
       this.controllers = new Map();
+      this.visibilityTargets = new Map();
+      this.scrollDependents = new Map();
       this.retiredEndStyles = new WeakMap();
       this.dirty = new Set();
       this.roots = new Set([document.body]);
       this.listeners = {
         scroll: (event) => {
           this.controllers.get(event.target)?.syncPosition();
-          for (const controller of this.controllers.values())
-            if (event.target !== controller.element && event.target.contains?.(controller.element))
-              this.invalidate(controller);
+          const dependents = this.scrollDependents.get(event.target);
+          if (dependents) for (const controller of dependents) this.invalidate(controller);
         },
-        pointerover: () => this.syncVisibility(),
-        pointerout: () => this.syncVisibility(),
+        pointerover: (event) => this.syncVisibility(event),
+        pointerout: (event) => this.syncVisibility(event),
       };
       for (const [name, callback] of Object.entries(this.listeners))
         document.addEventListener(name, callback, true);
@@ -1163,6 +1183,7 @@ function createScrollbarRuntime() {
 
     invalidate(controller, stylesChanged = false) {
       if (this.destroyed || controller.destroyed) return;
+      controller.layoutVersion++;
       controller.paddingStyleDirty ||= stylesChanged;
       this.dirty.add(controller);
       this.schedule();
@@ -1199,8 +1220,90 @@ function createScrollbarRuntime() {
       });
     }
 
-    syncVisibility() {
-      for (const controller of this.controllers.values()) controller.syncVisibility();
+    updateRouting(controller, snapshot) {
+      const previous = controller.routing;
+      const hover = snapshot.visible && !snapshot.persistent;
+      if (previous?.owner === snapshot.owner && previous.hover === hover) return;
+      this.removeVisibilityRouting(controller);
+      const add = (index, target) => {
+        let group = index.get(target);
+        if (!group) index.set(target, (group = new Set()));
+        group.add(controller);
+      };
+      if (hover) {
+        add(this.visibilityTargets, snapshot.owner);
+        add(this.visibilityTargets, controller.layer);
+      }
+      controller.routing = { owner: snapshot.owner, hover };
+    }
+
+    updateScrollRouting(controller, ancestors) {
+      const previous = controller.scrollAncestors;
+      if (
+        previous?.length === ancestors.length &&
+        previous.every((node, index) => node === ancestors[index])
+      )
+        return;
+      this.removeScrollRouting(controller);
+      for (const ancestor of [...ancestors, this.document]) {
+        let group = this.scrollDependents.get(ancestor);
+        if (!group) this.scrollDependents.set(ancestor, (group = new Set()));
+        group.add(controller);
+      }
+      controller.scrollAncestors = ancestors;
+    }
+
+    removeScrollRouting(controller) {
+      if (!controller.scrollAncestors) return;
+      for (const ancestor of [...controller.scrollAncestors, this.document]) {
+        const group = this.scrollDependents.get(ancestor);
+        if (!group) continue;
+        group.delete(controller);
+        if (!group.size) this.scrollDependents.delete(ancestor);
+      }
+      controller.scrollAncestors = null;
+    }
+
+    removeVisibilityRouting(controller) {
+      const routing = controller.routing;
+      if (!routing) return;
+      const remove = (index, target) => {
+        const group = index.get(target);
+        if (!group) return;
+        group.delete(controller);
+        if (!group.size) index.delete(target);
+      };
+      if (routing.hover) {
+        remove(this.visibilityTargets, routing.owner);
+        remove(this.visibilityTargets, controller.layer);
+      }
+      controller.routing = null;
+    }
+
+    removeRouting(controller) {
+      this.removeVisibilityRouting(controller);
+      this.removeScrollRouting(controller);
+    }
+
+    pointerControllers(target, relatedTarget, affected) {
+      const related = relatedTarget?.nodeType ? relatedTarget : null;
+      for (
+        let node = target?.nodeType === 1 ? target : target?.parentElement;
+        node;
+        node = node.parentElement
+      ) {
+        const group = this.visibilityTargets.get(node);
+        if (!group || (related && node.contains(related))) continue;
+        affected ??= new Set();
+        for (const controller of group) affected.add(controller);
+      }
+      return affected;
+    }
+
+    syncVisibility(event) {
+      let affected = this.pointerControllers(event.target, event.relatedTarget);
+      affected = this.pointerControllers(event.relatedTarget, event.target, affected);
+      if (affected) for (const controller of affected) controller.syncVisibility();
     }
     refresh() {
       for (const controller of this.controllers.values()) {
@@ -1219,6 +1322,8 @@ function createScrollbarRuntime() {
       for (const [name, callback] of Object.entries(this.listeners))
         this.document.removeEventListener(name, callback, true);
       for (const controller of [...this.controllers.values()]) controller.destroy();
+      this.visibilityTargets.clear();
+      this.scrollDependents.clear();
       this.roots.clear();
       this.dirty.clear();
     }
