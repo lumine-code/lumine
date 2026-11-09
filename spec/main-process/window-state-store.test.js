@@ -388,6 +388,44 @@ test("entering maximization still captures a newly changed normal rectangle", (t
   );
 });
 
+for (const exit of ["unmaximize", "leave-full-screen"]) {
+  test(`closing from ${exit} keeps normal bounds while native geometry still describes the work area`, (t) => {
+    const store = fixture(t);
+    const window = new NativeWindow();
+    const controller = store.track(window, "workspace");
+    if (exit === "unmaximize") window.maximize();
+    else window.completeFullScreen(true);
+    window.maximized = false;
+    window.fullScreen = false;
+    window.normalBounds = { x: 0, y: 0, width: 1920, height: 1080 };
+    const readBounds = t.mock.method(window, "getNormalBounds");
+    window.emit(exit);
+    controller.freeze();
+    controller.dispose();
+
+    assert.equal(readBounds.mock.callCount(), 0);
+    assert.deepEqual(store.read("workspace"), snapshot());
+  });
+}
+
+test("normal geometry is accepted after the mode exit event, including an earlier transitional resize", (t) => {
+  const store = fixture(t);
+  const window = new NativeWindow();
+  const controller = store.track(window, "workspace");
+  window.maximize();
+  window.maximized = false;
+  window.normalBounds = { x: 0, y: 0, width: 1920, height: 1080 };
+  window.emit("resize");
+  window.emit("unmaximize");
+  assert.deepEqual(store.read("workspace"), snapshot());
+  const changedBounds = { x: 200, y: 150, width: 1100, height: 760 };
+  window.changeBounds(changedBounds);
+  controller.freeze();
+  controller.dispose();
+
+  assert.deepEqual(store.read("workspace"), snapshot({ bounds: changedBounds }));
+});
+
 test("fullscreen native bounds cannot replace the cached normal rectangle", (t) => {
   const store = fixture(t);
   const window = new NativeWindow();

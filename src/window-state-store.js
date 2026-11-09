@@ -151,6 +151,8 @@ function createController(store, window, name, saved, onDispose) {
   let restoreCalled = false;
   let pendingRestore = Boolean(saved);
   let applyingRestore = false;
+  let awaitingNormalGeometry = false;
+  let normalExitObserved = false;
   const listeners = [];
   const isDestroyed = () => window.isDestroyed?.() === true;
   const report = (error) => store.onError(error, name);
@@ -165,7 +167,7 @@ function createController(store, window, name, saved, onDispose) {
     return !mode("isFullScreen") && mode("isMaximized") === saved.maximized;
   };
 
-  const capture = () => {
+  const capture = (event) => {
     if (frozen || disposed || isDestroyed()) return;
     // Some native backends replace their restored rectangle while minimizing a
     // maximized window. Keep the entire last visible state until it is restored.
@@ -179,7 +181,28 @@ function createController(store, window, name, saved, onDispose) {
     // maximization, then retain them through later presentation-only resizes.
     const fullScreen = mode("isFullScreen");
     const maximized = mode("isMaximized");
-    const retainBounds = state && (fullScreen || (maximized && state.maximized));
+    const specialMode = fullScreen || maximized;
+    if (specialMode) {
+      awaitingNormalGeometry = false;
+      normalExitObserved = false;
+    } else if (event === "unmaximize" || event === "leave-full-screen") {
+      // A window manager can publish the normal mode before configuring its
+      // restored rectangle. Closing from this event must keep the cached bounds.
+      awaitingNormalGeometry = true;
+      normalExitObserved = true;
+    } else if (state && (state.maximized || state.fullScreen)) {
+      awaitingNormalGeometry = true;
+      normalExitObserved = false;
+    } else if (
+      awaitingNormalGeometry &&
+      normalExitObserved &&
+      (event === "move" || event === "resize")
+    ) {
+      awaitingNormalGeometry = false;
+      normalExitObserved = false;
+    }
+    const retainBounds =
+      state && (fullScreen || (maximized && state.maximized) || awaitingNormalGeometry);
     let bounds = retainBounds ? state.bounds : (window.getNormalBounds?.() ?? window.getBounds?.());
     if (!bounds && window.getPosition && window.getSize) {
       const [x, y] = window.getPosition();
@@ -210,10 +233,10 @@ function createController(store, window, name, saved, onDispose) {
     }
   };
 
-  const changed = (immediate) => {
+  const changed = (event, immediate) => {
     if (frozen || disposed) return;
     try {
-      capture();
+      capture(event);
       if (pendingRestore) return;
       if (immediate) flush();
       else if (!timer) {
@@ -273,7 +296,7 @@ function createController(store, window, name, saved, onDispose) {
     window.on(event, listener);
     listeners.push([event, listener]);
   };
-  for (const event of ["move", "resize"]) listen(event, () => changed(false));
+  for (const event of ["move", "resize"]) listen(event, () => changed(event, false));
   for (const event of [
     "maximize",
     "unmaximize",
@@ -281,7 +304,7 @@ function createController(store, window, name, saved, onDispose) {
     "leave-full-screen",
     "restore",
   ])
-    listen(event, () => changed(true));
+    listen(event, () => changed(event, true));
   listen("closed", controller.dispose);
   // Native restoration may still be deferred until Show(). Capture memory now,
   // but never replace native fallback state merely by constructing a window.
