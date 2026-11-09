@@ -201,7 +201,9 @@ app
         saved: store.read(name),
       })}`,
     );
-    window.close();
+    // Unwind Cocoa's fullscreen notification before requesting native teardown.
+    // The snapshot above is already committed in the mode event's own turn.
+    setImmediate(() => window.close());
   })
   .catch((error) => {
     console.error(error);

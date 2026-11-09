@@ -46,12 +46,17 @@ test("immediate native changes survive full process restarts", { timeout: 120000
       stream.setEncoding("utf8");
       stream.on("data", (data) => (output += data));
     }
-    const timeout = setTimeout(() => child.kill(), 15000);
-    const code = await new Promise((resolve, reject) => {
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, 15000);
+    const resultCode = await new Promise((resolve, reject) => {
       child.once("error", reject);
-      child.once("close", resolve);
+      child.once("close", (code, signal) => resolve({ code, signal }));
     }).finally(() => clearTimeout(timeout));
-    assert.equal(code, 0, `${stage}: ${output}`);
+    assert.equal(timedOut, false, `${stage}: native process did not exit: ${output}`);
+    assert.equal(resultCode.code, 0, `${stage}: ${resultCode.signal ?? "exit"}: ${output}`);
     const line = output.split(/\r?\n/).find((value) => value.startsWith("WINDOW_STATE_RESULT "));
     assert.ok(line, `${stage}: missing native result: ${output}`);
     const result = JSON.parse(line.slice("WINDOW_STATE_RESULT ".length));
