@@ -28,7 +28,7 @@
   "dependencies": {
     "@babel/core": "8.1.0",
     "@jasminejs/reporters": "1.1.0",
-    "@lumine-code/babel-preset": "github:lumine-code/babel-preset#46638455bff34520ecc3d8ab39a73c6aee0e89ac",
+    "@lumine-code/babel-preset": "github:lumine-code/babel-preset#d7f4b9a02011f6ed2d89d5488a38ca03ab29b5fe",
     "@lumine-code/etch": "github:lumine-code/etch#52c94d488a7996ef811cb5848a68a33719e997e6",
     "@lumine-code/event-kit": "github:lumine-code/event-kit#0ca198e36a4a4420e79b77bd38a9ab693e88b70b",
     "@lumine-code/fs-admin": "github:lumine-code/fs-admin#184a29daac103f2f94495213f6bda24b1f66bcf8",
@@ -80,7 +80,7 @@
     "language-regex": "github:lumine-code/language-regex#44ada8dbcbf0acbc53cd0e759f10341193208ae6",
     "language-shellscript": "github:lumine-code/language-shellscript#c88a39040d2aa365cc2dfe709a8575ca95a92467",
     "language-source": "github:lumine-code/language-source#2e353222a9c9d0aabacbd58b9242d155d3c3e0d3",
-    "language-sql": "github:lumine-code/language-sql#12559a522097f788322fcb8289f112faa73ece59",
+    "language-sql": "github:lumine-code/language-sql#8130a80fff262ddf775fb2f9c13d870e421dca4b",
     "language-text": "github:lumine-code/language-text#348eaca7ecf10aa6563dc042eab1462d9b432f8b",
     "language-todo": "github:lumine-code/language-todo#77a1bf3fe89800bedfaa2ad7281d444a5a973777",
     "language-toml": "github:lumine-code/language-toml#0f7f6f1dc268744569506ee195db033e30852425",
@@ -116,7 +116,7 @@
     "title-bar": "github:lumine-code/title-bar#963e0aae5f87e01faa0158f5a3da6ac7a5887cea",
     "tree-view": "github:lumine-code/tree-view#f0e63afad0ad2916f0eb33a78b5b442cec2370e7",
     "web-tree-sitter": "0.27.2",
-    "whitespace": "github:lumine-code/whitespace#de5ff0968d68816c7cac18f20c2938135780a23d",
+    "whitespace": "github:lumine-code/whitespace#41a3d75274ae46686d63e7583ecce1a6d4808aa1",
     "winattr": "^4.0.0",
     "window-title": "github:lumine-code/window-title#60a14c97ef825d489f83698f3b2e022fec6ba513",
     "yaml": "^2.9.1"
