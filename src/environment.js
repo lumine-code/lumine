@@ -708,6 +708,10 @@ class Environment {
     this.keymaps.subscribeToFileReadFailure();
 
     this.installUncaughtErrorHandler();
+    // Specs retain synchronous exceptions unless they explicitly opt in.
+    if (!this.window.isSpecMode()) {
+      this.disposables.add(this.installEventHandlerExceptionHandler());
+    }
     this.attachSaveStateListeners();
     this.#windowEventHandler.initialize(this.domWindow, this.document);
 
@@ -1564,6 +1568,12 @@ class Environment {
         originalError,
       });
     };
+  }
+
+  /** @private */
+  installEventHandlerExceptionHandler() {
+    // Report through the browser without interrupting the remaining listeners.
+    return Emitter.onEventHandlerException((error) => this.domWindow.reportError(error));
   }
 
   reportUncaughtError(eventObject) {

@@ -5,7 +5,7 @@ const crypto = require("crypto");
 const temp = require("@lumine-code/fs-temp").track();
 const Environment = require("../src/environment");
 const Clipboard = require("../src/clipboard");
-const { Disposable } = require("@lumine-code/event-kit");
+const { Disposable, Emitter } = require("@lumine-code/event-kit");
 const { combineLifecycleErrors } = require("../src/package-lifecycle-errors");
 const { timeoutPromise: wait } = require("./helpers/async-spec-helpers");
 const { getProjectStateKey, getWindowProjectStateKey } = require("../src/project-state-keys");
@@ -367,6 +367,84 @@ describe("Environment", () => {
       await devToolsPromise;
       expect(lumine.window.openDevTools).toHaveBeenCalled();
       expect(lumine.window.executeJavaScriptInDevTools).toHaveBeenCalled();
+    });
+
+    describe("event listener exceptions", () => {
+      let registration;
+      let subscription;
+      let environment;
+
+      afterEach(() => {
+        registration?.dispose();
+        subscription?.dispose();
+        environment?.destroy();
+        registration = subscription = environment = null;
+      });
+
+      it("keeps synchronous listener failures in spec mode by default", () => {
+        const emitter = new Emitter();
+        const error = new Error("Spec listener failure");
+        const laterListener = jasmine.createSpy("laterListener");
+        emitter.on("change", () => {
+          throw error;
+        });
+        emitter.on("change", laterListener);
+
+        expect(() => emitter.emit("change", 42)).toThrow(error);
+        expect(laterListener).not.toHaveBeenCalled();
+      });
+
+      it("reports an opted-in listener failure and still calls later listeners", async () => {
+        await jasmine.spyOnGlobalErrorsAsync(async () => {
+          const emitter = new Emitter();
+          const error = new Error("Reported listener failure");
+          const didThrow = jasmine.createSpy("didThrow");
+          const laterListener = jasmine.createSpy("laterListener");
+          registration = lumine.installEventHandlerExceptionHandler();
+          subscription = lumine.runtime.onDidThrowError(didThrow);
+          emitter.on("change", () => {
+            throw error;
+          });
+          emitter.on("change", laterListener);
+
+          expect(() => emitter.emit("change", 42)).not.toThrow();
+          expect(laterListener).toHaveBeenCalledOnceWith(42);
+          await conditionPromise(() => didThrow.calls.count() === 1, "the browser error report");
+          expect(didThrow.calls.mostRecent().args[0].originalError).toBe(error);
+        });
+      });
+
+      it("owns production listener reporting until the environment is destroyed", () => {
+        const domWindow = {
+          requestIdleCallback() {},
+          addEventListener() {},
+          removeEventListener() {},
+          reportError: jasmine.createSpy("reportError"),
+        };
+        environment = new Environment({ applicationDelegate: lumine.applicationDelegate });
+        spyOn(environment.window, "isSpecMode").and.returnValue(false);
+        environment.initialize({
+          window: domWindow,
+          document: document.implementation.createHTMLDocument(),
+        });
+        const emitter = new Emitter();
+        const error = new Error("Production listener failure");
+        const laterListener = jasmine.createSpy("laterListener");
+        emitter.on("change", () => {
+          throw error;
+        });
+        emitter.on("change", laterListener);
+
+        expect(() => emitter.emit("change", 42)).not.toThrow();
+        expect(domWindow.reportError).toHaveBeenCalledOnceWith(error);
+        expect(laterListener).toHaveBeenCalledOnceWith(42);
+
+        environment.destroy();
+        environment = null;
+        laterListener.calls.reset();
+        expect(() => emitter.emit("change", 43)).toThrow(error);
+        expect(laterListener).not.toHaveBeenCalled();
+      });
     });
 
     describe("::onWillThrowError", () => {
