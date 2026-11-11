@@ -5901,6 +5901,7 @@ class LanguageLayer {
     let chunkStart = start;
     let chunkStartIndex = startIndex;
     let windowCodeUnits = chunkCodeUnits;
+    const pendingWindowEnds = [];
     while (chunkStartIndex < endIndex) {
       const nextRow = Math.min(end.row, chunkStart.row + chunkRows);
       const rowEnd = nextRow === end.row ? end : new Point(nextRow, 0);
@@ -5908,7 +5909,10 @@ class LanguageLayer {
       const chunkEndIndex = boundedQueryRange(
         source,
         chunkStartIndex,
-        rowEndIndex > chunkStartIndex ? Math.min(endIndex, rowEndIndex) : endIndex,
+        Math.min(
+          pendingWindowEnds.at(-1) ?? endIndex,
+          rowEndIndex > chunkStartIndex ? Math.min(endIndex, rowEndIndex) : endIndex,
+        ),
         windowCodeUnits,
       ).endIndex;
       const chunkEnd =
@@ -5929,7 +5933,13 @@ class LanguageLayer {
           injectionPointVersion,
         );
       } catch (error) {
-        windowCodeUnits = this._smallerInjectionQueryWindow(error, chunkStartIndex, chunkEndIndex);
+        const smallerWindow = this._smallerInjectionQueryWindow(
+          error,
+          chunkStartIndex,
+          chunkEndIndex,
+        );
+        pendingWindowEnds.push(chunkEndIndex);
+        windowCodeUnits = smallerWindow;
         await this.languageMode._yieldForInjectionCandidateScan();
         if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) return null;
         continue;
@@ -5941,6 +5951,13 @@ class LanguageLayer {
       if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) return null;
       chunkStart = chunkEnd;
       chunkStartIndex = chunkEndIndex;
+      // Finish siblings of the refined window before restoring the ordinary
+      // step. A cold prefix must not leave the entire healthy suffix tiny.
+      while (pendingWindowEnds.length && chunkStartIndex >= pendingWindowEnds.at(-1))
+        pendingWindowEnds.pop();
+      windowCodeUnits = pendingWindowEnds.length
+        ? Math.max(2, pendingWindowEnds.at(-1) - chunkStartIndex)
+        : chunkCodeUnits;
     }
     return records;
   }
@@ -6074,6 +6091,7 @@ class LanguageLayer {
     let chunkStart = start;
     let chunkStartIndex = startIndex;
     let windowCodeUnits = chunkCodeUnits;
+    const pendingWindowEnds = [];
 
     while (chunkStartIndex < endIndex) {
       const nextRow = Math.min(end.row, chunkStart.row + chunkRows);
@@ -6082,7 +6100,10 @@ class LanguageLayer {
       const chunkEndIndex = boundedQueryRange(
         source,
         chunkStartIndex,
-        rowChunkEndIndex > chunkStartIndex ? Math.min(endIndex, rowChunkEndIndex) : endIndex,
+        Math.min(
+          pendingWindowEnds.at(-1) ?? endIndex,
+          rowChunkEndIndex > chunkStartIndex ? Math.min(endIndex, rowChunkEndIndex) : endIndex,
+        ),
         windowCodeUnits,
       ).endIndex;
       const chunkEnd =
@@ -6104,7 +6125,13 @@ class LanguageLayer {
           injectionPointVersion,
         );
       } catch (error) {
-        windowCodeUnits = this._smallerInjectionQueryWindow(error, chunkStartIndex, chunkEndIndex);
+        const smallerWindow = this._smallerInjectionQueryWindow(
+          error,
+          chunkStartIndex,
+          chunkEndIndex,
+        );
+        pendingWindowEnds.push(chunkEndIndex);
+        windowCodeUnits = smallerWindow;
         await this.languageMode._yieldForInjectionCandidateScan();
         if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) return null;
         continue;
@@ -6123,6 +6150,11 @@ class LanguageLayer {
       }
       chunkStart = chunkEnd;
       chunkStartIndex = chunkEndIndex;
+      while (pendingWindowEnds.length && chunkStartIndex >= pendingWindowEnds.at(-1))
+        pendingWindowEnds.pop();
+      windowCodeUnits = pendingWindowEnds.length
+        ? Math.max(2, pendingWindowEnds.at(-1) - chunkStartIndex)
+        : chunkCodeUnits;
     }
 
     return result;
