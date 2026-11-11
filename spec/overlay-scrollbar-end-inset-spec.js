@@ -57,10 +57,11 @@ describe("DOM overlay scrollbar end inset", () => {
     return fixture;
   }
 
-  async function settle(condition = () => true) {
+  async function settle(condition = () => true, inspect = () => {}) {
     let stableFrames = 0;
     await waitForFrames(
       () => {
+        inspect();
         const geometry = controller.publicGeometry;
         const stable =
           geometry &&
@@ -403,6 +404,96 @@ describe("DOM overlay scrollbar end inset", () => {
     }
   });
 
+  it("keeps the bottom anchor above the rail in every frame after ancestor class changes", async () => {
+    const fixture = await scrollport();
+    await settle((value) => value.scrollEndInset === 10);
+    element.scrollTo({ top: element.scrollHeight, behavior: "instant" });
+    const endOffset = element.scrollTop;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      fixture.classList.toggle("active");
+      let stableFrames = 0;
+      await waitForFrames(
+        () => {
+          expect(element.scrollTop).toBe(endOffset);
+          expect(content.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+            controller.horizontal.element.getBoundingClientRect().top + 0.5,
+          );
+          const stable = !manager.pending && !manager.writeRequest && manager.dirty.size === 0;
+          stableFrames = stable ? stableFrames + 1 : 0;
+          return stableFrames >= 2;
+        },
+        { frames: 30, description: "an ancestor class change without a clamped frame" },
+      );
+    }
+  });
+
+  it("does not expose a baseline probe when its queued snapshot becomes stale", async () => {
+    await scrollport();
+    await settle((value) => value.scrollEndInset === 10);
+    element.scrollTo({ top: element.scrollHeight, behavior: "instant" });
+    const endOffset = element.scrollTop;
+    const write = controller.write.bind(controller);
+    let invalidated = false;
+    spyOn(controller, "write").and.callFake((snapshot) => {
+      if (!invalidated && controller.paddingScrollPosition) {
+        invalidated = true;
+        manager.invalidate(controller);
+      }
+      write(snapshot);
+    });
+    manager.refresh();
+    await settle(
+      (value) => value.scrollEndInset === 10,
+      () => {
+        expect(element.scrollTop).toBe(endOffset);
+        expect(content.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+          controller.horizontal.element.getBoundingClientRect().top + 0.5,
+        );
+      },
+    );
+    expect(invalidated).toBeTrue();
+  });
+
+  for (const { padding, moveAway, invalidate } of [
+    { padding: "", moveAway: false, invalidate: false },
+    { padding: "13px", moveAway: false, invalidate: false },
+    { padding: "13px", moveAway: false, invalidate: true },
+    { padding: "13px", moveAway: true, invalidate: false },
+  ]) {
+    it(`adopts authored ${padding || "0px"} padding before its queued write (input: ${moveAway}, stale: ${invalidate})`, async () => {
+      await scrollport({ padding });
+      await settle((value) => value.scrollEndInset === 10);
+      element.scrollTo({ top: element.scrollHeight, behavior: "instant" });
+      const write = controller.write.bind(controller);
+      let authoredChange = false;
+      spyOn(controller, "write").and.callFake((snapshot) => {
+        if (!authoredChange && controller.paddingScrollPosition) {
+          authoredChange = true;
+          element.style.setProperty("padding-bottom", "11px", "important");
+          if (moveAway) element.scrollTop = 200;
+          if (invalidate) manager.invalidate(controller, true);
+        }
+        write(snapshot);
+      });
+      manager.refresh();
+      await settle(
+        () => window.getComputedStyle(element).paddingBottom === "21px",
+        () => {
+          if (moveAway && authoredChange) expect(element.scrollTop).toBe(200);
+          else
+            expect(content.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+              controller.horizontal.element.getBoundingClientRect().top + 0.5,
+            );
+        },
+      );
+      expect(authoredChange).toBeTrue();
+      expect(element.scrollTop).toBe(moveAway ? 200 : element.scrollHeight - element.clientHeight);
+      controller.dispose();
+      expect(element.style.paddingBottom).toBe("11px");
+      expect(element.style.getPropertyPriority("padding-bottom")).toBe("important");
+    });
+  }
+
   it("keeps an existing bottom anchor when horizontal overflow appears or its rail grows", async () => {
     await scrollport({ width: 240 });
     await settle((value) => value.scrollEndInset === 0);
@@ -453,11 +544,7 @@ describe("DOM overlay scrollbar end inset", () => {
     const write = controller.write.bind(controller);
     let authoredChange = false;
     spyOn(controller, "write").and.callFake((snapshot) => {
-      if (
-        !authoredChange &&
-        controller.paddingScrollPosition &&
-        !controller.endStyles.get("padding-bottom").managed
-      ) {
+      if (!authoredChange && controller.paddingScrollPosition && snapshot.endPaddingChanged) {
         authoredChange = true;
         element.style.setProperty("padding-bottom", "11px", "important");
       }

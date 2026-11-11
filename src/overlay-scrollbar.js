@@ -406,16 +406,35 @@ function createScrollbarRuntime() {
       // Re-evaluate authored CSS only after style, theme or border-box changes.
       // Restore all affected ports before the manager's shared read phase;
       // ordinary content mutations and scrolling never need this baseline probe.
-      if (this.paddingStyleDirty) this.restorePadding();
+      if (this.paddingStyleDirty) this.paddingProbe = this.restorePadding();
       this.paddingStyleDirty = false;
     }
 
+    finishRead(snapshot) {
+      if (!this.paddingProbe || !snapshot) return;
+      this.paddingProbe = false;
+      if (this.paddingScrollPosition?.expected === null)
+        this.paddingScrollPosition.expected = snapshot.scrollTop;
+      // End every baseline probe before yielding to queued writers. A stale
+      // snapshot must never leave the scrollport without its managed reserve.
+      snapshot.endPaddingChanged = this.updateEndPadding(snapshot);
+    }
+
+    restorePaddingScrollPosition() {
+      const position = this.paddingScrollPosition;
+      if (!position || position.expected === null || this.element.scrollTop !== position.expected)
+        return;
+      // Reapply the native offset in the same cycle as the reserve. The browser
+      // clamps against the actual extent, including percentage-height content.
+      this.element.scrollTo({
+        top: position.atEnd ? this.element.scrollHeight : position.top,
+        behavior: "instant",
+      });
+      position.expected = this.element.scrollTop;
+    }
+
     preservePaddingScrollPosition() {
-      if (
-        this.paddingStyleDirty &&
-        !this.paddingScrollPosition &&
-        this.endStyles.get("padding-bottom").managed
-      ) {
+      if (this.paddingStyleDirty && this.endStyles.get("padding-bottom").managed) {
         const top = this.element.scrollTop;
         const maximum = this.element.scrollHeight - this.element.clientHeight;
         this.paddingScrollPosition = {
@@ -462,15 +481,7 @@ function createScrollbarRuntime() {
       const window = element.ownerDocument.defaultView;
       this.captureAuthoredPadding();
       const style = window.getComputedStyle(element);
-      for (const [property, state] of this.endStyles)
-        if (!state.managed) {
-          state.authored = {
-            value: element.style.getPropertyValue(property),
-            priority: element.style.getPropertyPriority(property),
-          };
-          const base = style.getPropertyValue(property).trim();
-          state.base = base && base !== "auto" ? base : "0px";
-        }
+      this.readAuthoredPadding(style);
       const styles = new Map([[element, style]]);
       const styleFor = (node) => {
         if (!styles.has(node)) styles.set(node, window.getComputedStyle(node));
@@ -667,9 +678,20 @@ function createScrollbarRuntime() {
       };
     }
 
+    readAuthoredPadding(style) {
+      for (const [property, state] of this.endStyles)
+        if (!state.managed) {
+          state.authored = {
+            value: this.element.style.getPropertyValue(property),
+            priority: this.element.style.getPropertyPriority(property),
+          };
+          const base = style.getPropertyValue(property).trim();
+          state.base = base && base !== "auto" ? base : "0px";
+        }
+    }
+
     write(snapshot) {
       if (this.destroyed || !snapshot) return;
-      if (snapshot.layoutVersion !== this.layoutVersion) return;
       for (const [property, state] of this.endStyles) {
         const value = this.element.style.getPropertyValue(property);
         const priority = this.element.style.getPropertyPriority(property);
@@ -677,12 +699,28 @@ function createScrollbarRuntime() {
           value !== (state.managed || state.authored.value) ||
           priority !== (state.managed ? "important" : state.authored.priority)
         ) {
-          // Authored writes between the shared read and write phases own their
-          // new value. Measure it before adding the end inset again.
+          // Adopt an authored write without exposing a frame that lost its end
+          // reserve. Only this style race needs a synchronous baseline measure.
+          this.captureAuthoredPadding();
+          this.readAuthoredPadding(this.manager.window.getComputedStyle(this.element));
+          const current = {
+            ...snapshot,
+            scrollTop: this.element.scrollTop,
+            scrollHeight: this.element.scrollHeight,
+            viewportHeight: this.element.clientHeight,
+          };
+          if (
+            this.paddingScrollPosition?.atEnd &&
+            current.scrollTop >= current.scrollHeight - current.viewportHeight - 1
+          )
+            this.paddingScrollPosition.expected = current.scrollTop;
+          this.updateEndPadding(current);
+          this.restorePaddingScrollPosition();
           this.manager.invalidate(this, true);
           return;
         }
       }
+      if (snapshot.layoutVersion !== this.layoutVersion) return;
       if (this.paddingScrollPosition?.expected === null)
         this.paddingScrollPosition.expected = snapshot.scrollTop;
       if (this.layout !== snapshot.layout) {
@@ -691,7 +729,8 @@ function createScrollbarRuntime() {
         this.manager.invalidate(this);
         return;
       }
-      if (this.updateEndPadding(snapshot)) {
+      if (snapshot.endPaddingChanged || this.updateEndPadding(snapshot)) {
+        if (!snapshot.endPaddingChanged) this.restorePaddingScrollPosition();
         // Padding changes the native extent (and may resize percentage-height
         // content). Publish only the next measured geometry, never an estimate.
         this.manager.invalidate(this);
@@ -1211,6 +1250,11 @@ function createScrollbarRuntime() {
         for (const controller of dirty) controller.preservePaddingScrollPosition();
         for (const controller of dirty) controller.prepareRead();
         const measured = dirty.map((controller) => [controller, controller.read()]);
+        // Measure every authored baseline before reinstating any managed
+        // padding, then restore all offsets before the queued write phase.
+        for (const [controller, snapshot] of measured) controller.finishRead(snapshot);
+        for (const [controller, snapshot] of measured)
+          if (snapshot?.endPaddingChanged) controller.restorePaddingScrollPosition();
         this.dirty.clear();
         this.writeRequest = this.scheduleWrite(() => {
           this.writeRequest = null;
