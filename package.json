@@ -81,7 +81,7 @@
     "language-shellscript": "github:lumine-code/language-shellscript#c88a39040d2aa365cc2dfe709a8575ca95a92467",
     "language-source": "github:lumine-code/language-source#2e353222a9c9d0aabacbd58b9242d155d3c3e0d3",
     "language-sql": "github:lumine-code/language-sql#8130a80fff262ddf775fb2f9c13d870e421dca4b",
-    "language-text": "github:lumine-code/language-text#348eaca7ecf10aa6563dc042eab1462d9b432f8b",
+    "language-text": "github:lumine-code/language-text#e64d2ba45c5cfe114a6f004cdad14769abc5118c",
     "language-todo": "github:lumine-code/language-todo#77a1bf3fe89800bedfaa2ad7281d444a5a973777",
     "language-toml": "github:lumine-code/language-toml#0f7f6f1dc268744569506ee195db033e30852425",
     "language-typescript": "github:lumine-code/language-typescript#2ffe64d2fb32ad884e1721331dd4207138b2de6b",
