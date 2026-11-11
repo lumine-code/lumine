@@ -58,6 +58,8 @@ const SLOW_PARSE_COALESCE_MS = 50;
 // hundreds of milliseconds — so larger invalidations warm only this many rows
 // and leave the rest to the on-demand path, which windows its own queries.
 const FOLD_PREFILL_MAX_ROWS = 400;
+const FOLD_RENDER_WINDOW_ROWS = 64;
+const FOLD_RENDER_MAX_WINDOWS = 64;
 
 // `Node#descendantsOfType` materializes its entire result synchronously.
 // Injection points often target common leaf nodes — strings and comments — so
@@ -397,6 +399,8 @@ class TreeSitterLanguageMode {
     if (this.destroyed) return;
     // Queued and running initial parses observe destruction before publishing.
     this.destroyed = true;
+    this.foldRenderingRecovery?.cancel?.();
+    this.foldRenderingRecovery = null;
     this.initialSyntaxSnapshot?.close();
     this.initialSyntaxSnapshot = null;
     this.invalidateSyntaxConfiguration();
@@ -1344,6 +1348,10 @@ class TreeSitterLanguageMode {
     return this.emitter.on("did-change-highlighting", callback);
   }
 
+  onDidChangeFoldability(callback) {
+    return this.emitter.on("did-change-foldability", callback);
+  }
+
   buildHighlightIterator(options = {}) {
     if (!this.rootLanguageLayer) {
       return new NullLanguageModeHighlightIterator();
@@ -2167,10 +2175,72 @@ class TreeSitterLanguageMode {
       const point = new Point(row, this.buffer.lineLengthForRow(row));
       this.ensureQueriesForLayersSync("foldsQuery", this.languageLayersAtPoint(point));
     }
-    return this.isFoldableAtRowForRendering(row);
+    return this.readFoldability(row);
   }
 
   isFoldableAtRowForRendering(row) {
+    if (this.publicationPending) return false;
+    const cached = this.isFoldableCache.get(row);
+    if (cached != null) return cached;
+    let recovery = this.foldRenderingRecovery;
+    if (recovery && !this.presentationVersionIsCurrent(recovery.stamp)) {
+      recovery.cancel?.();
+      this.foldRenderingRecovery = recovery = null;
+    }
+    const window = Math.floor(row / FOLD_RENDER_WINDOW_ROWS);
+    const entry = recovery?.windows.get(window);
+    // A limited window gets at most one idle attempt at this version. A
+    // redraw must not turn an unavailable query into a render/retry loop.
+    if (entry && !entry.recovered) return false;
+    try {
+      return this.readFoldability(row);
+    } catch (error) {
+      if (!(error instanceof QueryBudgetExceeded)) throw error;
+      if (entry) {
+        entry.recovered = false;
+        return false;
+      }
+      if (recovery?.windows.size === FOLD_RENDER_MAX_WINDOWS) return false;
+      const stamp = recovery?.stamp ?? this.capturePresentationVersion();
+      if (!stamp) return false;
+      recovery ||= this.foldRenderingRecovery = { stamp, windows: new Map(), cancel: null };
+      recovery.windows.set(window, { row, pending: error.reason === "timeout", recovered: false });
+      this.scheduleFoldRenderingRecovery(recovery);
+      return false;
+    }
+  }
+
+  scheduleFoldRenderingRecovery(recovery) {
+    if (recovery.cancel || ![...recovery.windows.values()].some((entry) => entry.pending)) return;
+    recovery.cancel = this.scheduleAfterHighlightPaint(() => {
+      recovery.cancel = null;
+      if (
+        this.foldRenderingRecovery !== recovery ||
+        !this.presentationVersionIsCurrent(recovery.stamp)
+      )
+        return;
+      const entry = [...recovery.windows.values()].reverse().find((entry) => entry.pending);
+      if (!entry) return;
+      entry.pending = false;
+      const start = Math.floor(entry.row / FOLD_RENDER_WINDOW_ROWS) * FOLD_RENDER_WINDOW_ROWS;
+      const end = Math.min(start + FOLD_RENDER_WINDOW_ROWS - 1, this.buffer.getLastRow());
+      // Prepare the requested row first, with its unchanged exact-query budget.
+      // A successful window can then supply its neighbors during rendering.
+      try {
+        this.readFoldability(entry.row);
+        if (!this.presentationVersionIsCurrent(recovery.stamp)) return;
+        entry.recovered = true;
+        const changedRows = new Set();
+        for (let row = start; row <= end; row++) changedRows.add(row);
+        this.emitter.emit("did-change-foldability", changedRows);
+      } catch (error) {
+        if (!(error instanceof QueryBudgetExceeded)) throw error;
+      }
+      this.scheduleFoldRenderingRecovery(recovery);
+    });
+  }
+
+  readFoldability(row) {
     // A read inside an open transaction must not cache an incomplete result.
     if (this.publicationPending) return false;
     const cached = this.isFoldableCache.get(row);

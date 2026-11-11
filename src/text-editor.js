@@ -5100,18 +5100,20 @@ module.exports = class TextEditor {
 
     const selections = this.getSelections();
     this.destroySelections(selections.slice(bufferRanges.length));
+    const selectionOptions = { ...options, autoscroll: false };
 
-    this.mergeIntersectingSelections(options, () => {
+    this.mergeIntersectingSelections(selectionOptions, () => {
       for (let i = 0; i < bufferRanges.length; i++) {
         let bufferRange = bufferRanges[i];
         bufferRange = Range.fromObject(bufferRange);
         if (selections[i]) {
-          selections[i].setBufferRange(bufferRange, options);
+          selections[i].setBufferRange(bufferRange, selectionOptions);
         } else {
-          this.addSelectionForBufferRange(bufferRange, options);
+          this.addSelectionForBufferRange(bufferRange, selectionOptions);
         }
       }
     });
+    if (options.autoscroll !== false) this.getLastSelection().autoscroll({ mode: options.mode });
   }
 
   /**
@@ -5175,18 +5177,20 @@ module.exports = class TextEditor {
 
     const selections = this.getSelections();
     this.destroySelections(selections.slice(screenRanges.length));
+    const selectionOptions = { ...options, autoscroll: false };
 
-    this.mergeIntersectingSelections(options, () => {
+    this.mergeIntersectingSelections(selectionOptions, () => {
       for (let i = 0; i < screenRanges.length; i++) {
         let screenRange = screenRanges[i];
         screenRange = Range.fromObject(screenRange);
         if (selections[i]) {
-          selections[i].setScreenRange(screenRange, options);
+          selections[i].setScreenRange(screenRange, selectionOptions);
         } else {
-          this.addSelectionForScreenRange(screenRange, options);
+          this.addSelectionForScreenRange(screenRange, selectionOptions);
         }
       }
     });
+    if (options.autoscroll !== false) this.getLastSelection().autoscroll({ mode: options.mode });
   }
 
   /**
