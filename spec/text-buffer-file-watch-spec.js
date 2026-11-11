@@ -4,6 +4,7 @@ const path = require("path");
 const { PassThrough, Readable } = require("stream");
 const TextBuffer = require("../src/text-buffer");
 const FileDocumentRegistry = require("../src/file-document-registry");
+const Workspace = require("../src/workspace");
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 
 describe("TextBuffer deferred file observation", () => {
@@ -11,17 +12,19 @@ describe("TextBuffer deferred file observation", () => {
   let directory;
   let buffer;
   let handles;
+  let watchReady;
 
   beforeEach(() => {
     jasmine.useRealClock?.();
     originalLumine = globalThis.lumine;
     directory = fs.mkdtempSync(path.join(os.tmpdir(), "buffer-watch-regression-"));
     handles = [];
+    watchReady = Promise.resolve();
     globalThis.lumine = {
       fileWatchClient: {
         watchFile() {
           const handle = {
-            ready: Promise.resolve(),
+            ready: watchReady,
             onDidChange(callback) {
               this.change = callback;
               return { dispose() {} };
@@ -277,6 +280,158 @@ describe("TextBuffer deferred file observation", () => {
     custom.createReadStream = () => Readable.from([custom.text]);
     await buffer.endFileOperation();
   });
+
+  it("waits for file observation to arm before preparing a file operation", async () => {
+    let armWatch;
+    watchReady = new Promise((resolve) => {
+      armWatch = resolve;
+    });
+    const filePath = path.join(directory, "watch-starting.txt");
+    fs.writeFileSync(filePath, "before");
+    buffer = await TextBuffer.load(filePath);
+    let prepared = false;
+    const preparation = buffer.beginFileOperation().then(() => {
+      prepared = true;
+    });
+    try {
+      await new Promise(setImmediate);
+      expect(prepared).toBe(false);
+      expect(buffer.fileWatchOperationDepth).toBe(1);
+      armWatch();
+      await preparation;
+      expect(prepared).toBe(true);
+      // Startup reconciliation must defer while the operation is suspended,
+      // rather than deadlocking readiness or loading its intermediate state.
+      expect(buffer.pendingFileReconcile).toBe(true);
+      fs.writeFileSync(filePath, "after operation");
+    } finally {
+      armWatch();
+      await preparation;
+      await buffer.endFileOperation();
+    }
+    expect(buffer.fileWatchOperationDepth).toBe(0);
+    expect(buffer.getText()).toBe("after operation");
+  });
+
+  function prepareWorkspaceMove(registry, move) {
+    const workspace = {
+      fileDocuments: registry,
+      fileMoveReadiness: Promise.resolve(),
+      project: {
+        repositoryRegistry: {
+          beginFileMove: () => ({ ready: Promise.resolve(), complete: async () => {} }),
+        },
+      },
+    };
+    // Exercise the actual workspace/document preparation without unrelated
+    // repository discovery accidentally providing the readiness barrier.
+    return Workspace.prototype.beginFileMove.call(workspace, [move]);
+  }
+
+  it("rejects workspace move readiness before an executor can mutate the filesystem", async () => {
+    let rejectWatch;
+    watchReady = new Promise((_resolve, reject) => {
+      rejectWatch = reject;
+    });
+    const filePath = path.join(directory, "failed-watch-start.txt");
+    fs.writeFileSync(filePath, "before");
+    buffer = await TextBuffer.load(filePath);
+    const failure = Object.assign(new Error("Watch startup realpath failed"), { code: "EBADF" });
+    const registry = new FileDocumentRegistry();
+    const registration = registerBuffer(registry);
+    const move = { oldPath: filePath, newPath: filePath + ".moved" };
+    const transaction = prepareWorkspaceMove(registry, move);
+    const executeNext = jasmine.createSpy("executeNext").and.callFake(() => {
+      fs.renameSync(move.oldPath, move.newPath);
+      return { status: "applied" };
+    });
+    const execution = transaction.ready.then(executeNext, (error) => error);
+    try {
+      await new Promise(setImmediate);
+      expect(executeNext).not.toHaveBeenCalled();
+      rejectWatch(failure);
+      const error = await execution;
+      expect(Array.from(error?.errors || [error])).toContain(failure);
+      expect(executeNext).not.toHaveBeenCalled();
+      await expectAsync(transaction.complete([])).toBeRejected();
+      expect(buffer.fileWatchOperationDepth).toBe(0);
+      expect(buffer.getPath()).toBe(filePath);
+      expect(fs.existsSync(move.oldPath)).toBe(true);
+      expect(fs.existsSync(move.newPath)).toBe(false);
+    } finally {
+      rejectWatch(failure);
+      await execution;
+      await transaction.complete([]).catch(() => {});
+      registration.dispose();
+      registry.dispose();
+    }
+  });
+
+  it("keeps an outer file operation suspended when nested watch readiness fails", async () => {
+    const filePath = path.join(directory, "nested-watch-start.txt");
+    fs.writeFileSync(filePath, "before");
+    buffer = await TextBuffer.load(filePath);
+    await buffer.getFileWatchStartPromise();
+    await buffer.beginFileOperation();
+    const originalReady = buffer.fileWatchStartPromise;
+    const failure = Object.assign(new Error("Nested watch startup failed"), { code: "EBADF" });
+    buffer.fileWatchStartPromise = Promise.reject(failure);
+    buffer.fileWatchStartPromise.catch(() => {});
+    const registry = new FileDocumentRegistry();
+    const registration = registerBuffer(registry);
+    const transaction = prepareWorkspaceMove(registry, {
+      oldPath: filePath,
+      newPath: filePath + ".moved",
+    });
+    const executeNext = jasmine.createSpy("executeNext");
+    const execution = transaction.ready.then(executeNext, (error) => error);
+    try {
+      expect(await execution).toBe(failure);
+      expect(executeNext).not.toHaveBeenCalled();
+      await expectAsync(transaction.complete([])).toBeRejected();
+      // Failed preparation still owns its paired endFileOperation call. The
+      // registry releases it once without also releasing the outer operation.
+      expect(buffer.fileWatchOperationDepth).toBe(1);
+    } finally {
+      await execution;
+      await transaction.complete([]).catch(() => {});
+      buffer.fileWatchStartPromise = originalReady;
+      await buffer.endFileOperation();
+      registration.dispose();
+      registry.dispose();
+    }
+    expect(buffer.fileWatchOperationDepth).toBe(0);
+    expect(buffer.getPath()).toBe(filePath);
+  });
+
+  it("reconciles custom sources only after the outermost file operation ends", async () => {
+    const custom = source();
+    buffer = await TextBuffer.load(custom);
+    await buffer.beginFileOperation();
+    await buffer.beginFileOperation();
+    custom.text = "after nested operation";
+    await buffer.endFileOperation();
+    expect(buffer.fileWatchOperationDepth).toBe(1);
+    expect(buffer.getText()).toBe("before");
+    await buffer.endFileOperation();
+    expect(buffer.fileWatchOperationDepth).toBe(0);
+    expect(buffer.getText()).toBe("after nested operation");
+  });
+
+  for (const kind of ["unsaved buffer", "custom source"]) {
+    it(`prepares and releases a ${kind} without native file observation`, async () => {
+      buffer =
+        kind === "unsaved buffer"
+          ? new TextBuffer({ text: "before" })
+          : await TextBuffer.load(source());
+      await buffer.beginFileOperation();
+      expect(buffer.fileWatchOperationDepth).toBe(1);
+      await buffer.endFileOperation();
+      expect(buffer.fileWatchOperationDepth).toBe(0);
+      expect(buffer.getText()).toBe("before");
+      expect(handles.length).toBe(0);
+    });
+  }
 
   it("waits for an active baseline read to close before moving its parent directory", async () => {
     const parent = path.join(directory, "current");

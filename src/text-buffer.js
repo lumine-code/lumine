@@ -4817,6 +4817,9 @@ class TextBuffer {
     while (this.pendingFileLoads > 0) {
       await new Promise((resolve) => this.fileLoadWaiters.push(resolve));
     }
+    // The worker may still be resolving this path while observation is arming.
+    // Finish that preparation before the caller starts moving the file.
+    await this.fileWatchStartPromise;
   }
 
   async endFileOperation() {
