@@ -56,7 +56,10 @@ class Probe {
     string[] values = new string[args.Length];
     for (int i = 0; i < args.Length; i++) values[i] = Json(args[i]);
     string report = "{\"argv\":[" + String.Join(",", values) + "],\"cwd\":" + Json(Environment.CurrentDirectory) + ",\"nodeMode\":" + Json(Environment.GetEnvironmentVariable("ELECTRON_RUN_AS_NODE") ?? "") + "}";
-    File.WriteAllText(Environment.GetEnvironmentVariable("LUMINE_TEST_REPORT"), report);
+    string reportPath = Environment.GetEnvironmentVariable("LUMINE_TEST_REPORT");
+    string stagedReport = reportPath + ".staging";
+    File.WriteAllText(stagedReport, report);
+    File.Move(stagedReport, reportPath);
     Console.WriteLine("launcher probe");
     return Int32.Parse(Environment.GetEnvironmentVariable("LUMINE_TEST_EXIT") ?? "0");
   }
