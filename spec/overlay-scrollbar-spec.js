@@ -645,6 +645,26 @@ describe("Shared overlay scrollbars", () => {
     expect(controller.layer.classList.contains("is-revealed")).toBeTrue();
   });
 
+  it("retains accepted navigation when a hidden panel becomes visible before its next measurement", () => {
+    const { element, controller } = scrollport({ kind: "panel" });
+    element.hidden = true;
+    measure(controller);
+    expect(controller.geometry.visible).toBeFalse();
+    expect(controller.activity).toBeFalsy();
+    const commands = lumine.scrollbars.navigationCommands(element, {
+      "test:show-panel": () => {
+        element.hidden = false;
+      },
+    });
+    const read = spyOn(controller, "read").and.callThrough();
+    commands["test:show-panel"]();
+    expect(read).not.toHaveBeenCalled();
+    expect(controller.activity).toBeFalsy();
+    measure(controller);
+    expect(controller.geometry.visible).toBeTrue();
+    expect(controller.activity.active).toBeTrue();
+  });
+
   it("disposes activity when hidden, made persistent or detached", () => {
     const { element, controller } = scrollport({ kind: "panel" });
     lumine.scrollbars.reveal(element);

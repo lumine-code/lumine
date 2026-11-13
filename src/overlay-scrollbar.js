@@ -966,10 +966,7 @@ function createScrollbarRuntime() {
       if (!this.activity) {
         // A handled expand/navigation can introduce overflow on the next
         // layout pass. Remember its deadline without measuring or a timer.
-        if (
-          !this.geometry ||
-          (!this.geometry.persistent && this.geometry.layout === "overlay" && this.geometry.visible)
-        )
+        if (!this.geometry || (!this.geometry.persistent && this.geometry.layout === "overlay"))
           this.pendingActivityDeadline = this.manager.window.performance.now() + 700;
         return false;
       }
