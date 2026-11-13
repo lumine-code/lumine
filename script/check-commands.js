@@ -72,11 +72,6 @@ const _ = require("@lumine-code/underscore-plus");
 const commandPattern = (packageName) =>
   new RegExp(`["'\`]${_.escapeRegExp(packageName)}:([A-Za-z0-9-]+)["'\`]`, "g");
 
-// `displayName: "…"` sitting inside the object literal that follows a command
-// key. Matched within the span up to the next command key so a label cannot be
-// credited to the wrong command.
-const DISPLAY_NAME = /displayName\s*:\s*["'`]([^"'`]*)["'`]/;
-
 // For a non-cold command, `description: "…"` as the *first* key of the
 // descriptor a command name opens.
 // The window is one literal rather than the span to the next command, because
@@ -330,9 +325,8 @@ function memberPath(node) {
 // assembled from a literal array imported by the package entrypoint. This is
 // the same authoring shape as writing each descriptor inline; the loop merely
 // removes repetition, so the coverage audit must not make authors duplicate it.
-function tableDrivenCommandMetadata(dir) {
+function tableDrivenCommandMetadata(dir, moduleCache = new Map()) {
   const metadata = new Map();
-  const moduleCache = new Map();
   for (const file of sourceFiles(dir)) {
     const model = staticModule(file, moduleCache);
     if (!model.ast) continue;
@@ -385,6 +379,47 @@ function tableDrivenCommandMetadata(dir) {
   return metadata;
 }
 
+// Read the descriptor itself: notification options inside a handler and an
+// adapter declared after the registration have their own display names.
+function literalCommandDisplayNames(model) {
+  const labels = new Map();
+  if (!model.ast) return labels;
+  const record = (command, descriptor) => {
+    const value = staticValue(descriptor, model.environment);
+    if (typeof command === "string" && typeof value?.displayName === "string") {
+      labels.set(command, value.displayName);
+    }
+  };
+  walkAst(model.ast.program, (node) => {
+    if (node.type === "ObjectProperty") {
+      const command = node.computed
+        ? staticValue(node.key, model.environment)
+        : (node.key.name ?? node.key.value);
+      record(command, node.value);
+    } else if (
+      node.type === "CallExpression" &&
+      /(?:^|\.)commands\.add$/.test(memberPath(node.callee))
+    ) {
+      record(staticValue(node.arguments[1], model.environment), node.arguments[2]);
+    } else if (node.type === "JSXOpeningElement") {
+      const attributes = new Map(
+        node.attributes
+          .filter((attribute) => attribute.type === "JSXAttribute")
+          .map((attribute) => [attribute.name.name, attribute.value]),
+      );
+      const value = (attribute) =>
+        staticValue(
+          attribute?.type === "JSXExpressionContainer" ? attribute.expression : attribute,
+          model.environment,
+        );
+      const command = value(attributes.get("command"));
+      const label = value(attributes.get("displayName"));
+      if (typeof command === "string" && typeof label === "string") labels.set(command, label);
+    }
+  });
+  return labels;
+}
+
 function bundledPackages() {
   const { scanBundledPackageNames, resolveBundledPackageDir } = require("../src/bundled-packages");
   return scanBundledPackageNames(ROOT)
@@ -426,6 +461,7 @@ function declaredFiles(dir) {
 // cannot read still counts — the label is derived either way.
 function inventory(name, dir) {
   const commands = new Map();
+  const moduleCache = new Map();
   const note = (command) => {
     if (!commands.has(command)) {
       commands.set(command, {
@@ -457,21 +493,21 @@ function inventory(name, dir) {
     }
   }
 
-  for (const [command, metadata] of tableDrivenCommandMetadata(dir)) {
+  for (const [command, metadata] of tableDrivenCommandMetadata(dir, moduleCache)) {
     recordRuntimeMetadata(command, metadata);
   }
 
   for (const file of sourceFiles(dir)) {
     const text = fs.readFileSync(file, "utf8");
+    for (const [command, label] of literalCommandDisplayNames(staticModule(file, moduleCache))) {
+      recordRuntimeMetadata(command, { displayName: label });
+    }
     const matches = patterns
       .flatMap((pattern) => [...text.matchAll(pattern)])
       .sort((a, b) => a.index - b.index);
-    matches.forEach((match, index) => {
+    matches.forEach((match) => {
       const command = match[0].slice(1, -1);
-      const entry = note(command);
-      const until = matches[index + 1]?.index ?? text.length;
-      const label = text.slice(match.index, until).match(DISPLAY_NAME);
-      if (label) entry.displayName = label[1];
+      note(command);
 
       // Anchored on the command itself rather than on the slice, so a
       // descriptor split across the window boundary is still credited. The JSX

@@ -46,4 +46,50 @@ module.exports = {
     expect(commands.get("fixture:first").description).toBe("Run the first fixture action.");
     expect(commands.get("fixture:second").description).toBe("Run the second fixture action.");
   });
+
+  it("keeps handler and language-adapter labels outside command descriptors", () => {
+    const root = temp.mkdirSync("lumine-check-commands-");
+    fs.mkdirSync(path.join(root, "lib"));
+    fs.writeFileSync(
+      path.join(root, "lib", "main.js"),
+      `lumine.commands.add("lumine-workspace", {
+  "fixture:first": {
+    description: "Run the first fixture action.",
+    didDispatch() { notify({ displayName: "Notification title" }); },
+  },
+  "fixture:second": { didDispatch() {} },
+});
+const adapter = { displayName: "Fixture Language Server" };
+`,
+    );
+
+    const commands = inventory("fixture", root);
+    expect(commands.get("fixture:first").displayName).toBeNull();
+    expect(commands.get("fixture:second").displayName).toBeNull();
+    expect(commands.get("fixture:first").description).toBe("Run the first fixture action.");
+  });
+
+  it("preserves explicit labels on map, three-argument and JSX descriptors", () => {
+    const root = temp.mkdirSync("lumine-check-commands-");
+    fs.mkdirSync(path.join(root, "lib"));
+    fs.writeFileSync(
+      path.join(root, "lib", "main.jsx"),
+      `lumine.commands.add("lumine-workspace", {
+  "fixture:first": { displayName: "Fixture: First", didDispatch() {} },
+});
+lumine.commands.add("lumine-workspace", "fixture:second", {
+  displayName: "An invalid rename must remain visible to the check",
+  didDispatch() {},
+});
+const view = <Command command="fixture:third" displayName="Fixture: Third" callback={() => {}} />;
+`,
+    );
+
+    const commands = inventory("fixture", root);
+    expect(commands.get("fixture:first").displayName).toBe("Fixture: First");
+    expect(commands.get("fixture:second").displayName).toBe(
+      "An invalid rename must remain visible to the check",
+    );
+    expect(commands.get("fixture:third").displayName).toBe("Fixture: Third");
+  });
 });
