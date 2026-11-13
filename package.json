@@ -99,7 +99,7 @@
     "notifications": "github:lumine-code/notifications#81c1136a4295ad6386acf862912873ede0f17005",
     "one-theme": "github:lumine-code/one-theme#622e70fe6ab2a96ef9f6a2d8bea0d84b37321a7e",
     "picomatch": "^4.0.7",
-    "postcss-selector-parser": "7.2.0",
+    "postcss-selector-parser": "7.2.1",
     "random-seed": "^0.3.0",
     "resolve": "1.22.14",
     "search-panel": "github:lumine-code/search-panel#c35cecf76cd34671b69563152ac94fd4473b86fe",
@@ -190,7 +190,7 @@
   },
   "devDependencies": {
     "@babel/parser": "^8.1.2",
-    "@electron/asar": "4.3.1",
+    "@electron/asar": "4.3.2",
     "@electron/rebuild": "4.2.1",
     "@eslint/js": "^10.0.1",
     "electron": "45.3.1",
@@ -200,7 +200,7 @@
     "eslint-plugin-n": "^18.5.0",
     "globals": "^17.14.0",
     "mock-spawn": "^0.2.6",
-    "prettier": "^3.10.0",
+    "prettier": "^3.10.1",
     "sinon": "22.1.0",
     "yargs": "18.2.0"
   },
