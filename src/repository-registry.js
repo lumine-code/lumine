@@ -1236,6 +1236,7 @@ module.exports = class RepositoryRegistry {
   // changes every filesystem identity. Capture known repositories before the
   // worker starts; watcher correlation alone cannot recognize that copy.
   beginFileMove(plannedRenames) {
+    const pendingFileChanges = this.fileChangeValidationTail;
     const move = { destinations: plannedRenames.map(({ newPath }) => pathAliases(newPath)) };
     this.fileMoves.add(move);
     const entries = plannedRenames.some(
@@ -1266,6 +1267,9 @@ module.exports = class RepositoryRegistry {
           ]);
         }),
       );
+      // Earlier lifecycle work may still own native metadata reads below the
+      // source. Finish those reads before the caller starts the physical move.
+      await pendingFileChanges;
     });
     let completion;
     return {

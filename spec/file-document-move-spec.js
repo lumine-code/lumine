@@ -94,6 +94,87 @@ describe("file document moves", () => {
     expect(drained).toHaveBeenCalled();
   });
 
+  it("waits for earlier lifecycle metadata reads before preparing a move", async () => {
+    const registry = lumine.project.repositoryRegistry;
+    await registry.fileChangeValidationTail;
+    const oldPath = path.join(root, "dir");
+    const newPath = path.join(root, "renamed");
+    const realpath = fs.promises.realpath.bind(fs.promises);
+    let signalStarted, releaseRead, aliasesDone;
+    const started = new Promise((resolve) => {
+      signalStarted = resolve;
+    });
+    const release = new Promise((resolve) => {
+      releaseRead = resolve;
+    });
+    const aliasesFinished = new Promise((resolve) => {
+      aliasesDone = resolve;
+    });
+    let intercepted = false;
+    let preparing = false;
+    let destinationSeen = false;
+    spyOn(fs.promises, "realpath").and.callFake(async (target, ...options) => {
+      if (target === oldPath && !intercepted) {
+        intercepted = true;
+        signalStarted();
+        await release;
+      }
+      if (preparing && target === newPath) destinationSeen = true;
+      const result = await realpath(target, ...options);
+      if (preparing && destinationSeen && target === root) aliasesDone();
+      return result;
+    });
+    const lifecycle = registry.handleProjectFileChanges([
+      { action: "deleted", kind: "directory", path: oldPath },
+    ]);
+    let transaction;
+    try {
+      await started;
+      preparing = true;
+      transaction = lumine.workspace.beginFileMove([{ oldPath, newPath, isDirectory: true }]);
+      const ready = jasmine.createSpy("move ready");
+      transaction.ready.then(ready);
+      // Observe readiness after its own alias reads, rather than racing their
+      // native completions with the lifecycle read this test deliberately holds.
+      await aliasesFinished;
+      await new Promise(setImmediate);
+      expect(ready).not.toHaveBeenCalled();
+    } finally {
+      releaseRead();
+      await lifecycle;
+      if (transaction) {
+        await transaction.ready;
+        await transaction.complete([]);
+      }
+    }
+  });
+
+  it("does not wait for later lifecycle work when preparing a move", async () => {
+    const registry = lumine.project.repositoryRegistry;
+    await registry.fileChangeValidationTail;
+    const transaction = lumine.workspace.beginFileMove([
+      {
+        oldPath: path.join(root, "dir"),
+        newPath: path.join(root, "renamed"),
+        isDirectory: true,
+      },
+    ]);
+    let releaseLater;
+    let laterFinished = false;
+    registry.fileChangeValidationTail = new Promise((resolve) => {
+      releaseLater = resolve;
+    }).then(() => {
+      laterFinished = true;
+    });
+    try {
+      await transaction.ready;
+      expect(laterFinished).toBe(false);
+    } finally {
+      releaseLater();
+      await transaction.complete([]);
+    }
+  });
+
   it("releases move readiness in planned order when preparations finish in reverse order", async () => {
     let releaseFirst;
     let releaseSecond;
