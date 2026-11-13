@@ -34,6 +34,24 @@ Gutter layouts preserve authored padding and let the browser reserve space only 
 
 Handled navigation calls `lumine.scrollbars.reveal(element)` with the actual scrollport, or the editor element for a virtual editor. Call it even when selection or position is already at a boundary. Do not call it for typing, rendering, restoring state or commands the surface does not handle. It returns whether attached transient overlay chrome accepted the activity; persistent surfaces and tracks without overflow need no timer. A fitting DOM panel remembers the activity deadline without a timer, so expanding a tree can reveal overflow introduced by the next layout pass. Native scroll events reveal the moving surface automatically. Visibility updates change only a presentation class, without geometry reads, marker invalidation or changing the horizontal end inset.
 
+For a group of command handlers, register `lumine.scrollbars.navigationCommands(elementOrResolver, commands)` through the existing `lumine.commands.add(scope, ...)` call. The returned map preserves function or descriptor metadata, the matched receiver, arguments and the exact return value, including Promise identity. After a handler returns synchronously, the helper resolves its explicit scrollport and reports activity immediately; it does not wait for asynchronous completion. A thrown handler does not report activity. Scope, availability and disposal remain owned by the command registration, so unmatched and disabled commands do not reveal chrome. Wrap only handled navigation, including valid no-op boundary operations; leave commands that abort or delegate their key binding outside this group. Do not wrap general rendering, automatic editor-following, query changes or state restoration.
+
+Use a late resolver when a scrollport is created after command registration or can be replaced. It receives the same arguments and `this` as the handler and may return null when the surface is absent. Resolve the owned scrollport explicitly, never through the active element: navigation may move focus into a different editor or pane. Existing direct `reveal(element)` calls remain appropriate for non-command navigation adapters such as a canvas grid's `onDidNavigate` callback.
+
+```js
+this.subscriptions.add(
+  lumine.commands.add(
+    this.element,
+    lumine.scrollbars.navigationCommands(() => this.refs.scroller, {
+      "core:move-up": () => this.selectAdjacent(-1),
+      "core:move-down": () => this.selectAdjacent(1),
+      "core:move-left": () => this.collapseSelection(),
+      "core:move-right": () => this.expandSelection(),
+    }),
+  ),
+);
+```
+
 Renderer-owned chrome can use `lumine.scrollbars.createActivity(element, onChange)` to share the same timer. The callback receives an active boolean on transitions; the returned controller exposes `active`, `reveal()`, `clear()` and `dispose()`. Combine recent activity with hover and dragging in the renderer, and dispose the controller when removing the view or changing its document. Repeated activity extends one deadline rather than replacing a timeout on every scroll frame. Isolated documents use `ScrollbarActivity` and `DOMScrollbarManager.reveal(element)` from their standalone runtime.
 
 ## Geometry and marker layers

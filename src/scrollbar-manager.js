@@ -90,6 +90,40 @@ module.exports = class ScrollbarManager {
    * @public
    * @status public
    *
+   * Apply shared scrollbar activity to an explicit group of handled navigation commands.
+   * Register the returned map with commands.add; its scope, availability and disposal stay with that registration.
+   * @param {HTMLElement|Function} element - Actual scrollport or a resolver returning that element or null. A resolver runs after the handler's synchronous return, with the same receiver and arguments, so it can select the current port after a view update.
+   * @param {Object} commands - Navigation command names mapped to handlers or command descriptors. Include boundary operations even when they do not move the viewport; omit commands that abort or delegate their key binding.
+   * @returns {Object} Wrapped command map preserving descriptor metadata and each handler's exact return value, including its original Promise. A thrown handler does not reveal chrome; asynchronous completion does not postpone the activity deadline.
+   * @category DOM Surfaces
+   */
+  navigationCommands(element, commands) {
+    const scrollbars = this;
+    return Object.fromEntries(
+      Object.entries(commands).map(([name, listener]) => {
+        const handler = typeof listener === "function" ? listener : listener?.didDispatch;
+        if (typeof handler !== "function")
+          throw new TypeError(`Navigation command '${name}' requires a handler.`);
+        const wrapped = function (...args) {
+          const result = handler.apply(this, args);
+          const scrollport = typeof element === "function" ? element.apply(this, args) : element;
+          if (scrollport) scrollbars.reveal(scrollport);
+          return result;
+        };
+        return [
+          name,
+          typeof listener === "function"
+            ? Object.assign(wrapped, listener)
+            : { ...listener, didDispatch: wrapped },
+        ];
+      }),
+    );
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Create the shared activity timer for renderer-owned scrollbar chrome.
    * @param {HTMLElement} element - Surface whose document owns the timer.
    * @param {Function} onChange - Receives the active Boolean when recent activity starts or expires; combine it with hover and dragging in the renderer.

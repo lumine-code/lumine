@@ -898,32 +898,30 @@ class SelectList extends InputDialog {
   }
 
   commandsForElement() {
-    return {
-      ...super.commandsForElement(),
+    const navigation = {
       "core:move-up": (event) => {
-        if (this.component.refs.items)
-          this.services.scrollbarManager?.reveal(this.component.refs.items);
         this.selectPrevious();
         event.stopPropagation();
       },
       "core:move-down": (event) => {
-        if (this.component.refs.items)
-          this.services.scrollbarManager?.reveal(this.component.refs.items);
         this.selectNext();
         event.stopPropagation();
       },
       "core:move-to-top": (event) => {
-        if (this.component.refs.items)
-          this.services.scrollbarManager?.reveal(this.component.refs.items);
         this.selectFirst();
         event.stopPropagation();
       },
       "core:move-to-bottom": (event) => {
-        if (this.component.refs.items)
-          this.services.scrollbarManager?.reveal(this.component.refs.items);
         this.selectLast();
         event.stopPropagation();
       },
+    };
+    return {
+      ...super.commandsForElement(),
+      ...(this.services.scrollbarManager?.navigationCommands(
+        () => this.component.refs.items,
+        navigation,
+      ) ?? navigation),
     };
   }
 
