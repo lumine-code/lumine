@@ -214,7 +214,7 @@ describe("Multicursor syntax indentation", () => {
       ]);
     });
 
-    it(`materializes tab indentation before the next branch with ${backend} syntax`, async () => {
+    it(`plans tab indentation for every branch with ${backend} syntax`, async () => {
       const fixture = {
         source: "if ready: first()\nelif other: second()",
         bodies: ["first()", "second()"],
@@ -238,7 +238,7 @@ describe("Multicursor syntax indentation", () => {
     });
   }
 
-  it("materializes earlier prefixes when 129 cursors use the streamed worker route", async () => {
+  it("projects the same forest when 129 cursors use the streamed worker route", async () => {
     const bodies = Array.from({ length: 129 }, (_, index) => `work_${index}()`);
     const source = bodies
       .map((body, index) => `${index === 0 ? "if" : "elif"} ready_${index}: ${body}`)

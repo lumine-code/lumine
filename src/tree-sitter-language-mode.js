@@ -2598,99 +2598,42 @@ class TreeSitterLanguageMode {
     const buffer = this.buffer,
       revision = buffer.getTextRevision(),
       epoch = this.getSyntaxRequestEpoch();
-    const controller = new AbortController();
-    const signal = options.signal
-      ? AbortSignal.any([options.signal, controller.signal])
-      : controller.signal;
-    const obsolete = () =>
-      Object.assign(new Error("Input indentation was superseded"), { name: "AbortError" });
     const isCurrent = () =>
-      !signal.aborted &&
+      !options.signal?.aborted &&
       !this.destroyed &&
       !buffer.isDestroyed() &&
       buffer.getLanguageMode() === this &&
       buffer.getTextRevision() === revision &&
       this.getSyntaxRequestEpoch() === epoch &&
       options.isCurrent?.() !== false;
-    const check = () => {
-      if (!isCurrent()) throw obsolete();
-    };
-    const cancel = () => controller.abort(obsolete());
-    const subscriptions = new CompositeDisposable(
-      buffer.onDidApplyChanges(cancel),
-      buffer.onDidChangeLanguageMode(cancel),
-      buffer.onDidChangePath(cancel),
-      buffer.onDidDestroy(cancel),
-      ScopeResolver.onDidChangeConfiguration(this.config, cancel),
-    );
-    let rejectCancelled;
-    const cancelled = new Promise((_, reject) => {
-      rejectCancelled = reject;
-    });
-    const abort = () => rejectCancelled(signal.reason ?? obsolete());
-    signal.addEventListener("abort", abort, { once: true });
-    cancelled.catch(() => {});
-    let copy, candidate, rootRanges, snapshot;
+    let snapshot;
     try {
-      check();
-      copy = new TextBuffer({
-        text: buffer.getTextSnapshot(),
-        preferredLineEnding: buffer.getPreferredLineEnding(),
+      const { createInputSnapshot } = require("./tree-sitter-input-snapshot");
+      snapshot = await createInputSnapshot(this, buffer, options.inputChanges ?? [], {
+        snapshot: options.inputSnapshot ?? null,
+        signal: options.signal,
+        isCurrent,
       });
-      const sourcePath = buffer.getPath();
-      copy.getPath = () => sourcePath;
-      const registry = this.grammarRegistry;
-      const policy = registry?.rootLanguageRangesByBuffer.get(buffer);
-      if (policy)
-        rootRanges = registry.setRootLanguageRanges(copy, policy.descriptor ?? policy.provider);
-      snapshot = this.captureSyntaxSnapshot({ indentationOnly: true })?.fork(copy);
-      candidate = new TreeSitterLanguageMode({
-        buffer: copy,
-        grammar: this.grammar,
-        config: this.config,
-        grammars: registry,
-        initialSyntaxSnapshot: snapshot,
-        indentationOnly: true,
-        queryBudget: this.queryBudget,
-        parsePriority: this.parsePriority,
-        syncTimeoutMicros: this.syncTimeoutMicros,
-        editTimeoutMicros: this.editTimeoutMicros,
-      });
-      copy.setLanguageMode(candidate);
-      candidate.requestHighlighting(this, []);
-      const rowOptions =
-        options.rowOptions ??
-        new Map(
-          rows.map((row) => [row, { ...options, isReindenting: options.isReindenting ?? false }]),
-        );
+      const mode = snapshot ?? this;
       const result = new Map();
-      const { scanInputIndentation } = require("./tree-sitter-input-indentation");
-      for await (const batch of scanInputIndentation(
-        candidate,
+      for await (const batch of mode.scanSuggestedIndentation(
         rows.map((row) => [row, row]),
         tabLength,
-        { ...options, rowOptions },
         {
-          signal,
+          ...options,
+          isPastedText: false,
           isCurrent,
-          settle: () => Promise.race([candidate.atGrammarSettlement(), cancelled]),
         },
       )) {
-        check();
+        if (!isCurrent()) return null;
         for (const [row, level] of batch) result.set(row, level);
       }
-      check();
-      return result;
+      return isCurrent() ? result : null;
     } catch (error) {
       if (error.name === "AbortError" || !isCurrent()) return null;
       throw error;
     } finally {
-      subscriptions.dispose();
-      signal.removeEventListener("abort", abort);
-      candidate?.destroy();
-      rootRanges?.dispose();
-      snapshot?.close();
-      copy?.destroy();
+      snapshot?.destroy();
     }
   }
 

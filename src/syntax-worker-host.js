@@ -10,7 +10,7 @@ const runtime = require("./tree-sitter-runtime");
 const { paintTile } = require("./syntax-paint-policy");
 const { windowTile, rangeKey } = require("./syntax-paint-window");
 const SyntaxPreview = require("./syntax-preview");
-const { scanInputIndentation } = require("./tree-sitter-input-indentation");
+const { createInputSnapshot, isWhitespaceInsertion } = require("./tree-sitter-input-snapshot");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { contextFor, serialize } = require("./syntax-analysis-context");
 const {
@@ -307,6 +307,7 @@ class SyntaxWorkerHost {
     }
     if (session.failure || error.name === "AbortError") return;
     session.failure = true;
+    session.failureError = error;
     this.notify({
       event: "failure",
       session: session.id,
@@ -329,6 +330,7 @@ class SyntaxWorkerHost {
     this.sessions.delete(id);
     this.sessions.get(session.parent)?.forks?.delete(id);
     session.captureInitialChanges?.dispose();
+    session.inputSnapshot?.destroy();
     session.initialSyntaxSnapshot?.close();
     session.rootRanges?.dispose();
     session.pendingEdit?.reject(aborted("Syntax document was closed"));
@@ -339,6 +341,7 @@ class SyntaxWorkerHost {
   }
 
   async dispatch(operation, data, { signal, emit } = {}) {
+    const session = this.sessions.get(data.session);
     try {
       const run = () =>
         runtime.run(this.contextFor(this.sessions.get(data.session), operation), () =>
@@ -346,6 +349,17 @@ class SyntaxWorkerHost {
         );
       return await (operation === "input-indent" ? this.withInputPriority(run) : run());
     } catch (error) {
+      if (session?.parent && session.failureError && !signal?.aborted)
+        throw Object.assign(
+          new Error("Unable to prepare input indentation", {
+            cause: session.failureError,
+          }),
+          {
+            code: "ERR_SYNTAX_INPUT",
+            reason:
+              session.failureError.failure?.code ?? session.failureError.code ?? "analysis-failure",
+          },
+        );
       if (error.code === "ERR_SYNTAX_QUERY_BUDGET") {
         const unavailable = aborted("Syntax query exceeded its resource budget");
         unavailable.code = error.code;
@@ -605,6 +619,39 @@ class SyntaxWorkerHost {
     }
     if (operation === "initialize") {
       if (session.initialized) throw new Error("Syntax document is already initialized");
+      session.initialized = true;
+      if (
+        session.parent &&
+        data.indentationOptions?.isPastedText === false &&
+        isWhitespaceInsertion(session.initialSyntaxChanges.flatMap((batch) => batch.changes))
+      ) {
+        const parent = this.sessions.get(session.parent);
+        if (!parent) throw aborted();
+        const transaction = await waitFor(parent.mode.atGrammarSettlement(), signal);
+        signal?.throwIfAborted();
+        if (this.sessions.get(session.id) !== session) throw aborted();
+        if (transaction.parseError || parent.mode.lastTransactionParseError)
+          throw transaction.parseError ?? parent.mode.lastTransactionParseError;
+        const snapshot = await createInputSnapshot(
+          parent.mode,
+          buffer,
+          session.initialSyntaxChanges.flatMap((batch) => batch.changes),
+          { signal },
+        );
+        if (this.sessions.get(session.id) !== session) {
+          snapshot?.destroy();
+          throw aborted();
+        }
+        if (snapshot) {
+          session.inputSnapshot = snapshot;
+          session.mode = snapshot;
+          session.captureInitialChanges?.dispose();
+          session.initialSyntaxSnapshot?.close();
+          session.initialSyntaxSnapshot = null;
+          session.initialSyntaxChanges = null;
+          return;
+        }
+      }
       if (session.parent && data.indentationRanges?.length) {
         const contexts = [];
         let deadline = performance.now() + 4;
@@ -654,7 +701,6 @@ class SyntaxWorkerHost {
         )
           session.editedIndentationRows = editedRows;
       }
-      session.initialized = true;
       this.installMode(session);
       return;
     }
@@ -807,27 +853,25 @@ class SyntaxWorkerHost {
         const { IndentationLevels } = require("./tree-sitter-indentation-stream");
         const history = new IndentationLevels();
         const levels = data.inline && canInlineIndentation(data.ranges) ? [] : null;
-        const contextualInput =
-          session.parent != null &&
-          data.ranges.reduce((count, [first, last]) => count + last - first + 1, 0) > 1 &&
-          (operation === "input-indent" ||
-            (data.options?.isPastedText === false && data.options?.rowOptions?.size > 0));
-        const scan = contextualInput
-          ? () =>
-              scanInputIndentation(mode, data.ranges, data.tabLength, data.options, {
-                signal: combined,
-                isCurrent: current,
-                settle: () => waitFor(mode.atGrammarSettlement(), combined),
-              })
-          : async function* () {
-              for (const [start, end] of data.ranges)
-                yield* mode.scanSuggestedIndentation([[start, end]], data.tabLength, {
-                  ...data.options,
-                  isPastedText: data.options?.isPastedText !== false,
-                  indentationLevels: history,
-                  signal: combined,
-                });
-            };
+        const scan = async function* () {
+          if (data.options?.isPastedText === false) {
+            yield* mode.scanSuggestedIndentation(data.ranges, data.tabLength, {
+              ...data.options,
+              indentationLevels: history,
+              signal: combined,
+              isCurrent: current,
+            });
+            return;
+          }
+          for (const [start, end] of data.ranges)
+            yield* mode.scanSuggestedIndentation([[start, end]], data.tabLength, {
+              ...data.options,
+              isPastedText: data.options?.isPastedText !== false,
+              indentationLevels: history,
+              signal: combined,
+              isCurrent: current,
+            });
+        };
         let previousEnd = -1,
           count = 0;
         for (const [start, end] of data.ranges) {
@@ -838,7 +882,7 @@ class SyntaxWorkerHost {
           current();
           for (const [row, level] of batch) {
             const rowOptions = data.options?.rowOptions?.get(row) ?? data.options;
-            if (level !== null && !contextualInput)
+            if (level !== null)
               history.set(
                 row,
                 rowOptions?.preserveLeadingWhitespace

@@ -1,4 +1,6 @@
 const { QueryBudgetExceeded } = require("./tree-sitter-query-budget");
+const { PieceTree } = require("./text-model");
+const { inspectRows, indentSource } = require("./text-editor-comment-operations");
 
 const PAGE_ROWS = 4096;
 const MAX_RUNS = PAGE_ROWS / 2;
@@ -173,8 +175,14 @@ async function* scanSuggestedIndentation(resolver, ranges, tabLength, options = 
   checkCurrent();
   if (!root || !tree || !root.ready) throw new QueryBudgetExceeded("indentation-unavailable");
   const history = new IndentationLevels();
+  const capturedPredecessors = new Set();
+  for (const [row, settings] of options.rowOptions ?? [])
+    if (settings.comparisonRowIndentCaptured) capturedPredecessors.add(row - 1);
+  const changedPrefixes = new Set();
   const indentationLevels = {
     get: (row) => history.get(row) ?? options.indentationLevels?.get(row),
+    hasPrefixChange: (row) =>
+      changedPrefixes.has(row) || options.indentationLevels?.hasPrefixChange?.(row) === true,
     set(row, level) {
       const existing =
         options.indentationLevels?.get(row) ?? resolver.indentLevelForBufferRow(row, tabLength);
@@ -199,11 +207,40 @@ async function* scanSuggestedIndentation(resolver, ranges, tabLength, options = 
   let processedRows = 0;
   let batch = [];
   let lastYield = performance.now();
+  const source = resolver.buffer.getTextSnapshot();
+  const inspect = inspectRows(source, tabLength, checkCurrent);
+  const policy = {
+    getSoftTabs: () => options.softTabs !== false,
+    getTabLength: () => tabLength,
+  };
   try {
     while (true) {
       checkCurrent();
       const next = iterator.next();
       if (next.done) break;
+      const [row, level] = next.value;
+      if (
+        level !== null &&
+        (options.comparisonRowIndentCaptured || capturedPredecessors.has(row))
+      ) {
+        let info = inspect(row);
+        if (info?.then) info = await info;
+        checkCurrent();
+        const settings = { ...options, ...options.rowOptions?.get(row) };
+        const endColumn = settings.preserveLeadingWhitespace
+          ? (settings.insertedIndentLengths?.get(row) ?? 0)
+          : info.contentStart - info.start;
+        if (
+          !Number.isSafeInteger(endColumn) ||
+          endColumn < 0 ||
+          endColumn > info.contentStart - info.start
+        )
+          throw new RangeError("Inserted indentation must stay within the whitespace prefix");
+        const text = indentSource(policy, level);
+        const replacement = typeof text === "string" ? new PieceTree(text) : text;
+        if (!source.subtext(info.start, info.start + endColumn).equals(replacement))
+          changedPrefixes.add(row);
+      }
       batch.push(next.value);
       processedRows++;
       if (batch.length === batchSize) {

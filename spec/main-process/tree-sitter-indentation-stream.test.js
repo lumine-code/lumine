@@ -84,6 +84,211 @@ test("numeric history preserves sparse and fragmented prior rows across page bou
   assert.ok(history.getStats().allocatedBytes <= 2 * 32768);
 });
 
+test("input row options inherit already planned absolute indentation without editing the source", async () => {
+  const f = fixture(3);
+  try {
+    f.buffer.setText("header\n first\n second");
+    const before = f.buffer.getTextSnapshot();
+    f.resolver.suggestedIndentForBufferRow = (row, _tabLength, options) =>
+      row === 1 ? 1 : options.comparisonRowIndent;
+    const rowOptions = new Map([
+      [1, { preserveLeadingWhitespace: true, skipBlankLines: false }],
+      [2, { preserveLeadingWhitespace: true, skipBlankLines: false }],
+    ]);
+    assert.deepEqual(await collect(f.resolver, [[1, 2]], 1, { rowOptions }), [
+      [1, 1],
+      [2, 1.5],
+    ]);
+    assert.equal(f.buffer.getTextSnapshot(), before);
+  } finally {
+    f.close();
+  }
+});
+
+test("additive input history replaces inserted indentation before measuring retained tabs", async () => {
+  const f = fixture(3);
+  try {
+    f.buffer.setText("header\n  \tfirst\nsecond");
+    f.resolver.suggestedIndentForBufferRow = (row, _tabLength, options) =>
+      row === 1 ? 1 : options.comparisonRowIndent;
+    const rowOptions = new Map([
+      [
+        1,
+        {
+          preserveLeadingWhitespace: true,
+          skipBlankLines: false,
+          insertedIndentLengths: new Map([[1, 2]]),
+        },
+      ],
+      [2, { preserveLeadingWhitespace: true, skipBlankLines: false }],
+    ]);
+    assert.deepEqual(await collect(f.resolver, [[1, 2]], 7, { rowOptions }), [
+      [1, 1],
+      [2, 2],
+    ]);
+    assert.equal(f.buffer.lineForRow(1), "  \tfirst");
+  } finally {
+    f.close();
+  }
+});
+
+for (const [firstLevel, expected] of [
+  [0, 3],
+  [1, 1],
+]) {
+  test(`a captured blank-row baseline is ${firstLevel ? "replaced after" : "retained without"} a prefix change`, async () => {
+    const f = fixture(3);
+    try {
+      f.buffer.setText("header\n\nbody");
+      f.resolver.suggestedIndentForBufferRow = (row, _tabLength, options) =>
+        row === 1 ? firstLevel : options.comparisonRowIndent;
+      const rowOptions = new Map([
+        [1, { skipBlankLines: false }],
+        [
+          2,
+          {
+            skipBlankLines: false,
+            comparisonRowIndent: 3,
+            comparisonRowIndentCaptured: true,
+          },
+        ],
+      ]);
+      assert.deepEqual(
+        await collect(f.resolver, [[1, 2]], 1, {
+          rowOptions,
+          comparisonRowIndents: new Map([[2, 3]]),
+        }),
+        [
+          [1, firstLevel],
+          [2, expected],
+        ],
+      );
+    } finally {
+      f.close();
+    }
+  });
+}
+
+test("a byte-only prefix change invalidates a captured baseline even when its numeric level is unchanged", async () => {
+  const f = fixture(3);
+  try {
+    f.buffer.setText("header\n\t\nbody");
+    f.resolver.suggestedIndentForBufferRow = (row, _tabLength, options) =>
+      row === 1 ? 1 : options.comparisonRowIndent;
+    const rowOptions = new Map([
+      [1, { skipBlankLines: false }],
+      [
+        2,
+        {
+          skipBlankLines: false,
+          comparisonRowIndent: 3,
+          comparisonRowIndentCaptured: true,
+        },
+      ],
+    ]);
+    assert.deepEqual(await collect(f.resolver, [[1, 2]], 7, { rowOptions, softTabs: true }), [
+      [1, 1],
+      [2, 1],
+    ]);
+    assert.equal(f.resolver.lastIndentationScanStats.storedRows, 1);
+    assert.equal(f.buffer.lineForRow(1), "\t");
+  } finally {
+    f.close();
+  }
+});
+
+test("explicit comparison overrides survive earlier virtual prefix changes", async () => {
+  const f = fixture(3);
+  try {
+    f.buffer.setText("header\n\nbody");
+    f.resolver.suggestedIndentForBufferRow = (row, _tabLength, options) =>
+      row === 1 ? 1 : options.comparisonRowIndent;
+    const rowOptions = new Map([
+      [1, { skipBlankLines: false }],
+      [2, { skipBlankLines: false, comparisonRowIndent: 7 }],
+    ]);
+    assert.deepEqual(await collect(f.resolver, [[1, 2]], 7, { rowOptions }), [
+      [1, 1],
+      [2, 7],
+    ]);
+  } finally {
+    f.close();
+  }
+});
+
+test("a supplied immutable tree provider avoids per-row parser fallback", async () => {
+  const f = fixture(5);
+  try {
+    f.mode.rootLanguageLayer.getOrParseTree = () => {
+      throw new Error("A projected batch must not parse its source");
+    };
+    let reads = 0;
+    assert.equal(
+      (
+        await collect(f.resolver, [[0, 4]], 1, {
+          treeForLayer: (layer) => {
+            reads++;
+            return layer.tree;
+          },
+        })
+      ).length,
+      5,
+    );
+    assert.equal(reads, 1);
+  } finally {
+    f.close();
+  }
+});
+
+test("edited-row matching uses the supplied immutable tree and earlier virtual indentation", () => {
+  const f = fixture(3);
+  try {
+    f.buffer.setText("parent\nprevious\n  }");
+    const layer = f.mode.rootLanguageLayer;
+    layer.containsPoint = () => true;
+    layer.scopeResolver = { reset() {} };
+    layer.getOrParseTree = () => {
+      throw new Error("An edited projected row must not parse its source");
+    };
+    const tree = {},
+      indentationLevels = new Map([[0, 4]]);
+    f.resolver.captureQuery = (owner, _query, actualTree) => {
+      assert.equal(owner, layer);
+      assert.equal(actualTree, tree);
+      return [
+        {
+          name: "match",
+          node: { startPosition: { row: 2, column: 2 }, parent: { startPosition: { row: 0 } } },
+          setProperties: { "indent.match": "parent.startPosition", "indent.force": true },
+        },
+      ];
+    };
+    f.resolver.storeScope = () => true;
+    f.resolver.applyTests = () => true;
+    f.resolver.suggestedIndentForBufferRow = (_row, _tabLength, options) => {
+      assert.equal(options.indentationLevels, indentationLevels);
+      return 1;
+    };
+    assert.equal(
+      f.resolver.suggestedIndentForEditedBufferRow(2, 2, {
+        treeForLayer: () => tree,
+        indentationLevels,
+      }),
+      4,
+    );
+    assert.throws(
+      () =>
+        f.resolver.suggestedIndentForEditedBufferRow(2, 2, {
+          treeForLayer: () => null,
+          requireComplete: true,
+        }),
+      { code: "ERR_SYNTAX_QUERY_BUDGET", reason: "indentation-unavailable" },
+    );
+  } finally {
+    f.close();
+  }
+});
+
 test("twelve million uniform planned rows use compact pages instead of per-row Map entries", () => {
   const history = new IndentationLevels();
   for (let row = 0; row < 12000000; row++) history.set(row, 3);

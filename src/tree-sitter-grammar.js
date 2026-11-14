@@ -8,6 +8,7 @@ const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { watchFile } = require("./file-watch");
 const { normalizeDelimiters } = require("./comment-utils.js");
 const { compileInjectionQuery } = require("./tree-sitter-injections");
+const { normalizeInputEditPolicy } = require("./tree-sitter-input-policy");
 const {
   appendLifecycleError,
   captureLifecycleError,
@@ -114,6 +115,7 @@ module.exports = class TreeSitterGrammar {
 
     this.grammarFilePath = grammarPath;
     this.queryPaths = params.treeSitter;
+    this.inputEditPolicy = normalizeInputEditPolicy(grammarPath, params.treeSitter.inputEditPolicy);
     this.contentEditPolicies = new Map();
     for (const [name, file] of Object.entries(params.treeSitter.contentEditPolicies ?? {})) {
       if (!/^[a-z][a-z0-9-]*$/.test(name) || typeof file !== "string" || !file)

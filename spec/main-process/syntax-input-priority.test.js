@@ -1,7 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const Host = require("../../src/syntax-worker-host");
-const Mode = require("../../src/tree-sitter-language-mode");
 const Parser = require("../../src/tree-sitter-parser");
 const scheduler = require("../../src/tree-sitter-scheduler");
 const { configuration } = require("../../src/syntax-worker-environment");
@@ -65,27 +64,42 @@ function input(data, target) {
   };
 }
 
-function holdPrivateParses(t, count = 1) {
+function holdInputPlanning(t, host, count = 1) {
   const gates = Array.from({ length: count }, () => ({ entered: deferred(), release: deferred() }));
-  const parse = Mode.prototype.parseAsync;
+  const dispatch = host.dispatchOperation;
   let next = 0;
-  t.mock.method(Mode.prototype, "parseAsync", async function (...args) {
-    if (this.indentationOnly && (args[3]?.depth ?? 0) === 0 && next < gates.length) {
+  t.mock.method(host, "dispatchOperation", async function (operation, data, options = {}) {
+    const session = this.sessions.get(data.session);
+    if (
+      operation === "input-indent" &&
+      data.target == null &&
+      session?.parent != null &&
+      next < gates.length
+    ) {
       const gate = gates[next++];
       gate.entered.resolve();
-      const signal = args[3]?.signal;
-      await new Promise((resolve) => {
-        const abort = () => resolve();
-        signal?.addEventListener("abort", abort, { once: true });
-        gate.release.promise.then(() => {
-          signal?.removeEventListener("abort", abort);
-          resolve();
+      const { signal } = options;
+      let cancelled = false;
+      let abort, subscription;
+      try {
+        await new Promise((resolve) => {
+          abort = () => {
+            cancelled = true;
+            resolve();
+          };
+          subscription = session.buffer.onDidDestroy(abort);
+          signal?.addEventListener("abort", abort, { once: true });
+          gate.release.promise.then(resolve);
+          if (signal?.aborted) abort();
         });
-        if (signal?.aborted) abort();
-      });
-      if (signal?.aborted || this.destroyed) return null;
+      } finally {
+        signal?.removeEventListener("abort", abort);
+        subscription?.dispose();
+      }
+      if (cancelled || signal?.aborted || this.closed || this.sessions.get(session.id) !== session)
+        throw Object.assign(new Error("Input planning was cancelled"), { name: "AbortError" });
     }
-    return parse.apply(this, args);
+    return dispatch.call(this, operation, data, options);
   });
   return gates;
 }
@@ -131,11 +145,11 @@ async function cleanup(host, gates, tasks) {
 }
 
 test(
-  "a pending input parse postpones view queries until its complete result is available",
+  "a pending input plan postpones view queries until its complete result is available",
   { timeout: 10000 },
   async (t) => {
     const { host, data, session } = await setup();
-    const gates = holdPrivateParses(t),
+    const gates = holdInputPlanning(t, host),
       tasks = [],
       events = [];
     const blocked = observeView(t, host, session, events);
@@ -169,7 +183,7 @@ test(
   { timeout: 10000 },
   async (t) => {
     const { host, data, session } = await setup();
-    const gates = holdPrivateParses(t, 2),
+    const gates = holdInputPlanning(t, host, 2),
       tasks = [],
       events = [];
     const blocked = observeView(t, host, session, events);
@@ -212,7 +226,7 @@ test(
   { timeout: 10000 },
   async (t) => {
     const { host, data, session } = await setup();
-    const gates = holdPrivateParses(t),
+    const gates = holdInputPlanning(t, host),
       tasks = [],
       events = [];
     const blocked = observeView(t, host, session, events);
@@ -246,7 +260,7 @@ test(
   { timeout: 10000 },
   async (t) => {
     const { host, data, session } = await setup();
-    const gates = holdPrivateParses(t, 2),
+    const gates = holdInputPlanning(t, host, 2),
       tasks = [],
       events = [];
     const blocked = observeView(t, host, session, events);
@@ -293,7 +307,7 @@ test(
     const { host, data, session } = await setup(
       "class Record:\n    first = 1\n    second = 2\n    third = 3\n",
     );
-    const gates = holdPrivateParses(t),
+    const gates = holdInputPlanning(t, host),
       tasks = [],
       events = [],
       firstTile = deferred(),
@@ -353,7 +367,7 @@ test(
   { timeout: 10000 },
   async (t) => {
     const { host, data, session } = await setup();
-    const gates = holdPrivateParses(t),
+    const gates = holdInputPlanning(t, host),
       tasks = [],
       events = [];
     let seeks = 0,
@@ -392,7 +406,7 @@ test(
   { timeout: 10000 },
   async (t) => {
     const { host, data, session } = await setup();
-    const gates = holdPrivateParses(t),
+    const gates = holdInputPlanning(t, host),
       tasks = [],
       events = [],
       previewReady = deferred(),
@@ -429,9 +443,14 @@ test(
         host.previewView(session, [0, 1], async (packet) => packets.push(packet), current),
       );
       await previewReady.promise;
+      // A pure whitespace projection settles the retained parent source and
+      // supersedes this forced preview. A real token insertion takes the
+      // parsed input path, preserving the independent loading-preview case.
+      const request = input(data, 2);
+      request.changes[0].text = "\n# note";
       const pendingInput = track(
         tasks,
-        host.dispatch("input-indent", input(data, 2)).then((result) => {
+        host.dispatch("input-indent", request).then((result) => {
           events.push("input-result");
           return result;
         }),
@@ -457,7 +476,7 @@ test(
   { timeout: 10000 },
   async (t) => {
     const { host, data, session } = await setup();
-    const gates = holdPrivateParses(t),
+    const gates = holdInputPlanning(t, host),
       tasks = [],
       events = [];
     const blocked = observeView(t, host, session, events);
@@ -484,7 +503,7 @@ test(
   { timeout: 10000 },
   async (t) => {
     const { host, data, session } = await setup();
-    const gates = holdPrivateParses(t),
+    const gates = holdInputPlanning(t, host),
       tasks = [],
       events = [];
     const blocked = observeView(t, host, session, events);
@@ -579,7 +598,7 @@ test(
 );
 
 test(
-  "resumable input root and injected parsers outrank preview and focused work while bulk keeps its background priority",
+  "projected whitespace input avoids parsing while parsed fallback and bulk keep their scheduler priorities",
   { timeout: 10000 },
   async (t) => {
     const source = "# %%\nclass Record:\n    field = 1\n";
@@ -597,7 +616,7 @@ test(
     });
     const contexts = new WeakMap(),
       records = [];
-    let phase = "input";
+    let phase = "projection";
     const parse = Parser.prototype.parse;
     t.mock.method(Parser.prototype, "parse", function (text, options) {
       contexts.set(options.priority, options.runtimeContext.scopeName);
@@ -625,6 +644,11 @@ test(
       },
     };
     try {
+      const projected = await host.dispatch("input-indent", { ...request, target: 2 });
+      assert.deepEqual(projected.value.levels, [[2, 1]]);
+      assert.equal(records.length, 0, "A whitespace projection must not submit a parser job");
+      phase = "input";
+      request.changes = [{ startIndex: 18, oldEndIndex: 18, text: "\n# note" }];
       const plannedInput = await host.dispatch("input-indent", { ...request, target: 2 });
       phase = "bulk";
       const plannedBulk = await host.dispatch("prepared-indent", { ...request, target: 3 });

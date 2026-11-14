@@ -700,7 +700,10 @@ class SyntaxWorkerService {
         {
           session: id,
           indentationRanges: ranges,
-          indentationOptions: { rowOptions: options.rowOptions },
+          indentationOptions: {
+            isPastedText: options.isPastedText,
+            rowOptions: options.rowOptions,
+          },
         },
         { signal },
       );

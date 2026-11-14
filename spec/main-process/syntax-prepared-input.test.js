@@ -1,5 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const Host = require("../../src/syntax-worker-host");
 const { configuration } = require("../../src/syntax-worker-environment");
 const rules = require("../../src/typing-indentation-rules");
@@ -8,6 +9,7 @@ const Service = require("../../src/syntax-worker-service");
 const Range = require("../../src/range");
 const LanguageMode = require("../../src/tree-sitter-language-mode");
 const PieceTree = require("../../src/piece-tree");
+const Parser = require("../../src/tree-sitter-parser");
 
 function parseCandidate(indentationOnly, parser) {
   return {
@@ -156,7 +158,7 @@ test("small prepared input returns inline levels without an acknowledgement and 
   }
 });
 
-test("private indentation scans only local independent injections and skips fixed non-indent languages", async (t) => {
+test("typing indentation projects one forest without rediscovering independent non-indent injections", async (t) => {
   const text =
     "function method() {\n    return 1;\n}\n".repeat(400) + "const expression = /abc+/;\n";
   const { host, data } = await setup({
@@ -166,6 +168,7 @@ test("private indentation scans only local independent injections and skips fixe
   try {
     host.config.set("language-javascript.indentation.indentBraces", true);
     const grammar = host.grammars.grammarForScopeName("source.js");
+    grammar.inputEditPolicy = path.resolve(__dirname, "../fixtures/input-edit-policy.js");
     const registration = host.grammars.addInjectionPoint("source.js", {
       type: "regex",
       language: "regex",
@@ -177,6 +180,21 @@ test("private indentation scans only local independent injections and skips fixe
       mode.getAllInjectionLayers().some((layer) => layer.grammar.scopeName === "source.regexp"),
     );
     const prototype = Object.getPrototypeOf(mode.rootLanguageLayer);
+    const sourceTree = mode.rootLanguageLayer.tree;
+    const copies = t.mock.method(Parser, "prepareTree", Parser.prepareTree);
+    const dispatch = host.dispatch;
+    const projectedScopes = [];
+    t.mock.method(host, "dispatch", async function (operation, input, options) {
+      const value = await dispatch.call(this, operation, input, options);
+      if (operation === "initialize" && input.session !== 1)
+        projectedScopes.push(
+          this.sessions
+            .get(input.session)
+            .mode.getAllLanguageLayers()
+            .map((layer) => layer.grammar.scopeName),
+        );
+      return value;
+    });
     const queries = [],
       types = [];
     const query = prototype._queryStaticInjectionCandidates;
@@ -207,10 +225,10 @@ test("private indentation scans only local independent injections and skips fixe
     });
     assert.deepEqual(result.value.levels, [[1, 1]]);
     assert.equal(types.includes("regex"), false);
-    assert.ok(queries.length > 0);
-    assert.ok(queries.every(([start, end]) => start >= 0 && end <= 2));
-    queries.length = 0;
-    await host.dispatch("prepared-indent", {
+    assert.deepEqual(queries, []);
+    assert.equal(copies.mock.callCount(), 0);
+    assert.deepEqual(projectedScopes, [["source.js"]]);
+    const disjoint = await host.dispatch("prepared-indent", {
       ...data,
       target: 3,
       changes: [{ startIndex: 19, oldEndIndex: 19, text: "\n" }],
@@ -222,9 +240,16 @@ test("private indentation scans only local independent injections and skips fixe
       inline: true,
       options: { isPastedText: false },
     });
-    assert.ok(queries.length >= 2);
-    assert.ok(queries.every(([start, end]) => end <= 2 || (start >= 900 && end <= 902)));
+    assert.deepEqual(disjoint.value.levels, [
+      [1, 1],
+      [901, 0],
+    ]);
+    assert.deepEqual(queries, []);
+    assert.equal(copies.mock.callCount(), 0);
+    assert.deepEqual(projectedScopes, [["source.js"], ["source.js"]]);
     assert.equal(host.sessions.size, 1);
+    assert.equal(mode.rootLanguageLayer.tree, sourceTree);
+    assert.equal(mode.buffer.getText(), text);
     assert.equal(grammar.injectionPointsByType.regex[0].language, "regex");
     registration.dispose();
   } finally {
@@ -232,7 +257,7 @@ test("private indentation scans only local independent injections and skips fixe
   }
 });
 
-test("local indentation discovery retains enclosing injected content and matches full discovery", async (t) => {
+test("typing projection retains enclosing injected content and matches a full parsed fallback", async (t) => {
   const text =
     "const style = css`\n.example {\n  color: red;\n}\n`;\n" + "const tail = 1;\n".repeat(300);
   const { host, data } = await setup({
@@ -240,8 +265,17 @@ test("local indentation discovery retains enclosing injected content and matches
     text,
   });
   try {
+    host.grammars.grammarForScopeName("source.js").inputEditPolicy = path.resolve(
+      __dirname,
+      "../fixtures/input-edit-policy.js",
+    );
     const dispatch = host.dispatch;
     let full = false;
+    const parent = host.sessions.get(1).mode;
+    const capture = parent.captureSyntaxSnapshot;
+    t.mock.method(parent, "captureSyntaxSnapshot", function (...args) {
+      return full ? null : capture.apply(this, args);
+    });
     t.mock.method(host, "dispatch", function (operation, data, options) {
       if (full && operation === "initialize") data = { ...data, indentationRanges: undefined };
       return dispatch.call(this, operation, data, options);
@@ -269,7 +303,7 @@ test("local indentation discovery retains enclosing injected content and matches
   }
 });
 
-test("combined injections retain distant members when preparing local indentation", async (t) => {
+test("typing projection retains distant combined injection members without rediscovery", async (t) => {
   const text =
     "const first = css`.example {\n`;\n" +
     "const unrelated = 1;\n".repeat(300) +
@@ -279,6 +313,10 @@ test("combined injections retain distant members when preparing local indentatio
     text,
   });
   try {
+    host.grammars.grammarForScopeName("source.js").inputEditPolicy = path.resolve(
+      __dirname,
+      "../fixtures/input-edit-policy.js",
+    );
     await host.grammars.grammarForScopeName("source.js").setQueryForTest(
       "injectionsQuery",
       `
@@ -291,6 +329,18 @@ test("combined injections retain distant members when preparing local indentatio
     );
     await host.dispatch("settle", data);
     const mode = host.sessions.get(1).mode;
+    const dispatch = host.dispatch;
+    let projectedRanges;
+    t.mock.method(host, "dispatch", async function (operation, input, options) {
+      const value = await dispatch.call(this, operation, input, options);
+      if (operation === "initialize" && input.session === 2)
+        projectedRanges = this.sessions
+          .get(2)
+          .mode.getAllLanguageLayers()
+          .find((layer) => layer.grammar.scopeName === "source.css")
+          .getCurrentRanges();
+      return value;
+    });
     const prototype = Object.getPrototypeOf(mode.rootLanguageLayer);
     const query = prototype._queryStaticInjectionCandidates;
     const rows = [];
@@ -316,8 +366,13 @@ test("combined injections retain distant members when preparing local indentatio
       },
     });
     assert.deepEqual(result.value.levels, [[304, 1]]);
-    assert.equal(Math.min(...rows), 0);
+    assert.deepEqual(rows, []);
+    assert.equal(projectedRanges.length, 2);
+    assert.equal(projectedRanges[0].start.row, 0);
+    assert.equal(projectedRanges[1].start.row, 302);
+    assert.equal(projectedRanges[1].end.row, 306);
     assert.equal(host.sessions.size, 1);
+    assert.equal(mode.buffer.getText(), text);
   } finally {
     host.close();
   }
@@ -564,6 +619,11 @@ test("IPython typing proves local no-ops without parsing its combined Python inj
     });
     const install = host.installMode;
     let reference = false;
+    const parent = host.sessions.get(1).mode;
+    const capture = parent.captureSyntaxSnapshot;
+    t.mock.method(parent, "captureSyntaxSnapshot", function (...args) {
+      return reference ? null : capture.apply(this, args);
+    });
     t.mock.method(host, "installMode", function (session) {
       if (reference) session.editedIndentationRows = null;
       return install.call(this, session);
@@ -573,7 +633,7 @@ test("IPython typing proves local no-ops without parsing its combined Python inj
       ["after a comma", text.indexOf("label',") + 7, "a", true, true],
       ["closing delimiter", text.indexOf("    \n") + 4, ")", true, false],
       ["dedent keyword", text.indexOf("    els") + 7, "e", true, false],
-      ["newline", text.indexOf("label',") + 7, "\n", false, false],
+      ["newline after a quoted argument", text.indexOf("label',") + 7, "\n", false, false],
       ["embedded HTML", text.indexOf("</div>") + 2, "a", true, false],
     ]) {
       const row = text.slice(0, offset).split("\n").length - 1 + Number(!edited);

@@ -130,6 +130,22 @@ class IndentResolver {
     );
   }
 
+  comparisonIndentForRow(row, comparisonRow, tabLength, options) {
+    if (row === 0) return 0;
+    // Blank insertion rows may retain a baseline from before observers trimmed
+    // their prefix. Only an actual earlier prefix edit supersedes that value.
+    const capturedBaselineChanged =
+      options.comparisonRowIndentCaptured && options.indentationLevels?.hasPrefixChange?.(row - 1);
+    const explicit = capturedBaselineChanged
+      ? undefined
+      : (options.comparisonRowIndent ?? options.comparisonRowIndents?.get(row));
+    return (
+      explicit ??
+      options.indentationLevels?.get(comparisonRow) ??
+      this.indentLevelForBufferRow(comparisonRow, tabLength)
+    );
+  }
+
   computeSuggestedIndentForBufferRow(row, tabLength, rawOptions = {}) {
     if (!this.hasRow(row)) return undefined;
     if (row === 0) {
@@ -197,10 +213,7 @@ class IndentResolver {
       );
     }
 
-    let comparisonRowIndent = options.comparisonRowIndent ?? options.comparisonRowIndents?.get(row);
-    if (comparisonRowIndent === undefined) {
-      comparisonRowIndent = this.indentLevelForBufferRow(comparisonRow, tabLength);
-    }
+    const comparisonRowIndent = this.comparisonIndentForRow(row, comparisonRow, tabLength, options);
 
     // What's the right place to measure from? Often we're here because the
     // user just hit Enter, which means we'd run before injection layers have
@@ -935,7 +948,9 @@ class IndentResolver {
         if (trees.size >= 32) trees.delete(trees.keys().next().value);
         trees.set(
           layer,
-          withoutPredicateTextBudget(() => layer.getOrParseTree()),
+          options.treeForLayer
+            ? options.treeForLayer(layer)
+            : withoutPredicateTextBudget(() => layer.getOrParseTree()),
         );
       }
       return trees.get(layer);
@@ -973,6 +988,13 @@ class IndentResolver {
             (!rowOptions.preserveLeadingWhitespace && !rowOptions.edited),
           forceTreeParse: true,
         };
+        settings.comparisonRow ??= this.getComparisonRow(row, settings);
+        settings.comparisonRowIndent = this.comparisonIndentForRow(
+          row,
+          settings.comparisonRow,
+          tabLength,
+          settings,
+        );
         const level = rowOptions.edited
           ? this.suggestedIndentForEditedBufferRow(row, tabLength, settings)
           : this.suggestedIndentForBufferRow(row, tabLength, settings);
@@ -981,8 +1003,13 @@ class IndentResolver {
         if (Number.isFinite(level))
           indentationLevels.set(
             row,
-            rowOptions.preserveLeadingWhitespace
-              ? this.indentLevelForBufferRow(row, tabLength, 0, Math.floor(level * tabLength))
+            settings.preserveLeadingWhitespace
+              ? this.indentLevelForBufferRow(
+                  row,
+                  tabLength,
+                  settings.insertedIndentLengths?.get(row) ?? 0,
+                  Math.floor(level * tabLength),
+                )
               : level,
           );
         continue;
@@ -1221,7 +1248,11 @@ class IndentResolver {
 
     // Ideally, we're running when the tree is clean, but if not, we must
     // re-parse the tree in order to make an accurate indents query.
-    let indentTree = options.tree;
+    let indentTree = options.treeForLayer ? options.treeForLayer(controllingLayer) : options.tree;
+    if (!indentTree && options.treeForLayer) {
+      if (options.requireComplete) throw new QueryBudgetExceeded("indentation-unavailable");
+      return null;
+    }
     if (!indentTree) {
       // Unlike `suggestedIndentForBufferRow`, this method is not something
       // that can run in the middle of a transaction. That means we don't need
@@ -1286,6 +1317,7 @@ class IndentResolver {
     // If more than one level of dedent is needed, a `@match` capture must be
     // used so that indent level can be expressed in absolute terms.
     const originalRowIndent = this.suggestedIndentForBufferRow(row, tabLength, {
+      ...options,
       skipBlankLines: true,
       skipDedentCheck: true,
       skipEvent: true,
@@ -1337,6 +1369,7 @@ class IndentResolver {
           currentRow: row,
           comparisonRow,
           tabLength,
+          indentationLevels: options.indentationLevels,
         });
         if (typeof matchIndentLevel === "number") {
           scopeResolver.reset();

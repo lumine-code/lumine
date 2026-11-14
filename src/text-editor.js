@@ -2639,6 +2639,13 @@ module.exports = class TextEditor {
       : options;
     const indentMarkers = [];
     const indentBaselines = new Map();
+    const inputSnapshot = batchNewlineIndent
+      ? languageMode.captureSyntaxSnapshot?.({ indentationOnly: true })
+      : null;
+    const inputChanges = [];
+    const observeInputChanges = inputSnapshot
+      ? this.buffer.onDidApplyChanges((batch) => inputChanges.push(...batch.changes))
+      : null;
     let result;
     try {
       result = this.mutateSelectedText((selection) => {
@@ -2661,11 +2668,17 @@ module.exports = class TextEditor {
     } catch (error) {
       for (const marker of indentMarkers) marker.destroy();
       throw error;
+    } finally {
+      observeInputChanges?.dispose();
     }
     if (groupLastChanges) this.buffer.groupLastChanges();
 
     if (batchNewlineIndent) {
-      this.adjustNewlineIndentation(indentMarkers, languageMode, indentBaselines, options);
+      this.adjustNewlineIndentation(indentMarkers, languageMode, indentBaselines, {
+        ...options,
+        inputSnapshot,
+        inputChanges,
+      });
     } else if (
       typeof languageMode.scanPreparedIndentation !== "function" &&
       (options.autoIndent || options.autoIndentNewline || options.autoDecreaseIndent)
@@ -2714,12 +2727,14 @@ module.exports = class TextEditor {
       }
       const contextualInput =
         rows.length > 1 && typeof languageMode.suggestedIndentForInputRows === "function";
-      // Input plans materialize earlier prefixes privately before resolving a
-      // dependent row. Apply the complete answer once to the live editor.
+      // Query one projected pre-edit forest, retaining syntax relationships
+      // while every cursor's proposed split is visible to row predicates.
       const planned = contextualInput
         ? languageMode.suggestedIndentForInputRows(rows, tabLength, {
             ...options,
             softTabs,
+            inputSnapshot: inputOptions.inputSnapshot,
+            inputChanges: inputOptions.inputChanges,
             signal: inputOptions.signal,
             isCurrent,
             rowOptions: new Map(

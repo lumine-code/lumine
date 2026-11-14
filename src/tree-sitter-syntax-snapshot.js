@@ -31,18 +31,27 @@ class SyntaxSnapshot {
     const source = mode.buffer.getTextSnapshot();
     const entries = [];
     let scanned = 0,
-      rangeCount = 0;
+      rangeCount = 0,
+      complete = !mode.publicationPending;
     const visit = (layer, parent) => {
-      if (++scanned > MAX_LAYERS || rangeCount >= MAX_RANGES) return;
+      if (indentationOnly && parent && !mode.grammarCanAffectIndentation(layer.grammar)) return;
+      if (++scanned > MAX_LAYERS || rangeCount >= MAX_RANGES) {
+        complete = false;
+        return;
+      }
       if (
         layer.destroyed ||
         layer.backgroundTree?.revision !== revision ||
-        layer.grammarGeneration !== layer.grammar.queryLoadGeneration ||
-        (indentationOnly && parent && !mode.grammarCanAffectIndentation(layer.grammar))
-      )
+        layer.grammarGeneration !== layer.grammar.queryLoadGeneration
+      ) {
+        complete = false;
         return;
+      }
       const ranges = layer.lastIncludedRanges;
-      if (ranges && ranges.length + rangeCount > MAX_RANGES) return;
+      if (ranges && ranges.length + rangeCount > MAX_RANGES) {
+        complete = false;
+        return;
+      }
       rangeCount += ranges?.length ?? 0;
       const entry = Object.freeze({
         parent,
@@ -57,20 +66,31 @@ class SyntaxSnapshot {
       });
       entries.push(entry);
       for (const marker of layer.childLayerMarkers) {
-        if (scanned >= MAX_LAYERS || rangeCount >= MAX_RANGES) break;
+        if (scanned >= MAX_LAYERS || rangeCount >= MAX_RANGES) {
+          complete = false;
+          break;
+        }
         visit(marker.languageLayer, entry);
       }
     };
     visit(root, null);
     return entries.length
-      ? new SyntaxSnapshot(source, rootPolicy(mode), Object.freeze(entries))
+      ? new SyntaxSnapshot(
+          source,
+          rootPolicy(mode),
+          Object.freeze(entries),
+          complete,
+          mode.getSyntaxRequestEpoch?.() ?? null,
+        )
       : null;
   }
 
-  constructor(source, policy, layers) {
+  constructor(source, policy, layers, complete = true, epoch = null) {
     this.source = source;
     this.policy = policy && typeof policy === "object" ? structuredClone(policy) : policy;
     this.layers = layers;
+    this.complete = complete;
+    this.epoch = epoch;
     Object.freeze(this);
   }
 

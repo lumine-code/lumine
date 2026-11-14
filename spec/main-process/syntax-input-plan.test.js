@@ -197,6 +197,48 @@ test("input planning returns one cloneable complete result without stream packet
   }
 });
 
+test("bulk input carries the same planning policy through the real service transport", async () => {
+  const source = "value = 1\n".repeat(129);
+  const state = await setup(source);
+  try {
+    const changes = Array.from({ length: 129 }, (_, row) => ({
+      oldRange: new TextBuffer.Range([row, 9], [row, 9]),
+      startIndex: row * 11 + 9,
+      oldEndIndex: row * 11 + 9,
+      newText: "\n",
+    }));
+    const ranges = changes.map((_, row) => [row * 2 + 1, row * 2 + 1]);
+    const levels = [];
+    for await (const batch of state.service.scanPreparedIndentation(
+      state.session,
+      changes,
+      ranges,
+      4,
+      {
+        isPastedText: false,
+        rowOptions: new Map(
+          ranges.map(([row]) => [
+            row,
+            {
+              preserveLeadingWhitespace: true,
+              skipBlankLines: false,
+            },
+          ]),
+        ),
+      },
+    ))
+      levels.push(...batch);
+    assert.deepEqual(
+      levels,
+      ranges.map(([row]) => [row, 0]),
+    );
+    assert.equal(state.host.sessions.size, 1);
+    assert.equal(state.host.sessions.get(1).buffer.getText(), source);
+  } finally {
+    state.close();
+  }
+});
+
 test("a compact multicursor plan observes earlier syntax without requiring row-specific options", async () => {
   const lines = ["if s.l<=50e-3: s.Δσ_C = 80e6", "elif s.l<=80e-3: s.Δσ_C = 71e6"];
   const source = lines.join("\n");

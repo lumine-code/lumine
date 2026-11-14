@@ -71,7 +71,7 @@
     "language-git": "github:lumine-code/language-git#193d92a41aa69af9b642422557ddf196fdd2b1b9",
     "language-html": "github:lumine-code/language-html#d6fd6772375465cf72bce88d55181473be8e6bd5",
     "language-hyperlink": "github:lumine-code/language-hyperlink#13325a4884bf5fed1295d6b499e8a85e7cb58b59",
-    "language-ipython": "github:lumine-code/language-ipython#0184c829e909611ff545b6b115e12422edebfc19",
+    "language-ipython": "github:lumine-code/language-ipython#570c70338963055a5388033ea404e30ca08b507d",
     "language-javascript": "github:lumine-code/language-javascript#000495ae602bd6a326efb3b72612da224cf94b61",
     "language-json": "github:lumine-code/language-json#eca2dd0948096fe81d7b445adcf77a700fc6ce7f",
     "language-log": "github:lumine-code/language-log#a30493e7a6cb6b468fbbd1a999872aba44e58edc",
@@ -146,6 +146,7 @@
   "scripts": {
     "build": "electron-rebuild",
     "benchmark:display": "node script/benchmark-display.js",
+    "benchmark:multicursor-input": "node script/benchmark-multicursor-input.js",
     "benchmark:injection-routing": "node script/benchmark-injection-routing.js",
     "benchmark:presentation": "node script/benchmark-presentation.js",
     "benchmark:git": "npm run test:only -- benchmark/git-renderer-boundary-spec.js",
