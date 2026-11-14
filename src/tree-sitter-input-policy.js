@@ -1,7 +1,6 @@
 const path = require("node:path");
-const PieceTree = require("./piece-tree");
+const { PieceTree, TextPatch: Patch } = require("./text-model");
 const Point = require("./point");
-const Patch = require("./text-patch");
 const { usesSyntaxIndentation } = require("./typing-indentation-rules");
 
 const MAX_CONTEXT = 4096;

@@ -2,9 +2,7 @@ const IndentResolver = require("./tree-sitter-indent-resolver");
 const ScopeResolver = require("./scope-resolver");
 const Range = require("./range");
 const captureQuery = require("./tree-sitter-query-cache");
-const Patch = require("./text-patch");
-const TextChangeMap = require("./text-change-map");
-const PieceTree = require("./piece-tree");
+const { TextPatch: Patch, TextChangeMap, PieceTree } = require("./text-model");
 const projectInputTree = require("./tree-sitter-input-node");
 const { allowsInputProjection } = require("./tree-sitter-input-policy");
 
