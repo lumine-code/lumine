@@ -1,5 +1,5 @@
 {
-  "capturedOn": "2026-10-30",
+  "capturedOn": "2026-11-14",
   "context": "Authentic captures of Lumine in normal mode on Windows, using the One light theme and default editor font settings. System window borders are excluded, corners are rounded, and dock reveal controls are hidden before capture.",
   "scenes": [
     {
@@ -9,67 +9,67 @@
       "description": "Python editing with syntax highlighting and the project tree.",
       "light": "01-light.png",
       "dark": "01-dark.png",
-      "capturedOn": "2026-10-30",
-      "sourceRevision": "760329498d85e1294191a073d8a34a1706f4d14b",
+      "capturedOn": "2026-11-14",
+      "sourceRevision": "8e257fa6c113fc97dea272ec005a8e8425859ffb",
       "packageSourceRevisions": {
         "breadcrumbs": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
-        "about": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
-        "background-tips": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
-        "command-palette": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
-        "deprecation-cop": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
-        "dev-live-reload": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
-        "encoding-selector": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
-        "git-diff": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
-        "go-to-line": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
-        "grammar-selector": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
-        "incompatible-packages": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
-        "keybinding-resolver": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
-        "language-c": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
-        "language-css": "6b7b89e632119fc602f0757081c4f078d06328d0",
-        "language-csv": "7abdc6f06aeab61da125ffac2d3880acd864296f",
-        "language-diff": "7c413668916cb14cb46e91fe465c2457218bbcc5",
-        "language-gfm": "e2eca2b15d854161c670e5b8815ad48e636957b7",
-        "language-git": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
-        "language-html": "a7e620a517668d8e46a39fbced344bbb304e12a7",
-        "language-hyperlink": "03ec30fd38ee531aa41a90130d8eece322ba0963",
-        "language-ipython": "aa582a52b51fa32240d36412abcca60fd0629583",
-        "language-javascript": "bf635d04bbf9cf42239552df5455644c59b64b06",
-        "language-json": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
-        "language-log": "326ef9201581d76efba5d05a160c6ecc654e294d",
-        "language-powershell": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
-        "language-python": "413b30e96e3bb63714958c3e3edeca338b0551aa",
-        "language-regex": "3b69da21fc49671442998bc95a0050672694c9d7",
-        "language-shellscript": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
-        "language-source": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
-        "language-sql": "e54209763701ec8cbc6f4eb508de9069d743af0e",
-        "language-text": "d64e4a2f0dd6f177148513f927fddec588d37669",
-        "language-todo": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
-        "language-toml": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
-        "language-typescript": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
-        "language-xml": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
-        "language-yaml": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
-        "launcher": "052dc2786b548598028164567929a7818995fa74",
-        "line-ending": "b18de17984092836aa30930fc760a6d35f06785d",
-        "lumine-updater": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
-        "markdown-preview": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
-        "metadata": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
-        "notifications": "b3f6288191f15153e2c53b33152abe45f5b657bc",
-        "one-theme": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
-        "search-panel": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
-        "settings-view": "89d1f6e16befae710f2467c011299edc5b259092",
-        "snippets": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
-        "status-bar": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
-        "styleguide": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
-        "symbol": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
-        "symbol-tree-sitter": "368c44732334783ea790afbcc88a59b66936f289",
-        "tabs": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
-        "timecop": "91a82e0e7c0994768be61ccb109ada274332976e",
-        "title-bar": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
-        "tree-view": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
-        "whitespace": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
-        "window-title": "55c79de0ce72a58afbc7484f32f4d685e902f22d"
+        "about": "c81a03a5c423d928d75d48fd365bb26b07da92ac",
+        "background-tips": "abee677b4f3cdcabd0552364229bbc75de0bd94b",
+        "command-palette": "e900d45f61ca1be6744fc0dad1dc1f954af48c78",
+        "deprecation-cop": "82f8680ea3e6a794cd2e847b141e59ba1ed466b9",
+        "dev-live-reload": "fa6664f3a1d7a5009e478afaac9a38a04f92e723",
+        "encoding-selector": "5ff9f20d5cba6d6dd2e94c8db73f2fd301cd85a8",
+        "git-chunk": "3dfb1d7ba234f6348f342b3b7defc6e6c53fbf85",
+        "go-to-line": "65a4b9abb5c01beb8d2fe6e7771356ff2a30d7ef",
+        "grammar-selector": "78fdfbcd8d7a2c224afdf84e396b5c11b7a89de5",
+        "incompatible-packages": "244397dfaa7ac2fd533661e422806ec1dc59e9e0",
+        "keybinding-resolver": "c4cf9aa5c5c4ba396f37bb5d1acb5f5bb7efe3c2",
+        "language-c": "4b9dca352be1ac7908ce0f64bed5fbc3cf00730b",
+        "language-css": "84c2c8988359d13b906828e5d2582ff1e5bb09c0",
+        "language-csv": "ef94f8f25bad42710dee5cde86f69eded1faf2de",
+        "language-diff": "d582e4ed9d15c24c49a428ad5644ef6ca58ac3c2",
+        "language-gfm": "5064bea1b467deb54d88f5b218543257b16188d8",
+        "language-git": "193d92a41aa69af9b642422557ddf196fdd2b1b9",
+        "language-html": "d6fd6772375465cf72bce88d55181473be8e6bd5",
+        "language-hyperlink": "13325a4884bf5fed1295d6b499e8a85e7cb58b59",
+        "language-ipython": "0184c829e909611ff545b6b115e12422edebfc19",
+        "language-javascript": "000495ae602bd6a326efb3b72612da224cf94b61",
+        "language-json": "eca2dd0948096fe81d7b445adcf77a700fc6ce7f",
+        "language-log": "a30493e7a6cb6b468fbbd1a999872aba44e58edc",
+        "language-powershell": "94f612f57c5d5cacecf29526975803aa50e10462",
+        "language-python": "612488c410675d504846d0f82884c596a199344f",
+        "language-regex": "1e182ec2b752c58d1485c855e36e4321ab44c5e6",
+        "language-shellscript": "8443505e3a3be6b9c4bf6e88e59d41f02b2d7260",
+        "language-source": "10a8c8b51186d245d7b4a35c41e743ffd46665ce",
+        "language-sql": "a4afa033c5cea2149f5684d5efa1316681d18b02",
+        "language-text": "42eb5052eeff55f045428406c3c931aabe422106",
+        "language-todo": "847938a646d7b6816017db8705028116d34e5219",
+        "language-toml": "abe33a8c98d752af9a507c1ea0d9a10a7c26df2c",
+        "language-typescript": "38dfac0399a68bd75facc76389d5ce2d6cc6d665",
+        "language-xml": "f5444f24bcb70cf0e34ac0baf2831cce22aef5bd",
+        "language-yaml": "20526f8f82798d25f4d29b46406c089916b2d72e",
+        "launcher": "86d8629e6822cb4bd5a2782c2faff53433f1a3e7",
+        "line-ending": "5d71bf206de572273931688ee58f620b73056d69",
+        "lumine-updater": "1e637acd72830232bd8664c8ce25746b86f6d3c4",
+        "markdown-preview": "ce8141fca0105882b4bf570825ec8b19374609ba",
+        "metadata": "33a7a10d0341c7b098bcf836544ed1996b4f93eb",
+        "notifications": "bfdbc353040e66ff35a729d9172bc4415ccd4624",
+        "one-theme": "9d440405a9e4721cf44e1a1e8d3f36a0eb696fc8",
+        "search-panel": "e642ba8d0acf66d95f58fdc47f9cff15b3f76224",
+        "settings-view": "c3c28efdf9e974e354b3ba65eb474ba84798bf4d",
+        "snippets": "d236dcc36975961366f38a0c16d3a3bf021dc945",
+        "status-bar": "b1f8715fcf15cd0a09e0f756f8137c4993abb075",
+        "styleguide": "e0477635e8a56eeadee0308b9eef72ae0cc59a1b",
+        "symbol": "9998895ca8136719a5186aad38779a8d966c7122",
+        "symbol-tree-sitter": "4bbdd80002ed27bcdd30f0536634140789c2c7d7",
+        "tabs": "04469b1489d5cc50f892c756c68fd8f7b0317654",
+        "timecop": "c7d18d6c9a6e91c98e4ea2f5b85f6618e609daa3",
+        "title-bar": "561379bcbc98362e7b4b9eceeb24f7c2c972ef17",
+        "tree-view": "51fe3a5d9647bdfa16e7c79c3a0000d1a254b395",
+        "whitespace": "4cb3f865e07335c1eb569a1d9d9b25d7c0375dae",
+        "window-title": "102047cf367b6dea0e68e441d3bb7e1d719d2d2c"
       },
-      "themeSourceRevision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+      "themeSourceRevision": "9d440405a9e4721cf44e1a1e8d3f36a0eb696fc8",
       "capture": {
         "runner": "script/demo.js",
         "recipe": "capture/recipe.txt",
@@ -79,305 +79,312 @@
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "45.0.0",
-          "chrome": "156.0.8078.48",
+          "electron": "45.3.1",
+          "chrome": "156.0.8078.96",
           "devicePixelRatio": 1,
           "locale": "en-GB",
           "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
           "fontSize": 14,
           "themes": ["one-day-syntax", "one-day-ui"]
         },
-        "viewport": { "width": 1440, "height": 900 },
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
         "cornerRadius": 10,
-        "privacy": { "version": 1, "location": "neutral", "textChecked": true },
+        "privacy": {
+          "version": 1,
+          "location": "neutral",
+          "textChecked": true
+        },
         "sources": {
           "editor": {
-            "revision": "760329498d85e1294191a073d8a34a1706f4d14b",
+            "revision": "8e257fa6c113fc97dea272ec005a8e8425859ffb",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "package": {
             "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
           },
           "breadcrumbs": {
             "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
           },
           "about": {
-            "revision": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
+            "revision": "c81a03a5c423d928d75d48fd365bb26b07da92ac",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "background-tips": {
-            "revision": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
+            "revision": "abee677b4f3cdcabd0552364229bbc75de0bd94b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "command-palette": {
-            "revision": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
+            "revision": "e900d45f61ca1be6744fc0dad1dc1f954af48c78",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "deprecation-cop": {
-            "revision": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
+            "revision": "82f8680ea3e6a794cd2e847b141e59ba1ed466b9",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "dev-live-reload": {
-            "revision": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
+            "revision": "fa6664f3a1d7a5009e478afaac9a38a04f92e723",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "encoding-selector": {
-            "revision": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
+            "revision": "5ff9f20d5cba6d6dd2e94c8db73f2fd301cd85a8",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
-          "git-diff": {
-            "revision": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
+          "git-chunk": {
+            "revision": "3dfb1d7ba234f6348f342b3b7defc6e6c53fbf85",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "go-to-line": {
-            "revision": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
+            "revision": "65a4b9abb5c01beb8d2fe6e7771356ff2a30d7ef",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "grammar-selector": {
-            "revision": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
+            "revision": "78fdfbcd8d7a2c224afdf84e396b5c11b7a89de5",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "incompatible-packages": {
-            "revision": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
+            "revision": "244397dfaa7ac2fd533661e422806ec1dc59e9e0",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "keybinding-resolver": {
-            "revision": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
+            "revision": "c4cf9aa5c5c4ba396f37bb5d1acb5f5bb7efe3c2",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-c": {
-            "revision": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
+            "revision": "4b9dca352be1ac7908ce0f64bed5fbc3cf00730b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-css": {
-            "revision": "6b7b89e632119fc602f0757081c4f078d06328d0",
+            "revision": "84c2c8988359d13b906828e5d2582ff1e5bb09c0",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-csv": {
-            "revision": "7abdc6f06aeab61da125ffac2d3880acd864296f",
+            "revision": "ef94f8f25bad42710dee5cde86f69eded1faf2de",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-diff": {
-            "revision": "7c413668916cb14cb46e91fe465c2457218bbcc5",
+            "revision": "d582e4ed9d15c24c49a428ad5644ef6ca58ac3c2",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-gfm": {
-            "revision": "e2eca2b15d854161c670e5b8815ad48e636957b7",
+            "revision": "5064bea1b467deb54d88f5b218543257b16188d8",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-git": {
-            "revision": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
+            "revision": "193d92a41aa69af9b642422557ddf196fdd2b1b9",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-html": {
-            "revision": "a7e620a517668d8e46a39fbced344bbb304e12a7",
+            "revision": "d6fd6772375465cf72bce88d55181473be8e6bd5",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-hyperlink": {
-            "revision": "03ec30fd38ee531aa41a90130d8eece322ba0963",
+            "revision": "13325a4884bf5fed1295d6b499e8a85e7cb58b59",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-ipython": {
-            "revision": "aa582a52b51fa32240d36412abcca60fd0629583",
+            "revision": "0184c829e909611ff545b6b115e12422edebfc19",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-javascript": {
-            "revision": "bf635d04bbf9cf42239552df5455644c59b64b06",
+            "revision": "000495ae602bd6a326efb3b72612da224cf94b61",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-json": {
-            "revision": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
+            "revision": "eca2dd0948096fe81d7b445adcf77a700fc6ce7f",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-log": {
-            "revision": "326ef9201581d76efba5d05a160c6ecc654e294d",
+            "revision": "a30493e7a6cb6b468fbbd1a999872aba44e58edc",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-powershell": {
-            "revision": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
+            "revision": "94f612f57c5d5cacecf29526975803aa50e10462",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-python": {
-            "revision": "413b30e96e3bb63714958c3e3edeca338b0551aa",
+            "revision": "612488c410675d504846d0f82884c596a199344f",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-regex": {
-            "revision": "3b69da21fc49671442998bc95a0050672694c9d7",
+            "revision": "1e182ec2b752c58d1485c855e36e4321ab44c5e6",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-shellscript": {
-            "revision": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
+            "revision": "8443505e3a3be6b9c4bf6e88e59d41f02b2d7260",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-source": {
-            "revision": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
+            "revision": "10a8c8b51186d245d7b4a35c41e743ffd46665ce",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-sql": {
-            "revision": "e54209763701ec8cbc6f4eb508de9069d743af0e",
+            "revision": "a4afa033c5cea2149f5684d5efa1316681d18b02",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-text": {
-            "revision": "d64e4a2f0dd6f177148513f927fddec588d37669",
+            "revision": "42eb5052eeff55f045428406c3c931aabe422106",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-todo": {
-            "revision": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
+            "revision": "847938a646d7b6816017db8705028116d34e5219",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-toml": {
-            "revision": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
+            "revision": "abe33a8c98d752af9a507c1ea0d9a10a7c26df2c",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-typescript": {
-            "revision": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
+            "revision": "38dfac0399a68bd75facc76389d5ce2d6cc6d665",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-xml": {
-            "revision": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
+            "revision": "f5444f24bcb70cf0e34ac0baf2831cce22aef5bd",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-yaml": {
-            "revision": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
+            "revision": "20526f8f82798d25f4d29b46406c089916b2d72e",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "launcher": {
-            "revision": "052dc2786b548598028164567929a7818995fa74",
+            "revision": "86d8629e6822cb4bd5a2782c2faff53433f1a3e7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "line-ending": {
-            "revision": "b18de17984092836aa30930fc760a6d35f06785d",
+            "revision": "5d71bf206de572273931688ee58f620b73056d69",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "lumine-updater": {
-            "revision": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
+            "revision": "1e637acd72830232bd8664c8ce25746b86f6d3c4",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
+            "revision": "ce8141fca0105882b4bf570825ec8b19374609ba",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "metadata": {
-            "revision": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
+            "revision": "33a7a10d0341c7b098bcf836544ed1996b4f93eb",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "notifications": {
-            "revision": "b3f6288191f15153e2c53b33152abe45f5b657bc",
+            "revision": "bfdbc353040e66ff35a729d9172bc4415ccd4624",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+            "revision": "9d440405a9e4721cf44e1a1e8d3f36a0eb696fc8",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "search-panel": {
-            "revision": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
+            "revision": "e642ba8d0acf66d95f58fdc47f9cff15b3f76224",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "89d1f6e16befae710f2467c011299edc5b259092",
+            "revision": "c3c28efdf9e974e354b3ba65eb474ba84798bf4d",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "snippets": {
-            "revision": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
+            "revision": "d236dcc36975961366f38a0c16d3a3bf021dc945",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "status-bar": {
-            "revision": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
+            "revision": "b1f8715fcf15cd0a09e0f756f8137c4993abb075",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "styleguide": {
-            "revision": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
+            "revision": "e0477635e8a56eeadee0308b9eef72ae0cc59a1b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "symbol": {
-            "revision": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
+            "revision": "9998895ca8136719a5186aad38779a8d966c7122",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "symbol-tree-sitter": {
-            "revision": "368c44732334783ea790afbcc88a59b66936f289",
+            "revision": "4bbdd80002ed27bcdd30f0536634140789c2c7d7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tabs": {
-            "revision": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
+            "revision": "04469b1489d5cc50f892c756c68fd8f7b0317654",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "timecop": {
-            "revision": "91a82e0e7c0994768be61ccb109ada274332976e",
+            "revision": "c7d18d6c9a6e91c98e4ea2f5b85f6618e609daa3",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "title-bar": {
-            "revision": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
+            "revision": "561379bcbc98362e7b4b9eceeb24f7c2c972ef17",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
+            "revision": "51fe3a5d9647bdfa16e7c79c3a0000d1a254b395",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "whitespace": {
-            "revision": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
+            "revision": "4cb3f865e07335c1eb569a1d9d9b25d7c0375dae",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "window-title": {
-            "revision": "55c79de0ce72a58afbc7484f32f4d685e902f22d",
+            "revision": "102047cf367b6dea0e68e441d3bb7e1d719d2d2c",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -412,7 +419,7 @@
             "sha256": "2a36953daadd1ae53070d0ff7ceab4624395fdb957104aa6e8ec92d785cadf1d"
           }
         ],
-        "sha256": "0a554c9a98c474b72810779130ab302fd44afb9a5afbf5eafce3f1906fb655f7"
+        "sha256": "7d4c0680aa2ca04bd514b44674bcd17aef14b0f384d096bd9d21ad7d8a6c53c5"
       }
     },
     {
@@ -422,67 +429,67 @@
       "description": "A live Markdown preview beside its source in a split pane.",
       "light": "02-light.png",
       "dark": "02-dark.png",
-      "capturedOn": "2026-11-05",
+      "capturedOn": "2026-11-14",
       "packageSourceRevisions": {
         "breadcrumbs": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
-        "about": "90d926882eda84f00b3252ed90f7697a22164d37",
-        "background-tips": "ddfa2f910e2e71e439e2878f8eb19c5c5206e0a1",
-        "command-palette": "c590b32e2cacf8c0a8b2f9c4eb7c1e4a13384c24",
-        "deprecation-cop": "eefa0078d58739dde23e3f41007687b1b8119541",
-        "dev-live-reload": "cd872a673e17d3246526e1f01d036ad26360e5a0",
-        "encoding-selector": "0b13a4c9a65c65d09b7a9ca941e4d1606931f81e",
-        "git-chunk": "a06ee257cfc4f4cc5f7a01edfaeb3228924c40b5",
-        "go-to-line": "ed78c4bd34e006fe4c7a98fb8db31a84ad238038",
-        "grammar-selector": "54361ad211599f3910dee96e942d9620720f022e",
-        "incompatible-packages": "1b45be976058c1f060fe3e6eddf7a75f235eb320",
-        "keybinding-resolver": "f7d3b9e835fa9dcf60c19a0574ac2a3d9c1151f3",
-        "language-c": "2bc8a5b514383e901aa08868d3c87512e84acba3",
-        "language-css": "069ac5d39bae60d0394298ceb5148a258919485e",
-        "language-csv": "e4eb805661b9f076900d152f0c4a8d6fbf8c1af1",
-        "language-diff": "7636d163ef4936ce229e56332d07a793b27cf904",
-        "language-gfm": "dbdfa0d7eb55a25a9cd6e4b7f8b388bc5d99dc6f",
-        "language-git": "36091a25a981b9af7469f992181c38b74896a103",
-        "language-html": "4fbf304bba30da893cb96e91243724937351c93e",
-        "language-hyperlink": "53d318296ea3c77620635cdf6e1d3ac8dad607f0",
-        "language-ipython": "c9d8e291feab3efe5e4192cd8277000707d75d39",
-        "language-javascript": "54db3b4027a3b98ddc9911f0d6cf1a4a20c2cfb4",
-        "language-json": "ecff24a39fe8caa6d7a63f08e624aea2e165dd2c",
-        "language-log": "55c72d2865e1058a0c9bf6580f3314d933a19951",
-        "language-powershell": "296912776b79b60a5043b9f1dba5f8343d7b2e1d",
-        "language-python": "baa54e7a81955c98140d4dc3a040d82ff85fb2b4",
-        "language-regex": "c3403fcee1ca2f0d8841c1a2d0057f0f81eacad3",
-        "language-shellscript": "a60ab652ba78cd0f1c19746449e665eeb3c61408",
-        "language-source": "21bca3c34b1ddccc0b10ab7ec594e6323a4d00c0",
-        "language-sql": "592f78cd42996c3065bf04a1b900770e41e68da2",
-        "language-text": "4e0f3bd8710919bb80ce2c5a4e208fd02242e1d0",
-        "language-todo": "8a4cf2afa31cf7449f26addeedb0dc1944777e60",
-        "language-toml": "349d409d0d11c03f90a852ed453b4791eb5856cf",
-        "language-typescript": "d0bca1a560e4ec068c126ffa0ebff8aee2be5326",
-        "language-xml": "895683715e5ae1eb100a831c2fad5d690a447bd0",
-        "language-yaml": "6a15715210609159b305627b9c2aeaccb37d16f9",
-        "launcher": "234ef2be6cfe9103768a6c1b0dc1cd12ee918768",
-        "line-ending": "88b52231d0f6734dbba68803025decad25cd2c14",
-        "lumine-updater": "9853f44509f7759483e7e7d053ebc1455f9f323f",
-        "markdown-preview": "1d783a893b7467175c95affca3af99f74b4bd72f",
-        "metadata": "4becd48560ffb315b637c6459c456cad686c3287",
-        "notifications": "cf5044c275989e8e1735bb7e9c699eb759118056",
-        "one-theme": "6e7e9f93cc5b0612b4631e06d0b80e5ca88a7302",
-        "search-panel": "36fb4c54fd43e672634d4845a490cd3cd2a78bc6",
-        "settings-view": "c1d32a747506f28aa2a33cc6ee2db71f51a7c18a",
-        "snippets": "4141ccab777fec5991f850c3775da8caa99989ce",
-        "status-bar": "be6eb0adfae9c5cafe6175d40f66e33809890437",
-        "styleguide": "adc2e951f2e8849c900f2942f180c9a216a05d14",
-        "symbol": "14c74d055b54899df796f6bce273b746a9129fe8",
-        "symbol-tree-sitter": "315e1eefdde73a88c0e4a1da9af87153619c56cd",
-        "tabs": "34091ff733ee5359f42378a7e47a473279b7c5e3",
-        "timecop": "3c0e235550b35f798d9f46c16cef48c3606bfd53",
-        "title-bar": "068e29b2de449248a6b6f4d7cb321e73c7328cd5",
-        "tree-view": "d682de12e7a1a8501450add1c21d7c1674a75ee5",
-        "whitespace": "b7cccf58cb0b4900ea9accdedcffa6462f889e40",
-        "window-title": "28f683a3b6c1a3bfb60394ed1cc677ab659864dc"
+        "about": "c81a03a5c423d928d75d48fd365bb26b07da92ac",
+        "background-tips": "abee677b4f3cdcabd0552364229bbc75de0bd94b",
+        "command-palette": "e900d45f61ca1be6744fc0dad1dc1f954af48c78",
+        "deprecation-cop": "82f8680ea3e6a794cd2e847b141e59ba1ed466b9",
+        "dev-live-reload": "fa6664f3a1d7a5009e478afaac9a38a04f92e723",
+        "encoding-selector": "5ff9f20d5cba6d6dd2e94c8db73f2fd301cd85a8",
+        "git-chunk": "3dfb1d7ba234f6348f342b3b7defc6e6c53fbf85",
+        "go-to-line": "65a4b9abb5c01beb8d2fe6e7771356ff2a30d7ef",
+        "grammar-selector": "78fdfbcd8d7a2c224afdf84e396b5c11b7a89de5",
+        "incompatible-packages": "244397dfaa7ac2fd533661e422806ec1dc59e9e0",
+        "keybinding-resolver": "c4cf9aa5c5c4ba396f37bb5d1acb5f5bb7efe3c2",
+        "language-c": "4b9dca352be1ac7908ce0f64bed5fbc3cf00730b",
+        "language-css": "84c2c8988359d13b906828e5d2582ff1e5bb09c0",
+        "language-csv": "ef94f8f25bad42710dee5cde86f69eded1faf2de",
+        "language-diff": "d582e4ed9d15c24c49a428ad5644ef6ca58ac3c2",
+        "language-gfm": "5064bea1b467deb54d88f5b218543257b16188d8",
+        "language-git": "193d92a41aa69af9b642422557ddf196fdd2b1b9",
+        "language-html": "d6fd6772375465cf72bce88d55181473be8e6bd5",
+        "language-hyperlink": "13325a4884bf5fed1295d6b499e8a85e7cb58b59",
+        "language-ipython": "0184c829e909611ff545b6b115e12422edebfc19",
+        "language-javascript": "000495ae602bd6a326efb3b72612da224cf94b61",
+        "language-json": "eca2dd0948096fe81d7b445adcf77a700fc6ce7f",
+        "language-log": "a30493e7a6cb6b468fbbd1a999872aba44e58edc",
+        "language-powershell": "94f612f57c5d5cacecf29526975803aa50e10462",
+        "language-python": "612488c410675d504846d0f82884c596a199344f",
+        "language-regex": "1e182ec2b752c58d1485c855e36e4321ab44c5e6",
+        "language-shellscript": "8443505e3a3be6b9c4bf6e88e59d41f02b2d7260",
+        "language-source": "10a8c8b51186d245d7b4a35c41e743ffd46665ce",
+        "language-sql": "a4afa033c5cea2149f5684d5efa1316681d18b02",
+        "language-text": "42eb5052eeff55f045428406c3c931aabe422106",
+        "language-todo": "847938a646d7b6816017db8705028116d34e5219",
+        "language-toml": "abe33a8c98d752af9a507c1ea0d9a10a7c26df2c",
+        "language-typescript": "38dfac0399a68bd75facc76389d5ce2d6cc6d665",
+        "language-xml": "f5444f24bcb70cf0e34ac0baf2831cce22aef5bd",
+        "language-yaml": "20526f8f82798d25f4d29b46406c089916b2d72e",
+        "launcher": "86d8629e6822cb4bd5a2782c2faff53433f1a3e7",
+        "line-ending": "5d71bf206de572273931688ee58f620b73056d69",
+        "lumine-updater": "1e637acd72830232bd8664c8ce25746b86f6d3c4",
+        "markdown-preview": "ce8141fca0105882b4bf570825ec8b19374609ba",
+        "metadata": "33a7a10d0341c7b098bcf836544ed1996b4f93eb",
+        "notifications": "bfdbc353040e66ff35a729d9172bc4415ccd4624",
+        "one-theme": "9d440405a9e4721cf44e1a1e8d3f36a0eb696fc8",
+        "search-panel": "e642ba8d0acf66d95f58fdc47f9cff15b3f76224",
+        "settings-view": "c3c28efdf9e974e354b3ba65eb474ba84798bf4d",
+        "snippets": "d236dcc36975961366f38a0c16d3a3bf021dc945",
+        "status-bar": "b1f8715fcf15cd0a09e0f756f8137c4993abb075",
+        "styleguide": "e0477635e8a56eeadee0308b9eef72ae0cc59a1b",
+        "symbol": "9998895ca8136719a5186aad38779a8d966c7122",
+        "symbol-tree-sitter": "4bbdd80002ed27bcdd30f0536634140789c2c7d7",
+        "tabs": "04469b1489d5cc50f892c756c68fd8f7b0317654",
+        "timecop": "c7d18d6c9a6e91c98e4ea2f5b85f6618e609daa3",
+        "title-bar": "561379bcbc98362e7b4b9eceeb24f7c2c972ef17",
+        "tree-view": "51fe3a5d9647bdfa16e7c79c3a0000d1a254b395",
+        "whitespace": "4cb3f865e07335c1eb569a1d9d9b25d7c0375dae",
+        "window-title": "102047cf367b6dea0e68e441d3bb7e1d719d2d2c"
       },
-      "themeSourceRevision": "6e7e9f93cc5b0612b4631e06d0b80e5ca88a7302",
-      "sourceRevision": "55e7d15c5f86ea3ff86c21a599f40b4a753e71fd",
+      "themeSourceRevision": "9d440405a9e4721cf44e1a1e8d3f36a0eb696fc8",
+      "sourceRevision": "8e257fa6c113fc97dea272ec005a8e8425859ffb",
       "capture": {
         "runner": "script/demo.js",
         "recipe": "capture/recipe.txt",
@@ -492,20 +499,27 @@
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "45.2.3",
-          "chrome": "156.0.8078.80",
+          "electron": "45.3.1",
+          "chrome": "156.0.8078.96",
           "devicePixelRatio": 1,
           "locale": "en-GB",
           "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
           "fontSize": 14,
           "themes": ["one-day-syntax", "one-day-ui"]
         },
-        "viewport": { "width": 1440, "height": 900 },
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
         "cornerRadius": 10,
-        "privacy": { "version": 1, "location": "neutral", "textChecked": true },
+        "privacy": {
+          "version": 1,
+          "location": "neutral",
+          "textChecked": true
+        },
         "sources": {
           "editor": {
-            "revision": "55e7d15c5f86ea3ff86c21a599f40b4a753e71fd",
+            "revision": "8e257fa6c113fc97dea272ec005a8e8425859ffb",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
@@ -520,277 +534,277 @@
             "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
           },
           "about": {
-            "revision": "90d926882eda84f00b3252ed90f7697a22164d37",
+            "revision": "c81a03a5c423d928d75d48fd365bb26b07da92ac",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "background-tips": {
-            "revision": "ddfa2f910e2e71e439e2878f8eb19c5c5206e0a1",
+            "revision": "abee677b4f3cdcabd0552364229bbc75de0bd94b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "command-palette": {
-            "revision": "c590b32e2cacf8c0a8b2f9c4eb7c1e4a13384c24",
+            "revision": "e900d45f61ca1be6744fc0dad1dc1f954af48c78",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "deprecation-cop": {
-            "revision": "eefa0078d58739dde23e3f41007687b1b8119541",
+            "revision": "82f8680ea3e6a794cd2e847b141e59ba1ed466b9",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "dev-live-reload": {
-            "revision": "cd872a673e17d3246526e1f01d036ad26360e5a0",
+            "revision": "fa6664f3a1d7a5009e478afaac9a38a04f92e723",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "encoding-selector": {
-            "revision": "0b13a4c9a65c65d09b7a9ca941e4d1606931f81e",
+            "revision": "5ff9f20d5cba6d6dd2e94c8db73f2fd301cd85a8",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "git-chunk": {
-            "revision": "a06ee257cfc4f4cc5f7a01edfaeb3228924c40b5",
+            "revision": "3dfb1d7ba234f6348f342b3b7defc6e6c53fbf85",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "go-to-line": {
-            "revision": "ed78c4bd34e006fe4c7a98fb8db31a84ad238038",
+            "revision": "65a4b9abb5c01beb8d2fe6e7771356ff2a30d7ef",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "grammar-selector": {
-            "revision": "54361ad211599f3910dee96e942d9620720f022e",
+            "revision": "78fdfbcd8d7a2c224afdf84e396b5c11b7a89de5",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "incompatible-packages": {
-            "revision": "1b45be976058c1f060fe3e6eddf7a75f235eb320",
+            "revision": "244397dfaa7ac2fd533661e422806ec1dc59e9e0",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "keybinding-resolver": {
-            "revision": "f7d3b9e835fa9dcf60c19a0574ac2a3d9c1151f3",
+            "revision": "c4cf9aa5c5c4ba396f37bb5d1acb5f5bb7efe3c2",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-c": {
-            "revision": "2bc8a5b514383e901aa08868d3c87512e84acba3",
+            "revision": "4b9dca352be1ac7908ce0f64bed5fbc3cf00730b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-css": {
-            "revision": "069ac5d39bae60d0394298ceb5148a258919485e",
+            "revision": "84c2c8988359d13b906828e5d2582ff1e5bb09c0",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-csv": {
-            "revision": "e4eb805661b9f076900d152f0c4a8d6fbf8c1af1",
+            "revision": "ef94f8f25bad42710dee5cde86f69eded1faf2de",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-diff": {
-            "revision": "7636d163ef4936ce229e56332d07a793b27cf904",
+            "revision": "d582e4ed9d15c24c49a428ad5644ef6ca58ac3c2",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-gfm": {
-            "revision": "dbdfa0d7eb55a25a9cd6e4b7f8b388bc5d99dc6f",
+            "revision": "5064bea1b467deb54d88f5b218543257b16188d8",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-git": {
-            "revision": "36091a25a981b9af7469f992181c38b74896a103",
+            "revision": "193d92a41aa69af9b642422557ddf196fdd2b1b9",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-html": {
-            "revision": "4fbf304bba30da893cb96e91243724937351c93e",
+            "revision": "d6fd6772375465cf72bce88d55181473be8e6bd5",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-hyperlink": {
-            "revision": "53d318296ea3c77620635cdf6e1d3ac8dad607f0",
+            "revision": "13325a4884bf5fed1295d6b499e8a85e7cb58b59",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-ipython": {
-            "revision": "c9d8e291feab3efe5e4192cd8277000707d75d39",
+            "revision": "0184c829e909611ff545b6b115e12422edebfc19",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-javascript": {
-            "revision": "54db3b4027a3b98ddc9911f0d6cf1a4a20c2cfb4",
+            "revision": "000495ae602bd6a326efb3b72612da224cf94b61",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-json": {
-            "revision": "ecff24a39fe8caa6d7a63f08e624aea2e165dd2c",
+            "revision": "eca2dd0948096fe81d7b445adcf77a700fc6ce7f",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-log": {
-            "revision": "55c72d2865e1058a0c9bf6580f3314d933a19951",
+            "revision": "a30493e7a6cb6b468fbbd1a999872aba44e58edc",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-powershell": {
-            "revision": "296912776b79b60a5043b9f1dba5f8343d7b2e1d",
+            "revision": "94f612f57c5d5cacecf29526975803aa50e10462",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-python": {
-            "revision": "baa54e7a81955c98140d4dc3a040d82ff85fb2b4",
+            "revision": "612488c410675d504846d0f82884c596a199344f",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-regex": {
-            "revision": "c3403fcee1ca2f0d8841c1a2d0057f0f81eacad3",
+            "revision": "1e182ec2b752c58d1485c855e36e4321ab44c5e6",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-shellscript": {
-            "revision": "a60ab652ba78cd0f1c19746449e665eeb3c61408",
+            "revision": "8443505e3a3be6b9c4bf6e88e59d41f02b2d7260",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-source": {
-            "revision": "21bca3c34b1ddccc0b10ab7ec594e6323a4d00c0",
+            "revision": "10a8c8b51186d245d7b4a35c41e743ffd46665ce",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-sql": {
-            "revision": "592f78cd42996c3065bf04a1b900770e41e68da2",
+            "revision": "a4afa033c5cea2149f5684d5efa1316681d18b02",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-text": {
-            "revision": "4e0f3bd8710919bb80ce2c5a4e208fd02242e1d0",
+            "revision": "42eb5052eeff55f045428406c3c931aabe422106",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-todo": {
-            "revision": "8a4cf2afa31cf7449f26addeedb0dc1944777e60",
+            "revision": "847938a646d7b6816017db8705028116d34e5219",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-toml": {
-            "revision": "349d409d0d11c03f90a852ed453b4791eb5856cf",
+            "revision": "abe33a8c98d752af9a507c1ea0d9a10a7c26df2c",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-typescript": {
-            "revision": "d0bca1a560e4ec068c126ffa0ebff8aee2be5326",
+            "revision": "38dfac0399a68bd75facc76389d5ce2d6cc6d665",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-xml": {
-            "revision": "895683715e5ae1eb100a831c2fad5d690a447bd0",
+            "revision": "f5444f24bcb70cf0e34ac0baf2831cce22aef5bd",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-yaml": {
-            "revision": "6a15715210609159b305627b9c2aeaccb37d16f9",
+            "revision": "20526f8f82798d25f4d29b46406c089916b2d72e",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "launcher": {
-            "revision": "234ef2be6cfe9103768a6c1b0dc1cd12ee918768",
+            "revision": "86d8629e6822cb4bd5a2782c2faff53433f1a3e7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "line-ending": {
-            "revision": "88b52231d0f6734dbba68803025decad25cd2c14",
+            "revision": "5d71bf206de572273931688ee58f620b73056d69",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "lumine-updater": {
-            "revision": "9853f44509f7759483e7e7d053ebc1455f9f323f",
+            "revision": "1e637acd72830232bd8664c8ce25746b86f6d3c4",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "1d783a893b7467175c95affca3af99f74b4bd72f",
+            "revision": "ce8141fca0105882b4bf570825ec8b19374609ba",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "metadata": {
-            "revision": "4becd48560ffb315b637c6459c456cad686c3287",
+            "revision": "33a7a10d0341c7b098bcf836544ed1996b4f93eb",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "notifications": {
-            "revision": "cf5044c275989e8e1735bb7e9c699eb759118056",
+            "revision": "bfdbc353040e66ff35a729d9172bc4415ccd4624",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "6e7e9f93cc5b0612b4631e06d0b80e5ca88a7302",
+            "revision": "9d440405a9e4721cf44e1a1e8d3f36a0eb696fc8",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "search-panel": {
-            "revision": "36fb4c54fd43e672634d4845a490cd3cd2a78bc6",
+            "revision": "e642ba8d0acf66d95f58fdc47f9cff15b3f76224",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "c1d32a747506f28aa2a33cc6ee2db71f51a7c18a",
+            "revision": "c3c28efdf9e974e354b3ba65eb474ba84798bf4d",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "snippets": {
-            "revision": "4141ccab777fec5991f850c3775da8caa99989ce",
+            "revision": "d236dcc36975961366f38a0c16d3a3bf021dc945",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "status-bar": {
-            "revision": "be6eb0adfae9c5cafe6175d40f66e33809890437",
+            "revision": "b1f8715fcf15cd0a09e0f756f8137c4993abb075",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "styleguide": {
-            "revision": "adc2e951f2e8849c900f2942f180c9a216a05d14",
+            "revision": "e0477635e8a56eeadee0308b9eef72ae0cc59a1b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "symbol": {
-            "revision": "14c74d055b54899df796f6bce273b746a9129fe8",
+            "revision": "9998895ca8136719a5186aad38779a8d966c7122",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "symbol-tree-sitter": {
-            "revision": "315e1eefdde73a88c0e4a1da9af87153619c56cd",
+            "revision": "4bbdd80002ed27bcdd30f0536634140789c2c7d7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tabs": {
-            "revision": "34091ff733ee5359f42378a7e47a473279b7c5e3",
+            "revision": "04469b1489d5cc50f892c756c68fd8f7b0317654",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "timecop": {
-            "revision": "3c0e235550b35f798d9f46c16cef48c3606bfd53",
+            "revision": "c7d18d6c9a6e91c98e4ea2f5b85f6618e609daa3",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "title-bar": {
-            "revision": "068e29b2de449248a6b6f4d7cb321e73c7328cd5",
+            "revision": "561379bcbc98362e7b4b9eceeb24f7c2c972ef17",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "d682de12e7a1a8501450add1c21d7c1674a75ee5",
+            "revision": "51fe3a5d9647bdfa16e7c79c3a0000d1a254b395",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "whitespace": {
-            "revision": "b7cccf58cb0b4900ea9accdedcffa6462f889e40",
+            "revision": "4cb3f865e07335c1eb569a1d9d9b25d7c0375dae",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "window-title": {
-            "revision": "28f683a3b6c1a3bfb60394ed1cc677ab659864dc",
+            "revision": "102047cf367b6dea0e68e441d3bb7e1d719d2d2c",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -825,7 +839,7 @@
             "sha256": "2a36953daadd1ae53070d0ff7ceab4624395fdb957104aa6e8ec92d785cadf1d"
           }
         ],
-        "sha256": "4e4d55a955a3d948d9af6e7890857dd871fbfcc2ff218f989458ea6cc00625bd"
+        "sha256": "afba88fdd2f452eaaabe51e0a69a3f8049cef6a262ca347e36376df580e65085"
       }
     },
     {
@@ -835,66 +849,66 @@
       "description": "Manage installed and bundled packages from the editor.",
       "light": "03-light.png",
       "dark": "03-dark.png",
-      "themeSourceRevision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
-      "capturedOn": "2026-10-30",
-      "sourceRevision": "760329498d85e1294191a073d8a34a1706f4d14b",
+      "themeSourceRevision": "9d440405a9e4721cf44e1a1e8d3f36a0eb696fc8",
+      "capturedOn": "2026-11-14",
+      "sourceRevision": "8e257fa6c113fc97dea272ec005a8e8425859ffb",
       "packageSourceRevisions": {
         "breadcrumbs": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
-        "about": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
-        "background-tips": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
-        "command-palette": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
-        "deprecation-cop": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
-        "dev-live-reload": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
-        "encoding-selector": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
-        "git-diff": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
-        "go-to-line": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
-        "grammar-selector": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
-        "incompatible-packages": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
-        "keybinding-resolver": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
-        "language-c": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
-        "language-css": "6b7b89e632119fc602f0757081c4f078d06328d0",
-        "language-csv": "7abdc6f06aeab61da125ffac2d3880acd864296f",
-        "language-diff": "7c413668916cb14cb46e91fe465c2457218bbcc5",
-        "language-gfm": "e2eca2b15d854161c670e5b8815ad48e636957b7",
-        "language-git": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
-        "language-html": "a7e620a517668d8e46a39fbced344bbb304e12a7",
-        "language-hyperlink": "03ec30fd38ee531aa41a90130d8eece322ba0963",
-        "language-ipython": "aa582a52b51fa32240d36412abcca60fd0629583",
-        "language-javascript": "bf635d04bbf9cf42239552df5455644c59b64b06",
-        "language-json": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
-        "language-log": "326ef9201581d76efba5d05a160c6ecc654e294d",
-        "language-powershell": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
-        "language-python": "413b30e96e3bb63714958c3e3edeca338b0551aa",
-        "language-regex": "3b69da21fc49671442998bc95a0050672694c9d7",
-        "language-shellscript": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
-        "language-source": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
-        "language-sql": "e54209763701ec8cbc6f4eb508de9069d743af0e",
-        "language-text": "d64e4a2f0dd6f177148513f927fddec588d37669",
-        "language-todo": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
-        "language-toml": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
-        "language-typescript": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
-        "language-xml": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
-        "language-yaml": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
-        "launcher": "052dc2786b548598028164567929a7818995fa74",
-        "line-ending": "b18de17984092836aa30930fc760a6d35f06785d",
-        "lumine-updater": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
-        "markdown-preview": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
-        "metadata": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
-        "notifications": "b3f6288191f15153e2c53b33152abe45f5b657bc",
-        "one-theme": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
-        "search-panel": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
-        "settings-view": "89d1f6e16befae710f2467c011299edc5b259092",
-        "snippets": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
-        "status-bar": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
-        "styleguide": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
-        "symbol": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
-        "symbol-tree-sitter": "368c44732334783ea790afbcc88a59b66936f289",
-        "tabs": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
-        "timecop": "91a82e0e7c0994768be61ccb109ada274332976e",
-        "title-bar": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
-        "tree-view": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
-        "whitespace": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
-        "window-title": "55c79de0ce72a58afbc7484f32f4d685e902f22d"
+        "about": "c81a03a5c423d928d75d48fd365bb26b07da92ac",
+        "background-tips": "abee677b4f3cdcabd0552364229bbc75de0bd94b",
+        "command-palette": "e900d45f61ca1be6744fc0dad1dc1f954af48c78",
+        "deprecation-cop": "82f8680ea3e6a794cd2e847b141e59ba1ed466b9",
+        "dev-live-reload": "fa6664f3a1d7a5009e478afaac9a38a04f92e723",
+        "encoding-selector": "5ff9f20d5cba6d6dd2e94c8db73f2fd301cd85a8",
+        "git-chunk": "3dfb1d7ba234f6348f342b3b7defc6e6c53fbf85",
+        "go-to-line": "65a4b9abb5c01beb8d2fe6e7771356ff2a30d7ef",
+        "grammar-selector": "78fdfbcd8d7a2c224afdf84e396b5c11b7a89de5",
+        "incompatible-packages": "244397dfaa7ac2fd533661e422806ec1dc59e9e0",
+        "keybinding-resolver": "c4cf9aa5c5c4ba396f37bb5d1acb5f5bb7efe3c2",
+        "language-c": "4b9dca352be1ac7908ce0f64bed5fbc3cf00730b",
+        "language-css": "84c2c8988359d13b906828e5d2582ff1e5bb09c0",
+        "language-csv": "ef94f8f25bad42710dee5cde86f69eded1faf2de",
+        "language-diff": "d582e4ed9d15c24c49a428ad5644ef6ca58ac3c2",
+        "language-gfm": "5064bea1b467deb54d88f5b218543257b16188d8",
+        "language-git": "193d92a41aa69af9b642422557ddf196fdd2b1b9",
+        "language-html": "d6fd6772375465cf72bce88d55181473be8e6bd5",
+        "language-hyperlink": "13325a4884bf5fed1295d6b499e8a85e7cb58b59",
+        "language-ipython": "0184c829e909611ff545b6b115e12422edebfc19",
+        "language-javascript": "000495ae602bd6a326efb3b72612da224cf94b61",
+        "language-json": "eca2dd0948096fe81d7b445adcf77a700fc6ce7f",
+        "language-log": "a30493e7a6cb6b468fbbd1a999872aba44e58edc",
+        "language-powershell": "94f612f57c5d5cacecf29526975803aa50e10462",
+        "language-python": "612488c410675d504846d0f82884c596a199344f",
+        "language-regex": "1e182ec2b752c58d1485c855e36e4321ab44c5e6",
+        "language-shellscript": "8443505e3a3be6b9c4bf6e88e59d41f02b2d7260",
+        "language-source": "10a8c8b51186d245d7b4a35c41e743ffd46665ce",
+        "language-sql": "a4afa033c5cea2149f5684d5efa1316681d18b02",
+        "language-text": "42eb5052eeff55f045428406c3c931aabe422106",
+        "language-todo": "847938a646d7b6816017db8705028116d34e5219",
+        "language-toml": "abe33a8c98d752af9a507c1ea0d9a10a7c26df2c",
+        "language-typescript": "38dfac0399a68bd75facc76389d5ce2d6cc6d665",
+        "language-xml": "f5444f24bcb70cf0e34ac0baf2831cce22aef5bd",
+        "language-yaml": "20526f8f82798d25f4d29b46406c089916b2d72e",
+        "launcher": "86d8629e6822cb4bd5a2782c2faff53433f1a3e7",
+        "line-ending": "5d71bf206de572273931688ee58f620b73056d69",
+        "lumine-updater": "1e637acd72830232bd8664c8ce25746b86f6d3c4",
+        "markdown-preview": "ce8141fca0105882b4bf570825ec8b19374609ba",
+        "metadata": "33a7a10d0341c7b098bcf836544ed1996b4f93eb",
+        "notifications": "bfdbc353040e66ff35a729d9172bc4415ccd4624",
+        "one-theme": "9d440405a9e4721cf44e1a1e8d3f36a0eb696fc8",
+        "search-panel": "e642ba8d0acf66d95f58fdc47f9cff15b3f76224",
+        "settings-view": "c3c28efdf9e974e354b3ba65eb474ba84798bf4d",
+        "snippets": "d236dcc36975961366f38a0c16d3a3bf021dc945",
+        "status-bar": "b1f8715fcf15cd0a09e0f756f8137c4993abb075",
+        "styleguide": "e0477635e8a56eeadee0308b9eef72ae0cc59a1b",
+        "symbol": "9998895ca8136719a5186aad38779a8d966c7122",
+        "symbol-tree-sitter": "4bbdd80002ed27bcdd30f0536634140789c2c7d7",
+        "tabs": "04469b1489d5cc50f892c756c68fd8f7b0317654",
+        "timecop": "c7d18d6c9a6e91c98e4ea2f5b85f6618e609daa3",
+        "title-bar": "561379bcbc98362e7b4b9eceeb24f7c2c972ef17",
+        "tree-view": "51fe3a5d9647bdfa16e7c79c3a0000d1a254b395",
+        "whitespace": "4cb3f865e07335c1eb569a1d9d9b25d7c0375dae",
+        "window-title": "102047cf367b6dea0e68e441d3bb7e1d719d2d2c"
       },
       "capture": {
         "runner": "script/demo.js",
@@ -905,305 +919,312 @@
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "45.0.0",
-          "chrome": "156.0.8078.48",
+          "electron": "45.3.1",
+          "chrome": "156.0.8078.96",
           "devicePixelRatio": 1,
           "locale": "en-GB",
           "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
           "fontSize": 14,
           "themes": ["one-day-syntax", "one-day-ui"]
         },
-        "viewport": { "width": 1440, "height": 900 },
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
         "cornerRadius": 10,
-        "privacy": { "version": 1, "location": "neutral", "textChecked": true },
+        "privacy": {
+          "version": 1,
+          "location": "neutral",
+          "textChecked": true
+        },
         "sources": {
           "editor": {
-            "revision": "760329498d85e1294191a073d8a34a1706f4d14b",
+            "revision": "8e257fa6c113fc97dea272ec005a8e8425859ffb",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "package": {
             "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
           },
           "breadcrumbs": {
             "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
           },
           "about": {
-            "revision": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
+            "revision": "c81a03a5c423d928d75d48fd365bb26b07da92ac",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "background-tips": {
-            "revision": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
+            "revision": "abee677b4f3cdcabd0552364229bbc75de0bd94b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "command-palette": {
-            "revision": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
+            "revision": "e900d45f61ca1be6744fc0dad1dc1f954af48c78",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "deprecation-cop": {
-            "revision": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
+            "revision": "82f8680ea3e6a794cd2e847b141e59ba1ed466b9",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "dev-live-reload": {
-            "revision": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
+            "revision": "fa6664f3a1d7a5009e478afaac9a38a04f92e723",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "encoding-selector": {
-            "revision": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
+            "revision": "5ff9f20d5cba6d6dd2e94c8db73f2fd301cd85a8",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
-          "git-diff": {
-            "revision": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
+          "git-chunk": {
+            "revision": "3dfb1d7ba234f6348f342b3b7defc6e6c53fbf85",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "go-to-line": {
-            "revision": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
+            "revision": "65a4b9abb5c01beb8d2fe6e7771356ff2a30d7ef",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "grammar-selector": {
-            "revision": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
+            "revision": "78fdfbcd8d7a2c224afdf84e396b5c11b7a89de5",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "incompatible-packages": {
-            "revision": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
+            "revision": "244397dfaa7ac2fd533661e422806ec1dc59e9e0",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "keybinding-resolver": {
-            "revision": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
+            "revision": "c4cf9aa5c5c4ba396f37bb5d1acb5f5bb7efe3c2",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-c": {
-            "revision": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
+            "revision": "4b9dca352be1ac7908ce0f64bed5fbc3cf00730b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-css": {
-            "revision": "6b7b89e632119fc602f0757081c4f078d06328d0",
+            "revision": "84c2c8988359d13b906828e5d2582ff1e5bb09c0",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-csv": {
-            "revision": "7abdc6f06aeab61da125ffac2d3880acd864296f",
+            "revision": "ef94f8f25bad42710dee5cde86f69eded1faf2de",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-diff": {
-            "revision": "7c413668916cb14cb46e91fe465c2457218bbcc5",
+            "revision": "d582e4ed9d15c24c49a428ad5644ef6ca58ac3c2",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-gfm": {
-            "revision": "e2eca2b15d854161c670e5b8815ad48e636957b7",
+            "revision": "5064bea1b467deb54d88f5b218543257b16188d8",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-git": {
-            "revision": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
+            "revision": "193d92a41aa69af9b642422557ddf196fdd2b1b9",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-html": {
-            "revision": "a7e620a517668d8e46a39fbced344bbb304e12a7",
+            "revision": "d6fd6772375465cf72bce88d55181473be8e6bd5",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-hyperlink": {
-            "revision": "03ec30fd38ee531aa41a90130d8eece322ba0963",
+            "revision": "13325a4884bf5fed1295d6b499e8a85e7cb58b59",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-ipython": {
-            "revision": "aa582a52b51fa32240d36412abcca60fd0629583",
+            "revision": "0184c829e909611ff545b6b115e12422edebfc19",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-javascript": {
-            "revision": "bf635d04bbf9cf42239552df5455644c59b64b06",
+            "revision": "000495ae602bd6a326efb3b72612da224cf94b61",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-json": {
-            "revision": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
+            "revision": "eca2dd0948096fe81d7b445adcf77a700fc6ce7f",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-log": {
-            "revision": "326ef9201581d76efba5d05a160c6ecc654e294d",
+            "revision": "a30493e7a6cb6b468fbbd1a999872aba44e58edc",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-powershell": {
-            "revision": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
+            "revision": "94f612f57c5d5cacecf29526975803aa50e10462",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-python": {
-            "revision": "413b30e96e3bb63714958c3e3edeca338b0551aa",
+            "revision": "612488c410675d504846d0f82884c596a199344f",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-regex": {
-            "revision": "3b69da21fc49671442998bc95a0050672694c9d7",
+            "revision": "1e182ec2b752c58d1485c855e36e4321ab44c5e6",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-shellscript": {
-            "revision": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
+            "revision": "8443505e3a3be6b9c4bf6e88e59d41f02b2d7260",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-source": {
-            "revision": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
+            "revision": "10a8c8b51186d245d7b4a35c41e743ffd46665ce",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-sql": {
-            "revision": "e54209763701ec8cbc6f4eb508de9069d743af0e",
+            "revision": "a4afa033c5cea2149f5684d5efa1316681d18b02",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-text": {
-            "revision": "d64e4a2f0dd6f177148513f927fddec588d37669",
+            "revision": "42eb5052eeff55f045428406c3c931aabe422106",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-todo": {
-            "revision": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
+            "revision": "847938a646d7b6816017db8705028116d34e5219",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-toml": {
-            "revision": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
+            "revision": "abe33a8c98d752af9a507c1ea0d9a10a7c26df2c",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-typescript": {
-            "revision": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
+            "revision": "38dfac0399a68bd75facc76389d5ce2d6cc6d665",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-xml": {
-            "revision": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
+            "revision": "f5444f24bcb70cf0e34ac0baf2831cce22aef5bd",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-yaml": {
-            "revision": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
+            "revision": "20526f8f82798d25f4d29b46406c089916b2d72e",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "launcher": {
-            "revision": "052dc2786b548598028164567929a7818995fa74",
+            "revision": "86d8629e6822cb4bd5a2782c2faff53433f1a3e7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "line-ending": {
-            "revision": "b18de17984092836aa30930fc760a6d35f06785d",
+            "revision": "5d71bf206de572273931688ee58f620b73056d69",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "lumine-updater": {
-            "revision": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
+            "revision": "1e637acd72830232bd8664c8ce25746b86f6d3c4",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
+            "revision": "ce8141fca0105882b4bf570825ec8b19374609ba",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "metadata": {
-            "revision": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
+            "revision": "33a7a10d0341c7b098bcf836544ed1996b4f93eb",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "notifications": {
-            "revision": "b3f6288191f15153e2c53b33152abe45f5b657bc",
+            "revision": "bfdbc353040e66ff35a729d9172bc4415ccd4624",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+            "revision": "9d440405a9e4721cf44e1a1e8d3f36a0eb696fc8",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "search-panel": {
-            "revision": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
+            "revision": "e642ba8d0acf66d95f58fdc47f9cff15b3f76224",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "89d1f6e16befae710f2467c011299edc5b259092",
+            "revision": "c3c28efdf9e974e354b3ba65eb474ba84798bf4d",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "snippets": {
-            "revision": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
+            "revision": "d236dcc36975961366f38a0c16d3a3bf021dc945",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "status-bar": {
-            "revision": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
+            "revision": "b1f8715fcf15cd0a09e0f756f8137c4993abb075",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "styleguide": {
-            "revision": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
+            "revision": "e0477635e8a56eeadee0308b9eef72ae0cc59a1b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "symbol": {
-            "revision": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
+            "revision": "9998895ca8136719a5186aad38779a8d966c7122",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "symbol-tree-sitter": {
-            "revision": "368c44732334783ea790afbcc88a59b66936f289",
+            "revision": "4bbdd80002ed27bcdd30f0536634140789c2c7d7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tabs": {
-            "revision": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
+            "revision": "04469b1489d5cc50f892c756c68fd8f7b0317654",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "timecop": {
-            "revision": "91a82e0e7c0994768be61ccb109ada274332976e",
+            "revision": "c7d18d6c9a6e91c98e4ea2f5b85f6618e609daa3",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "title-bar": {
-            "revision": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
+            "revision": "561379bcbc98362e7b4b9eceeb24f7c2c972ef17",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
+            "revision": "51fe3a5d9647bdfa16e7c79c3a0000d1a254b395",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "whitespace": {
-            "revision": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
+            "revision": "4cb3f865e07335c1eb569a1d9d9b25d7c0375dae",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "window-title": {
-            "revision": "55c79de0ce72a58afbc7484f32f4d685e902f22d",
+            "revision": "102047cf367b6dea0e68e441d3bb7e1d719d2d2c",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -1238,7 +1259,7 @@
             "sha256": "2a36953daadd1ae53070d0ff7ceab4624395fdb957104aa6e8ec92d785cadf1d"
           }
         ],
-        "sha256": "d06aaaf4b5344b2c51ca52a084454ce7e3da25cd6ce4c9858c86b22b39ed3e75"
+        "sha256": "980adf7920e2b8a5b1efa1d9e72ea84f43f0efa381754bf3c4acf12024acd665"
       }
     },
     {
@@ -1248,66 +1269,66 @@
       "description": "Versions, documentation and updates in the redesigned About pane.",
       "light": "04-light.png",
       "dark": "04-dark.png",
-      "capturedOn": "2026-10-30",
-      "sourceRevision": "760329498d85e1294191a073d8a34a1706f4d14b",
-      "themeSourceRevision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+      "capturedOn": "2026-11-14",
+      "sourceRevision": "8e257fa6c113fc97dea272ec005a8e8425859ffb",
+      "themeSourceRevision": "9d440405a9e4721cf44e1a1e8d3f36a0eb696fc8",
       "packageSourceRevisions": {
         "breadcrumbs": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
-        "about": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
-        "background-tips": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
-        "command-palette": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
-        "deprecation-cop": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
-        "dev-live-reload": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
-        "encoding-selector": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
-        "git-diff": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
-        "go-to-line": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
-        "grammar-selector": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
-        "incompatible-packages": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
-        "keybinding-resolver": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
-        "language-c": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
-        "language-css": "6b7b89e632119fc602f0757081c4f078d06328d0",
-        "language-csv": "7abdc6f06aeab61da125ffac2d3880acd864296f",
-        "language-diff": "7c413668916cb14cb46e91fe465c2457218bbcc5",
-        "language-gfm": "e2eca2b15d854161c670e5b8815ad48e636957b7",
-        "language-git": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
-        "language-html": "a7e620a517668d8e46a39fbced344bbb304e12a7",
-        "language-hyperlink": "03ec30fd38ee531aa41a90130d8eece322ba0963",
-        "language-ipython": "aa582a52b51fa32240d36412abcca60fd0629583",
-        "language-javascript": "bf635d04bbf9cf42239552df5455644c59b64b06",
-        "language-json": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
-        "language-log": "326ef9201581d76efba5d05a160c6ecc654e294d",
-        "language-powershell": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
-        "language-python": "413b30e96e3bb63714958c3e3edeca338b0551aa",
-        "language-regex": "3b69da21fc49671442998bc95a0050672694c9d7",
-        "language-shellscript": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
-        "language-source": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
-        "language-sql": "e54209763701ec8cbc6f4eb508de9069d743af0e",
-        "language-text": "d64e4a2f0dd6f177148513f927fddec588d37669",
-        "language-todo": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
-        "language-toml": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
-        "language-typescript": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
-        "language-xml": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
-        "language-yaml": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
-        "launcher": "052dc2786b548598028164567929a7818995fa74",
-        "line-ending": "b18de17984092836aa30930fc760a6d35f06785d",
-        "lumine-updater": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
-        "markdown-preview": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
-        "metadata": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
-        "notifications": "b3f6288191f15153e2c53b33152abe45f5b657bc",
-        "one-theme": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
-        "search-panel": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
-        "settings-view": "89d1f6e16befae710f2467c011299edc5b259092",
-        "snippets": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
-        "status-bar": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
-        "styleguide": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
-        "symbol": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
-        "symbol-tree-sitter": "368c44732334783ea790afbcc88a59b66936f289",
-        "tabs": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
-        "timecop": "91a82e0e7c0994768be61ccb109ada274332976e",
-        "title-bar": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
-        "tree-view": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
-        "whitespace": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
-        "window-title": "55c79de0ce72a58afbc7484f32f4d685e902f22d"
+        "about": "c81a03a5c423d928d75d48fd365bb26b07da92ac",
+        "background-tips": "abee677b4f3cdcabd0552364229bbc75de0bd94b",
+        "command-palette": "e900d45f61ca1be6744fc0dad1dc1f954af48c78",
+        "deprecation-cop": "82f8680ea3e6a794cd2e847b141e59ba1ed466b9",
+        "dev-live-reload": "fa6664f3a1d7a5009e478afaac9a38a04f92e723",
+        "encoding-selector": "5ff9f20d5cba6d6dd2e94c8db73f2fd301cd85a8",
+        "git-chunk": "3dfb1d7ba234f6348f342b3b7defc6e6c53fbf85",
+        "go-to-line": "65a4b9abb5c01beb8d2fe6e7771356ff2a30d7ef",
+        "grammar-selector": "78fdfbcd8d7a2c224afdf84e396b5c11b7a89de5",
+        "incompatible-packages": "244397dfaa7ac2fd533661e422806ec1dc59e9e0",
+        "keybinding-resolver": "c4cf9aa5c5c4ba396f37bb5d1acb5f5bb7efe3c2",
+        "language-c": "4b9dca352be1ac7908ce0f64bed5fbc3cf00730b",
+        "language-css": "84c2c8988359d13b906828e5d2582ff1e5bb09c0",
+        "language-csv": "ef94f8f25bad42710dee5cde86f69eded1faf2de",
+        "language-diff": "d582e4ed9d15c24c49a428ad5644ef6ca58ac3c2",
+        "language-gfm": "5064bea1b467deb54d88f5b218543257b16188d8",
+        "language-git": "193d92a41aa69af9b642422557ddf196fdd2b1b9",
+        "language-html": "d6fd6772375465cf72bce88d55181473be8e6bd5",
+        "language-hyperlink": "13325a4884bf5fed1295d6b499e8a85e7cb58b59",
+        "language-ipython": "0184c829e909611ff545b6b115e12422edebfc19",
+        "language-javascript": "000495ae602bd6a326efb3b72612da224cf94b61",
+        "language-json": "eca2dd0948096fe81d7b445adcf77a700fc6ce7f",
+        "language-log": "a30493e7a6cb6b468fbbd1a999872aba44e58edc",
+        "language-powershell": "94f612f57c5d5cacecf29526975803aa50e10462",
+        "language-python": "612488c410675d504846d0f82884c596a199344f",
+        "language-regex": "1e182ec2b752c58d1485c855e36e4321ab44c5e6",
+        "language-shellscript": "8443505e3a3be6b9c4bf6e88e59d41f02b2d7260",
+        "language-source": "10a8c8b51186d245d7b4a35c41e743ffd46665ce",
+        "language-sql": "a4afa033c5cea2149f5684d5efa1316681d18b02",
+        "language-text": "42eb5052eeff55f045428406c3c931aabe422106",
+        "language-todo": "847938a646d7b6816017db8705028116d34e5219",
+        "language-toml": "abe33a8c98d752af9a507c1ea0d9a10a7c26df2c",
+        "language-typescript": "38dfac0399a68bd75facc76389d5ce2d6cc6d665",
+        "language-xml": "f5444f24bcb70cf0e34ac0baf2831cce22aef5bd",
+        "language-yaml": "20526f8f82798d25f4d29b46406c089916b2d72e",
+        "launcher": "86d8629e6822cb4bd5a2782c2faff53433f1a3e7",
+        "line-ending": "5d71bf206de572273931688ee58f620b73056d69",
+        "lumine-updater": "1e637acd72830232bd8664c8ce25746b86f6d3c4",
+        "markdown-preview": "ce8141fca0105882b4bf570825ec8b19374609ba",
+        "metadata": "33a7a10d0341c7b098bcf836544ed1996b4f93eb",
+        "notifications": "bfdbc353040e66ff35a729d9172bc4415ccd4624",
+        "one-theme": "9d440405a9e4721cf44e1a1e8d3f36a0eb696fc8",
+        "search-panel": "e642ba8d0acf66d95f58fdc47f9cff15b3f76224",
+        "settings-view": "c3c28efdf9e974e354b3ba65eb474ba84798bf4d",
+        "snippets": "d236dcc36975961366f38a0c16d3a3bf021dc945",
+        "status-bar": "b1f8715fcf15cd0a09e0f756f8137c4993abb075",
+        "styleguide": "e0477635e8a56eeadee0308b9eef72ae0cc59a1b",
+        "symbol": "9998895ca8136719a5186aad38779a8d966c7122",
+        "symbol-tree-sitter": "4bbdd80002ed27bcdd30f0536634140789c2c7d7",
+        "tabs": "04469b1489d5cc50f892c756c68fd8f7b0317654",
+        "timecop": "c7d18d6c9a6e91c98e4ea2f5b85f6618e609daa3",
+        "title-bar": "561379bcbc98362e7b4b9eceeb24f7c2c972ef17",
+        "tree-view": "51fe3a5d9647bdfa16e7c79c3a0000d1a254b395",
+        "whitespace": "4cb3f865e07335c1eb569a1d9d9b25d7c0375dae",
+        "window-title": "102047cf367b6dea0e68e441d3bb7e1d719d2d2c"
       },
       "capture": {
         "runner": "script/demo.js",
@@ -1318,305 +1339,312 @@
         "environment": {
           "platform": "win32",
           "arch": "x64",
-          "electron": "45.0.0",
-          "chrome": "156.0.8078.48",
+          "electron": "45.3.1",
+          "chrome": "156.0.8078.96",
           "devicePixelRatio": 1,
           "locale": "en-GB",
           "fontFamily": "Fira Code, Menlo, DejaVu Sans Mono, Consolas, monospace",
           "fontSize": 14,
           "themes": ["one-day-syntax", "one-day-ui"]
         },
-        "viewport": { "width": 1440, "height": 900 },
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
         "cornerRadius": 10,
-        "privacy": { "version": 1, "location": "neutral", "textChecked": true },
+        "privacy": {
+          "version": 1,
+          "location": "neutral",
+          "textChecked": true
+        },
         "sources": {
           "editor": {
-            "revision": "760329498d85e1294191a073d8a34a1706f4d14b",
+            "revision": "8e257fa6c113fc97dea272ec005a8e8425859ffb",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "package": {
             "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
           },
           "breadcrumbs": {
             "revision": "ca95e0c1f366a7dd70616f436c17c9481f1bd31f",
             "dirty": true,
-            "workingTreeHash": "09fc188ec0caa7f52774b6da39cc03e8a5808b38c16008e28013cee50144fee7"
+            "workingTreeHash": "926ca907b9dac612ffcae01ad3eb8d65fe0590cd040c2e0d7b69973ebfc37fd3"
           },
           "about": {
-            "revision": "f02e12094c7f7f7503be7c6b124f544c79263a9b",
+            "revision": "c81a03a5c423d928d75d48fd365bb26b07da92ac",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "background-tips": {
-            "revision": "5b826c4678154fefd7c0a5f673d7523e457af0b7",
+            "revision": "abee677b4f3cdcabd0552364229bbc75de0bd94b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "command-palette": {
-            "revision": "e4092eebd64f71b934ad48a9bbe543e6f6adf884",
+            "revision": "e900d45f61ca1be6744fc0dad1dc1f954af48c78",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "deprecation-cop": {
-            "revision": "8b91d7e5e872a71f7509992b60c1a92701d13d51",
+            "revision": "82f8680ea3e6a794cd2e847b141e59ba1ed466b9",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "dev-live-reload": {
-            "revision": "02d1ec178f6a3ddcbe84ec6a4841e40b0359e849",
+            "revision": "fa6664f3a1d7a5009e478afaac9a38a04f92e723",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "encoding-selector": {
-            "revision": "cd3aa038a7e3a0c463a9190f71a4abc1beb539b3",
+            "revision": "5ff9f20d5cba6d6dd2e94c8db73f2fd301cd85a8",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
-          "git-diff": {
-            "revision": "0bf61b6661ba27e0f90ed1f5dd2094e35249bfce",
+          "git-chunk": {
+            "revision": "3dfb1d7ba234f6348f342b3b7defc6e6c53fbf85",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "go-to-line": {
-            "revision": "7d0a125d9630c3c7a12fbb20ec0979d973fc7c4a",
+            "revision": "65a4b9abb5c01beb8d2fe6e7771356ff2a30d7ef",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "grammar-selector": {
-            "revision": "4f7ba124a7b55d55d17d479cae2d752d1cfe9d78",
+            "revision": "78fdfbcd8d7a2c224afdf84e396b5c11b7a89de5",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "incompatible-packages": {
-            "revision": "b68b8f71c4cd89ab3a569c66cf388731bc3631a8",
+            "revision": "244397dfaa7ac2fd533661e422806ec1dc59e9e0",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "keybinding-resolver": {
-            "revision": "cd43e9ca86f8d62f2db8f711911a42c97ada65c1",
+            "revision": "c4cf9aa5c5c4ba396f37bb5d1acb5f5bb7efe3c2",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-c": {
-            "revision": "2d09ea283c5cb1cfd9fa04f23d4c0b1205b091ee",
+            "revision": "4b9dca352be1ac7908ce0f64bed5fbc3cf00730b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-css": {
-            "revision": "6b7b89e632119fc602f0757081c4f078d06328d0",
+            "revision": "84c2c8988359d13b906828e5d2582ff1e5bb09c0",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-csv": {
-            "revision": "7abdc6f06aeab61da125ffac2d3880acd864296f",
+            "revision": "ef94f8f25bad42710dee5cde86f69eded1faf2de",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-diff": {
-            "revision": "7c413668916cb14cb46e91fe465c2457218bbcc5",
+            "revision": "d582e4ed9d15c24c49a428ad5644ef6ca58ac3c2",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-gfm": {
-            "revision": "e2eca2b15d854161c670e5b8815ad48e636957b7",
+            "revision": "5064bea1b467deb54d88f5b218543257b16188d8",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-git": {
-            "revision": "3d3a639abf06fcd9574a75057ce109e63210ef8b",
+            "revision": "193d92a41aa69af9b642422557ddf196fdd2b1b9",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-html": {
-            "revision": "a7e620a517668d8e46a39fbced344bbb304e12a7",
+            "revision": "d6fd6772375465cf72bce88d55181473be8e6bd5",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-hyperlink": {
-            "revision": "03ec30fd38ee531aa41a90130d8eece322ba0963",
+            "revision": "13325a4884bf5fed1295d6b499e8a85e7cb58b59",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-ipython": {
-            "revision": "aa582a52b51fa32240d36412abcca60fd0629583",
+            "revision": "0184c829e909611ff545b6b115e12422edebfc19",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-javascript": {
-            "revision": "bf635d04bbf9cf42239552df5455644c59b64b06",
+            "revision": "000495ae602bd6a326efb3b72612da224cf94b61",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-json": {
-            "revision": "e5e1da96992248d41fad70d2667da4e57aa6fa9d",
+            "revision": "eca2dd0948096fe81d7b445adcf77a700fc6ce7f",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-log": {
-            "revision": "326ef9201581d76efba5d05a160c6ecc654e294d",
+            "revision": "a30493e7a6cb6b468fbbd1a999872aba44e58edc",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-powershell": {
-            "revision": "6ed31a595716b3fe64fad9b31caedb77a99ce20e",
+            "revision": "94f612f57c5d5cacecf29526975803aa50e10462",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-python": {
-            "revision": "413b30e96e3bb63714958c3e3edeca338b0551aa",
+            "revision": "612488c410675d504846d0f82884c596a199344f",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-regex": {
-            "revision": "3b69da21fc49671442998bc95a0050672694c9d7",
+            "revision": "1e182ec2b752c58d1485c855e36e4321ab44c5e6",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-shellscript": {
-            "revision": "d640fa9c50340b1ce2d7d67b75fd0c1a6e59cc2e",
+            "revision": "8443505e3a3be6b9c4bf6e88e59d41f02b2d7260",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-source": {
-            "revision": "7fb4dd62a41aaec6a5122c6e51339e60c6b2b032",
+            "revision": "10a8c8b51186d245d7b4a35c41e743ffd46665ce",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-sql": {
-            "revision": "e54209763701ec8cbc6f4eb508de9069d743af0e",
+            "revision": "a4afa033c5cea2149f5684d5efa1316681d18b02",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-text": {
-            "revision": "d64e4a2f0dd6f177148513f927fddec588d37669",
+            "revision": "42eb5052eeff55f045428406c3c931aabe422106",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-todo": {
-            "revision": "1dbc7d8be27b0b273c7aa46b73d6d463757c7c31",
+            "revision": "847938a646d7b6816017db8705028116d34e5219",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-toml": {
-            "revision": "6e29e4ac7ec35301e161765aa2d7cba844fa3f79",
+            "revision": "abe33a8c98d752af9a507c1ea0d9a10a7c26df2c",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-typescript": {
-            "revision": "1270c17404d5f6fd43a86ad760c2102e0dff6226",
+            "revision": "38dfac0399a68bd75facc76389d5ce2d6cc6d665",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-xml": {
-            "revision": "0dc470ea089dc0ccc0e844fdae289cf2dee32b09",
+            "revision": "f5444f24bcb70cf0e34ac0baf2831cce22aef5bd",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "language-yaml": {
-            "revision": "952460e4fe892d8361c9b236d4bf1be27105a5fa",
+            "revision": "20526f8f82798d25f4d29b46406c089916b2d72e",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "launcher": {
-            "revision": "052dc2786b548598028164567929a7818995fa74",
+            "revision": "86d8629e6822cb4bd5a2782c2faff53433f1a3e7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "line-ending": {
-            "revision": "b18de17984092836aa30930fc760a6d35f06785d",
+            "revision": "5d71bf206de572273931688ee58f620b73056d69",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "lumine-updater": {
-            "revision": "8af3ccec532efe64f064c0a38edb4c7f3a5c6b75",
+            "revision": "1e637acd72830232bd8664c8ce25746b86f6d3c4",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "markdown-preview": {
-            "revision": "dcf469683e8072daf2dbba98b3c54e56e8cb5a74",
+            "revision": "ce8141fca0105882b4bf570825ec8b19374609ba",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "metadata": {
-            "revision": "709dcaa0f28995f6d14ae9a3c09fc8147093ac50",
+            "revision": "33a7a10d0341c7b098bcf836544ed1996b4f93eb",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "notifications": {
-            "revision": "b3f6288191f15153e2c53b33152abe45f5b657bc",
+            "revision": "bfdbc353040e66ff35a729d9172bc4415ccd4624",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "one-theme": {
-            "revision": "130cea8d32452c7348a9f6f378cfe7d73e70b0fe",
+            "revision": "9d440405a9e4721cf44e1a1e8d3f36a0eb696fc8",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "search-panel": {
-            "revision": "b8766bf32d8b171ca903b053473e3eede8d5c4e3",
+            "revision": "e642ba8d0acf66d95f58fdc47f9cff15b3f76224",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "settings-view": {
-            "revision": "89d1f6e16befae710f2467c011299edc5b259092",
+            "revision": "c3c28efdf9e974e354b3ba65eb474ba84798bf4d",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "snippets": {
-            "revision": "04a034092a1a94a5fa633ea27deb6d6f2a60a42f",
+            "revision": "d236dcc36975961366f38a0c16d3a3bf021dc945",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "status-bar": {
-            "revision": "b72fc1d7c451a76052102e3182c1a467ebc0cdc1",
+            "revision": "b1f8715fcf15cd0a09e0f756f8137c4993abb075",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "styleguide": {
-            "revision": "68fdb9d0137acc4250a1e3f012d41652ae01c2ad",
+            "revision": "e0477635e8a56eeadee0308b9eef72ae0cc59a1b",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "symbol": {
-            "revision": "a0bdee10c92ec46e9a5958c232b0caad1f24e67d",
+            "revision": "9998895ca8136719a5186aad38779a8d966c7122",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "symbol-tree-sitter": {
-            "revision": "368c44732334783ea790afbcc88a59b66936f289",
+            "revision": "4bbdd80002ed27bcdd30f0536634140789c2c7d7",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tabs": {
-            "revision": "8877a6c31eab7c6406aad7509372b7a16f4508bf",
+            "revision": "04469b1489d5cc50f892c756c68fd8f7b0317654",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "timecop": {
-            "revision": "91a82e0e7c0994768be61ccb109ada274332976e",
+            "revision": "c7d18d6c9a6e91c98e4ea2f5b85f6618e609daa3",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "title-bar": {
-            "revision": "ff2b867c23dce3ebc6b7229af2706bfa44cfe822",
+            "revision": "561379bcbc98362e7b4b9eceeb24f7c2c972ef17",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "tree-view": {
-            "revision": "dbfcbfc0eeff05d18253e43b6610307facd32b04",
+            "revision": "51fe3a5d9647bdfa16e7c79c3a0000d1a254b395",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "whitespace": {
-            "revision": "52e0398553e630ef0bb8b6a4d57b71ce0aa418ad",
+            "revision": "4cb3f865e07335c1eb569a1d9d9b25d7c0375dae",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           },
           "window-title": {
-            "revision": "55c79de0ce72a58afbc7484f32f4d685e902f22d",
+            "revision": "102047cf367b6dea0e68e441d3bb7e1d719d2d2c",
             "dirty": false,
             "workingTreeHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
           }
@@ -1651,7 +1679,7 @@
             "sha256": "2a36953daadd1ae53070d0ff7ceab4624395fdb957104aa6e8ec92d785cadf1d"
           }
         ],
-        "sha256": "c0609ebe0ad5ba8befada84917e362c3847620d396e92d6dbfc905f6fc0f9ca2"
+        "sha256": "c8122bd8f11aecbf3c7bab1226fbb109e4b6938a19b29c50c041165af63c0b2e"
       }
     }
   ],
