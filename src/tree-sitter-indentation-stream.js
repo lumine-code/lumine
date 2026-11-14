@@ -231,4 +231,4 @@ async function* scanSuggestedIndentation(resolver, ranges, tabLength, options = 
   }
 }
 
-module.exports = { IndentationLevels, scanSuggestedIndentation };
+module.exports = { IndentationLevels, normalizedRanges, scanSuggestedIndentation };

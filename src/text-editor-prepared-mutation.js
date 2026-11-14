@@ -54,16 +54,16 @@ module.exports = function stageMutation(editor, callback, records, mode) {
       editor.setIndentationForBufferRow(row, Math.max(0, level), options);
       return;
     }
+    const captureBaseline =
+      options.skipBlankLines === false && row > 0 && buffer.isRowBlank(row - 1);
     requests.push({
       marker: editor.markBufferPosition([row, 0], { invalidate: "never" }),
       options: {
         preserveLeadingWhitespace: options.preserveLeadingWhitespace,
         skipBlankLines: options.skipBlankLines,
         isReindenting: options.isReindenting,
-        comparisonRowIndent:
-          options.skipBlankLines === false && row > 0 && editor.getBuffer().isRowBlank(row - 1)
-            ? editor.indentationForBufferRow(row - 1)
-            : undefined,
+        comparisonRowIndent: captureBaseline ? editor.indentationForBufferRow(row - 1) : undefined,
+        comparisonRowIndentCaptured: captureBaseline,
       },
       edited,
     });

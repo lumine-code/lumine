@@ -16,11 +16,11 @@ describe("Input indentation plans", () => {
     await service.dispose();
   });
 
-  async function start(text) {
+  async function start(text, scope = "source.python") {
     editor.setText(text);
     const mode = new WorkerMode({
       buffer: editor.getBuffer(),
-      grammar: lumine.grammars.grammarForScopeName("source.python"),
+      grammar: lumine.grammars.grammarForScopeName(scope),
       service,
     });
     editor.getBuffer().setLanguageMode(mode);
@@ -92,6 +92,51 @@ describe("Input indentation plans", () => {
     editor.undo();
     expect(editor.getText()).toBe(original);
   });
+
+  for (const [language, scope, newline] of [
+    ["Python", "source.python", "\n"],
+    ["IPython", "source.python.ipy", "\r\n"],
+  ])
+    it(`indents both inline ${language} branch bodies when split by multiple cursors`, async () => {
+      if (scope === "source.python.ipy") await lumine.packages.activatePackage("language-ipython");
+      const original = ["if s.l<=50e-3: s.Δσ_C = 80e6", "elif s.l<=80e-3: s.Δσ_C = 71e6"].join(
+        newline,
+      );
+      const mode = await start(original, scope);
+      const plan = spyOn(mode, "prepareInputIndentation").and.callThrough();
+      editor.setSelectedBufferRanges([
+        [
+          [0, 15],
+          [0, 15],
+        ],
+        [
+          [1, 17],
+          [1, 17],
+        ],
+      ]);
+      const before = editor.getSelectedBufferRanges();
+      const publications = [];
+      editor.getBuffer().onDidApplyChanges(() => publications.push(editor.getText()));
+      await editor.insertNewline();
+      const expected = [
+        "if s.l<=50e-3: ",
+        "    s.Δσ_C = 80e6",
+        "elif s.l<=80e-3: ",
+        "    s.Δσ_C = 71e6",
+      ].join(newline);
+      expect(plan).toHaveBeenCalledTimes(1);
+      expect(editor.getText()).toBe(expected);
+      expect(publications).toEqual([expected]);
+      expect(editor.getCursorBufferPositions().map((point) => point.serialize())).toEqual([
+        [1, 4],
+        [3, 4],
+      ]);
+      editor.undo();
+      expect(editor.getText()).toBe(original);
+      expect(editor.getSelectedBufferRanges()).toEqual(before);
+      editor.redo();
+      expect(editor.getText()).toBe(expected);
+    });
 
   it("keeps mutations beyond the input row bound on the cooperative stream", async () => {
     const original = "value = 1\n".repeat(129);

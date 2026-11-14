@@ -10,6 +10,7 @@ const runtime = require("./tree-sitter-runtime");
 const { paintTile } = require("./syntax-paint-policy");
 const { windowTile, rangeKey } = require("./syntax-paint-window");
 const SyntaxPreview = require("./syntax-preview");
+const { scanInputIndentation } = require("./tree-sitter-input-indentation");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { contextFor, serialize } = require("./syntax-analysis-context");
 const {
@@ -806,40 +807,56 @@ class SyntaxWorkerHost {
         const { IndentationLevels } = require("./tree-sitter-indentation-stream");
         const history = new IndentationLevels();
         const levels = data.inline && canInlineIndentation(data.ranges) ? [] : null;
+        const contextualInput =
+          session.parent != null &&
+          data.ranges.reduce((count, [first, last]) => count + last - first + 1, 0) > 1 &&
+          (operation === "input-indent" ||
+            (data.options?.isPastedText === false && data.options?.rowOptions?.size > 0));
+        const scan = contextualInput
+          ? () =>
+              scanInputIndentation(mode, data.ranges, data.tabLength, data.options, {
+                signal: combined,
+                isCurrent: current,
+                settle: () => waitFor(mode.atGrammarSettlement(), combined),
+              })
+          : async function* () {
+              for (const [start, end] of data.ranges)
+                yield* mode.scanSuggestedIndentation([[start, end]], data.tabLength, {
+                  ...data.options,
+                  isPastedText: data.options?.isPastedText !== false,
+                  indentationLevels: history,
+                  signal: combined,
+                });
+            };
         let previousEnd = -1,
           count = 0;
         for (const [start, end] of data.ranges) {
           if (start <= previousEnd) throw new RangeError("Overlapping paste indentation ranges");
           previousEnd = end;
-          for await (const batch of mode.scanSuggestedIndentation([[start, end]], data.tabLength, {
-            ...data.options,
-            isPastedText: data.options?.isPastedText !== false,
-            indentationLevels: history,
-            signal: combined,
-          })) {
-            current();
-            for (const [row, level] of batch) {
-              const rowOptions = data.options?.rowOptions?.get(row) ?? data.options;
-              if (level !== null)
-                history.set(
-                  row,
-                  rowOptions?.preserveLeadingWhitespace
-                    ? mode.indentResolver.indentLevelForBufferRow(
-                        row,
-                        data.tabLength,
-                        rowOptions.insertedIndentLengths?.get(row) ?? 0,
-                        Math.floor(level * data.tabLength),
-                      )
-                    : level,
-                );
-              count++;
-            }
-            if (levels) {
-              if (levels.length + batch.length > INLINE_INDENT_ROWS)
-                throw new RangeError("Inline indentation result exceeds its row budget");
-              levels.push(...batch);
-            } else await emit(batch);
+        }
+        for await (const batch of scan()) {
+          current();
+          for (const [row, level] of batch) {
+            const rowOptions = data.options?.rowOptions?.get(row) ?? data.options;
+            if (level !== null && !contextualInput)
+              history.set(
+                row,
+                rowOptions?.preserveLeadingWhitespace
+                  ? mode.indentResolver.indentLevelForBufferRow(
+                      row,
+                      data.tabLength,
+                      rowOptions.insertedIndentLengths?.get(row) ?? 0,
+                      Math.floor(level * data.tabLength),
+                    )
+                  : level,
+              );
+            count++;
           }
+          if (levels) {
+            if (levels.length + batch.length > INLINE_INDENT_ROWS)
+              throw new RangeError("Inline indentation result exceeds its row budget");
+            levels.push(...batch);
+          } else await emit(batch);
         }
         value = levels ? { count, levels } : { count };
       } else if (operation === "settle") {

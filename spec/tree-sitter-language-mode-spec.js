@@ -7994,7 +7994,7 @@ describe("TreeSitterLanguageMode", () => {
         autoDecreaseIndent: true,
       });
 
-      await wait(0);
+      await editor.whenGrammarSettled();
 
       expect(buffer.getText()).toBe(dedent`
         function test () {

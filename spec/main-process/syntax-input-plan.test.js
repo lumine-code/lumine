@@ -197,6 +197,54 @@ test("input planning returns one cloneable complete result without stream packet
   }
 });
 
+test("a compact multicursor plan observes earlier syntax without requiring row-specific options", async () => {
+  const lines = ["if s.l<=50e-3: s.Δσ_C = 80e6", "elif s.l<=80e-3: s.Δσ_C = 71e6"];
+  const source = lines.join("\n");
+  const state = await setup(source);
+  try {
+    const secondIndex = state.session.buffer.characterIndexForPosition([1, 17]) + 1;
+    const plan = await state.service.prepareInputIndentation(state.session, {
+      changes: [
+        {
+          oldRange: new TextBuffer.Range([0, 15], [0, 15]),
+          startIndex: 15,
+          oldEndIndex: 15,
+          newText: "\n",
+        },
+        {
+          oldRange: new TextBuffer.Range([1, 17], [1, 17]),
+          startIndex: secondIndex,
+          oldEndIndex: secondIndex,
+          newText: "\n",
+        },
+      ],
+      ranges: [
+        [1, 1],
+        [3, 3],
+      ],
+      tabLength: 4,
+      options: {
+        softTabs: true,
+        isPastedText: false,
+        preserveLeadingWhitespace: true,
+        skipBlankLines: false,
+      },
+    });
+    assert.deepEqual(plan, {
+      kind: "ready",
+      levels: [
+        [1, 1],
+        [3, 1],
+      ],
+    });
+    assert.equal(state.host.sessions.size, 1);
+    assert.equal(state.host.sessions.get(1).buffer.getText(), source);
+    assert.equal(state.session.buffer.getText(), source);
+  } finally {
+    state.close();
+  }
+});
+
 for (const invalidation of [
   "abort",
   "configuration",

@@ -2678,6 +2678,8 @@ module.exports = class TextEditor {
   adjustNewlineIndentation(markers, languageMode, baselines = new Map(), inputOptions = {}) {
     const buffer = this.buffer;
     const revision = buffer.getTextRevision();
+    const tabLength = this.getTabLength(),
+      softTabs = this.getSoftTabs();
     const options = {
       preserveLeadingWhitespace: true,
       skipBlankLines: false,
@@ -2686,7 +2688,10 @@ module.exports = class TextEditor {
     };
     const isCurrent = () =>
       canAdjustIndentation(this, buffer, languageMode, options) &&
-      buffer.getTextRevision() === revision;
+      buffer.getTextRevision() === revision &&
+      this.getTabLength() === tabLength &&
+      this.getSoftTabs() === softTabs &&
+      !inputOptions.signal?.aborted;
     const cleanup = () => {
       for (const marker of markers) marker.destroy();
     };
@@ -2707,32 +2712,51 @@ module.exports = class TextEditor {
             baselines.get(marker),
           );
       }
-      // Plan every cursor against the same committed trees, then edit once.
-      const planned = languageMode.suggestedIndentForBufferRowsAtRows(
-        rows,
-        this.getTabLength(),
-        options,
-      );
+      const contextualInput =
+        rows.length > 1 && typeof languageMode.suggestedIndentForInputRows === "function";
+      // Input plans materialize earlier prefixes privately before resolving a
+      // dependent row. Apply the complete answer once to the live editor.
+      const planned = contextualInput
+        ? languageMode.suggestedIndentForInputRows(rows, tabLength, {
+            ...options,
+            softTabs,
+            signal: inputOptions.signal,
+            isCurrent,
+            rowOptions: new Map(
+              rows.map((row) => [
+                row,
+                {
+                  preserveLeadingWhitespace: true,
+                  skipBlankLines: false,
+                  comparisonRowIndent: options.comparisonRowIndents.get(row),
+                  comparisonRowIndentCaptured: options.comparisonRowIndents.has(row),
+                },
+              ]),
+            ),
+          })
+        : languageMode.suggestedIndentForBufferRowsAtRows(rows, tabLength, options);
       return resolveSyntaxResult(planned, (indents) => {
         if (!indents || !isCurrent()) return;
         this.applyIndentationLevels(indents, options);
         if (buffer.getTextRevision() !== revision) buffer.groupLastChanges();
       });
     };
-    if (!languageMode.publicationPending && !languageMode.asynchronousSyntax) {
-      try {
-        apply();
-      } finally {
-        cleanup();
-      }
-      return;
+    let adjustment;
+    try {
+      adjustment =
+        !languageMode.publicationPending && !languageMode.asynchronousSyntax
+          ? apply()
+          : Promise.resolve(languageMode.atGrammarSettlement()).then(apply);
+    } catch (error) {
+      cleanup();
+      throw error;
+    }
+    if (!isPromise(adjustment)) {
+      cleanup();
+      return adjustment;
     }
     let pending;
-    const adjustment = handleIndentationErrors(
-      Promise.resolve(languageMode.atGrammarSettlement()).then(apply),
-      isCurrent,
-    );
-    pending = adjustment.finally(() => {
+    pending = handleIndentationErrors(adjustment, isCurrent).finally(() => {
       cleanup();
       if (this.autoIndentAtTransactionEndPromise === pending)
         this.autoIndentAtTransactionEndPromise = null;
