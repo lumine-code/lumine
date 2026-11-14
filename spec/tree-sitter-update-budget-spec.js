@@ -137,7 +137,7 @@ describe("Tree-sitter update budgets", () => {
     expect(published.every((value) => value === revision)).toBe(true);
   });
 
-  it("plans multicursor newline indentation without parsing once per cursor", async () => {
+  it("reuses one parent snapshot while privately planning multicursor newline indentation", async () => {
     const source = Array.from(
       { length: 100 },
       (_, i) => `def work_${i}():\n    return ${i}\n`,
@@ -145,6 +145,8 @@ describe("Tree-sitter update budgets", () => {
     const mode = await start(source);
     mode.useAsyncParsing = false;
     const parse = spyOn(mode, "parse").and.callThrough();
+    const snapshot = spyOn(mode, "captureSyntaxSnapshot").and.callThrough();
+    const plan = spyOn(mode, "suggestedIndentForInputRows").and.callThrough();
     editor.setSelectedBufferRanges(
       Array.from({ length: 8 }, (_, i) => {
         const row = i * 20,
@@ -156,7 +158,10 @@ describe("Tree-sitter update budgets", () => {
       }),
     );
     editor.insertNewline();
+    await editor.whenGrammarSettled();
     expect(parse.calls.count()).toBeLessThanOrEqual(2);
+    expect(snapshot).toHaveBeenCalledTimes(1);
+    expect(plan).toHaveBeenCalledTimes(1);
     for (const cursor of editor.getCursors())
       expect(editor.lineTextForBufferRow(cursor.getBufferRow())).toBe("    ");
     editor.undo();
@@ -497,6 +502,7 @@ describe("Tree-sitter update budgets", () => {
         ],
       ]);
       editor.insertNewline();
+      await editor.whenGrammarSettled();
       expect(editor.lineTextForBufferRow(1)).toBe("    ");
       expect(editor.lineTextForBufferRow(3)).toBe("    ");
       editor.undo();

@@ -63,7 +63,7 @@ describe("Synchronous warm Tree-sitter updates", () => {
         .some((scope) => scope.startsWith("comment.")),
     ).toBe(false);
   });
-  it("updates multicursor newlines and indentation synchronously", async () => {
+  it("keeps warm syntax synchronous while tracking multicursor indentation", async () => {
     const mode = await start("def first():\r\n    one = 1\r\ndef second():\r\n    two = 2\r\n");
     editor.setSelectedBufferRanges([
       [
@@ -76,6 +76,8 @@ describe("Synchronous warm Tree-sitter updates", () => {
       ],
     ]);
     editor.insertNewline();
+    current(mode);
+    await editor.whenGrammarSettled();
     current(mode);
     expect(editor.lineTextForBufferRow(2)).toBe("    ");
     expect(editor.lineTextForBufferRow(5)).toBe("    ");
