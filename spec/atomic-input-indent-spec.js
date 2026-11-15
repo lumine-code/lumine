@@ -331,6 +331,45 @@ describe("Atomic input indentation", () => {
     expect(editor.getText()).toBe("class Record:");
   });
 
+  it("does not replay queued typing at an independently moved cursor after cancelling Enter", async () => {
+    const source = "class Record:\nother = 1";
+    await start(source);
+    editor.setCursorBufferPosition([0, Infinity]);
+    const gate = hold();
+    const newline = dispatchInput(editor, () => editor.insertNewline());
+    await gate.ready;
+    const typed = dispatchInput(editor, () => editor.insertText("x"));
+    editor.setCursorBufferPosition([1, 0]);
+    gate.release();
+    const results = await Promise.all([newline, typed]);
+    expect(results[0]).toBe(false);
+    expect(results[1]).toBe(false);
+    expect(editor.getText()).toBe(source);
+    expect(editor.getCursorBufferPosition()).toEqual([1, 0]);
+    await dispatchInput(editor, () => editor.insertText("x"));
+    expect(editor.getText()).toBe("class Record:\nxother = 1");
+    editor.undo();
+    expect(editor.getText()).toBe(source);
+    expect(editor.getCursorBufferPosition()).toEqual([1, 0]);
+  });
+
+  it("drops queued typing after an asynchronous preparation failure and accepts fresh input", async () => {
+    const mode = await start("class Record:");
+    editor.moveToEndOfLine();
+    const prepare = spyOn(mode, "prepareInputIndentation").and.callFake(async () => {
+      throw new Error("input preparation failed");
+    });
+    const failed = dispatchInput(editor, () => editor.insertNewline());
+    const typed = dispatchInput(editor, () => editor.insertText("x"));
+    await expectAsync(failed).toBeRejectedWithError("input preparation failed");
+    expect(await typed).toBe(false);
+    expect(editor.getText()).toBe("class Record:");
+    expect(prepare).toHaveBeenCalledTimes(1);
+    await dispatchInput(editor, () => editor.insertText("x"));
+    expect(editor.getText()).toBe("class Record:x");
+    expect(prepare).toHaveBeenCalledTimes(1);
+  });
+
   it("settles the input accepted before a completion intent and rejects later input", async () => {
     await start("class Record:");
     editor.moveToEndOfLine();

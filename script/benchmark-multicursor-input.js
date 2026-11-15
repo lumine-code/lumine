@@ -14,7 +14,16 @@ if (process.env.LUMINE_PERF_QUIET_WINDOW !== "1")
     "Set LUMINE_PERF_QUIET_WINDOW=1 only after local tests and other benchmarks have stopped",
   );
 const root = path.resolve(__dirname, "..");
-const options = { source: root, cases: [], samples: 3, warmups: 1 };
+const options = {
+  source: root,
+  cases: [],
+  samples: 3,
+  warmups: 1,
+  mode: "newline",
+  cycles: 1,
+  interval: 0,
+  capture: 0,
+};
 for (let index = 2; index < process.argv.length; index += 2) {
   const flag = process.argv[index],
     value = process.argv[index + 1];
@@ -28,17 +37,27 @@ for (let index = 2; index < process.argv.length; index += 2) {
       "--warmups",
       "--output",
       "--package-root",
+      "--mode",
+      "--cycles",
+      "--interval",
+      "--capture",
     ].includes(flag)
   )
     throw new Error(`Invalid benchmark option ${flag}`);
   if (flag === "--case") options.cases.push(value);
   else options[flag.slice(2)] = value;
 }
-for (const name of ["samples", "warmups"]) {
+for (const name of ["samples", "warmups", "cycles", "interval", "capture"]) {
   options[name] = Number(options[name]);
-  if (!Number.isSafeInteger(options[name]) || options[name] < (name === "samples" ? 1 : 0))
+  if (
+    !Number.isSafeInteger(options[name]) ||
+    options[name] < (["samples", "cycles"].includes(name) ? 1 : 0)
+  )
     throw new Error(`Invalid ${name}`);
 }
+if (!["newline", "burst"].includes(options.mode)) throw new Error("Invalid --mode");
+if (![0, 1].includes(options.capture)) throw new Error("--capture must be 0 or 1");
+if (options.cycles > 100) throw new Error("--cycles exceeds the bounded burst size");
 const source = path.resolve(options.source);
 const checkout = fs.existsSync(path.join(source, ".git"));
 const revision = checkout
@@ -82,6 +101,12 @@ const config = {
   sourceRevision: revision,
   samples: options.samples,
   warmups: options.warmups,
+  mode: options.mode,
+  cycles: options.cycles,
+  intervalMs: options.interval,
+  capture: Boolean(options.capture),
+  captureStandalone: Boolean(options.capture),
+  benchmarkPath: path.join(root, "benchmark", "multicursor-input-benchmark-spec.js"),
   output: path.join(directory, "result.json"),
 };
 if (options.cases.length) config.caseIds = options.cases;
@@ -103,11 +128,10 @@ const child = spawn(
   [
     "--no-sandbox",
     "--enable-logging",
-    source,
+    options.capture ? path.join(root, "benchmark", "multicursor-input-main.js") : source,
     "-f",
     "--dev",
-    "--test",
-    path.join(root, "benchmark", "multicursor-input-benchmark-spec.js"),
+    ...(options.capture ? [] : ["--test", config.benchmarkPath]),
     "--user-data-dir",
     path.join(home, "electronUserData"),
   ],

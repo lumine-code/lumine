@@ -10,7 +10,14 @@ function dispatchEditorInput(editor, operation) {
   const previous = pending.get(editor);
   const invoke = () =>
     editor.isDestroyed?.() ? undefined : prepared.withInput(editor, version, operation);
-  const result = previous ? previous.then(invoke, invoke) : invoke();
+  // A cancelled preparation leaves newer cursor/text state in place. Keys
+  // already waiting behind it must not be replayed against that new intent.
+  const result = previous
+    ? previous.then(
+        (result) => (result === false ? false : invoke()),
+        () => false,
+      )
+    : invoke();
   if (!result?.then) return result;
   const task = Promise.resolve(result).finally(() => {
     if (pending.get(editor) === task) pending.delete(editor);

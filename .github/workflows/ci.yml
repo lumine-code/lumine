@@ -121,6 +121,8 @@ jobs:
         run: node --test script/check-built-app.test.js script/generate-metadata-for-builder.test.js
       - name: Test demo capture validation
         run: node --test script/demo.test.js
+      - name: Test input benchmark fixture oracles
+        run: node --test script/multicursor-input-fixture.test.js
       - name: Audit production dependencies
         run: |
           node --test script/check-audit.test.js
