@@ -1,3 +1,5 @@
+const path = require("node:path");
+
 const fixtures = [
   {
     name: "identifier conditions",
@@ -46,6 +48,51 @@ const fixtures = [
     source: "if ready: first()\nelif other: # header comment\n    second()",
     bodies: ["first()", { endOfLine: 1 }],
   },
+  {
+    name: "IPython quoted suites requiring ownership validation",
+    package: "language-ipython",
+    scope: "source.python.ipy",
+    source: '# %%\nif ready: print("one")\nelif other: print("two")\nelse: print("three")',
+    bodies: ['print("one")', 'print("two")', 'print("three")'],
+  },
+  {
+    name: "IPython commented suites requiring ownership validation",
+    package: "language-ipython",
+    scope: "source.python.ipy",
+    source:
+      "# %%\nif ready: first() # first body\nelif other: second() # second body\nelse: third() # third body",
+    bodies: ["first()", "second()", "third()"],
+  },
+  {
+    name: "nested IPython quoted suites requiring ownership validation",
+    package: "language-ipython",
+    scope: "source.python.ipy",
+    source:
+      '# %%\ndef outer():\n    if ready: print("one")\n    elif other: print("two")\n    else: print("three")',
+    bodies: ['print("one")', 'print("two")', 'print("three")'],
+    columns: 8,
+  },
+  {
+    name: "a portable root-range provider requiring ownership validation",
+    source: "if ready: first()\nelif other: second()\nelse: third()",
+    bodies: ["first()", "second()", "third()"],
+    rootRanges: {
+      module: path.join(__dirname, "fixtures/input-root-ranges.js"),
+      method: "all",
+      params: {},
+    },
+  },
+  {
+    name: "nested suites with a portable root-range provider",
+    source: "def outer():\n    if ready: first()\n    elif other: second()\n    else: third()",
+    bodies: ["first()", "second()", "third()"],
+    columns: 8,
+    rootRanges: {
+      module: path.join(__dirname, "fixtures/input-root-ranges.js"),
+      method: "all",
+      params: {},
+    },
+  },
 ];
 
 describe("Multicursor syntax indentation", () => {
@@ -71,8 +118,15 @@ describe("Multicursor syntax indentation", () => {
 
   async function openFixture(fixture, backend) {
     lumine.grammars.syntaxExecution = backend;
+    if (fixture.package) await lumine.packages.activatePackage(fixture.package);
     editor = await lumine.workspace.open();
     editor.setText(fixture.source);
+    if (fixture.rootRanges) {
+      lumine.grammars.setRootLanguageRanges(editor.getBuffer(), fixture.rootRanges);
+      expect(lumine.grammars.rootLanguageRangesByBuffer.get(editor.getBuffer()).descriptor).toEqual(
+        fixture.rootRanges,
+      );
+    }
     expect(
       lumine.grammars.assignLanguageMode(editor.getBuffer(), fixture.scope ?? "source.python"),
     ).toBe(true);
@@ -104,8 +158,11 @@ describe("Multicursor syntax indentation", () => {
     const prefix = fixture.prefix ?? " ".repeat(columns);
     const ascending = [...selected].sort((a, b) => offsets[a] - offsets[b]);
     let expected = fixture.source;
-    for (const index of [...ascending].reverse())
+    let raw = fixture.source;
+    for (const index of [...ascending].reverse()) {
       expected = expected.slice(0, offsets[index]) + "\n" + prefix + expected.slice(offsets[index]);
+      raw = raw.slice(0, offsets[index]) + "\n" + raw.slice(offsets[index]);
+    }
     const expectedPositions = ascending.map((index, order) => [
       buffer.positionForCharacterIndex(offsets[index]).row + order + 1,
       columns,
@@ -113,19 +170,18 @@ describe("Multicursor syntax indentation", () => {
     const publications = [];
     const compact = fixture.bulk ? spyOn(mode, "prepareInputIndentation").and.callThrough() : null;
     const stream = fixture.bulk ? spyOn(mode, "scanPreparedIndentation").and.callThrough() : null;
-    const subscription =
-      backend === "worker"
-        ? buffer.onDidApplyChanges(() => publications.push(editor.getText()))
-        : null;
+    const subscription = buffer.onDidApplyChanges(() => publications.push(editor.getText()));
     try {
       await editor.insertNewline();
-      await editor.whenGrammarSettled();
+      expect(await editor.whenGrammarSettled()).toBeTrue();
     } finally {
       subscription?.dispose();
     }
     expect(editor.getText()).toBe(expected);
     expect(normalizedPositions(editor.getCursorBufferPositions())).toEqual(expectedPositions);
-    if (backend === "worker") expect(publications).toEqual([expected]);
+    expect(publications).toEqual(
+      backend === "worker" || selected.length === 1 ? [expected] : [raw, expected],
+    );
     if (fixture.bulk) {
       expect(compact).not.toHaveBeenCalled();
       expect(stream).toHaveBeenCalledTimes(1);

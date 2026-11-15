@@ -5,6 +5,7 @@ const captureQuery = require("./tree-sitter-query-cache");
 const { TextPatch: Patch, TextChangeMap, PieceTree } = require("./text-model");
 const projectInputTree = require("./tree-sitter-input-node");
 const { allowsInputProjection } = require("./tree-sitter-input-policy");
+const matchInputOwnership = require("./tree-sitter-input-ownership");
 
 function aborted() {
   return Object.assign(new Error("Input indentation was superseded"), { name: "AbortError" });
@@ -86,16 +87,24 @@ function createInputSnapshot(
   mode,
   draftBuffer,
   changes,
-  { signal, isCurrent, snapshot = mode.captureSyntaxSnapshot({ indentationOnly: true }) } = {},
+  {
+    signal,
+    isCurrent,
+    snapshot = mode.captureSyntaxSnapshot({ indentationOnly: true }),
+    ownershipSnapshot,
+  } = {},
 ) {
   if (!snapshot?.complete) return null;
   const revision = draftBuffer.getTextRevision();
   const sourceRevision = mode.buffer.getTextRevision();
   const epoch = mode.getSyntaxRequestEpoch();
   if (snapshot.epoch !== null && snapshot.epoch !== epoch) return null;
-  const generations = [
-    ...new Map(snapshot.layers.map((entry) => [entry.grammar, entry.generation])),
-  ];
+  const stamps = new Map();
+  for (const entry of [...snapshot.layers, ...(ownershipSnapshot?.layers ?? [])]) {
+    if (stamps.has(entry.grammar) && stamps.get(entry.grammar) !== entry.generation) return null;
+    stamps.set(entry.grammar, entry.generation);
+  }
+  const generations = [...stamps];
   let closed = false,
     building = true;
   const check = () => {
@@ -132,7 +141,6 @@ function createInputSnapshot(
     replay = replay.replace(edit.startIndex, edit.oldEndIndex, edit.newText);
   }
   if (!replay.equals(text)) return null;
-  if (!allowsInputProjection(mode, snapshot, changes, check)) return null;
   const map = new TextChangeMap(snapshot.source);
   for (const change of patch.getChanges()) {
     map.add(
@@ -143,6 +151,13 @@ function createInputSnapshot(
   }
   map.finish(text);
   const inverse = map.invert();
+  const originalOwnership = allowsInputProjection(mode, snapshot, changes, check);
+  const matches = originalOwnership
+    ? null
+    : matchInputOwnership(snapshot, ownershipSnapshot, text, map, check);
+  if (!originalOwnership && !matches) return null;
+  const routing = originalOwnership ? snapshot : ownershipSnapshot;
+  const identity = new TextChangeMap(text).finish(text);
   mode.ensureQueriesForLayersSync("indentsQuery");
   check();
   const layers = [];
@@ -169,6 +184,7 @@ function createInputSnapshot(
     for (const tree of projectedTrees) tree.close();
     projectedTrees.length = 0;
     snapshot = null;
+    ownershipSnapshot = null;
     mode = null;
     draftBuffer = null;
     signal = null;
@@ -206,20 +222,21 @@ function createInputSnapshot(
   };
   const entries = new Map();
   try {
-    for (const entry of snapshot.layers) {
+    for (const entry of routing.layers) {
       check();
       const { grammar } = entry;
+      const previous = originalOwnership ? entry : matches.get(entry);
       const query =
         typeof entry.grammar.indentsQuery === "string"
           ? entry.grammar.getQuerySync("indentsQuery")
           : null;
       const projected = projectInputTree(
-        entry.tree,
+        (previous ?? entry).tree,
         query,
-        snapshot.source,
+        previous ? snapshot.source : text,
         text,
-        map,
-        inverse,
+        previous ? map : identity,
+        previous ? inverse : identity,
         check,
       );
       projectedTrees.push(projected);
@@ -229,8 +246,12 @@ function createInputSnapshot(
         ? entry.ranges.map(
             (range) =>
               new Range(
-                map.mapPoint(snapshot.source.positionAt(range.startIndex)),
-                map.mapPoint(snapshot.source.positionAt(range.endIndex), true),
+                originalOwnership
+                  ? map.mapPoint(snapshot.source.positionAt(range.startIndex))
+                  : text.positionAt(range.startIndex),
+                originalOwnership
+                  ? map.mapPoint(snapshot.source.positionAt(range.endIndex), true)
+                  : text.positionAt(range.endIndex),
               ),
           )
         : [draftBuffer.getRange()];

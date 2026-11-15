@@ -331,12 +331,16 @@ class SyntaxWorkerHost {
     this.sessions.get(session.parent)?.forks?.delete(id);
     session.captureInitialChanges?.dispose();
     session.inputSnapshot?.destroy();
+    session.inputBaseline = null;
+    session.inputChanges = null;
     session.initialSyntaxSnapshot?.close();
-    session.rootRanges?.dispose();
     session.pendingEdit?.reject(aborted("Syntax document was closed"));
     this.previews.release(session);
     this.invalidate(session);
     session.buffer.destroy();
+    // Removing a root policy from a live mode schedules an unrestricted parse.
+    // End the candidate's syntax lifetime before releasing that registration.
+    session.rootRanges?.dispose();
     if (runtime.releaseSession(id)) this.notify({ event: "recycle-requested" });
   }
 
@@ -620,6 +624,7 @@ class SyntaxWorkerHost {
     if (operation === "initialize") {
       if (session.initialized) throw new Error("Syntax document is already initialized");
       session.initialized = true;
+      let validateInputOwnership = false;
       if (
         session.parent &&
         data.indentationOptions?.isPastedText === false &&
@@ -632,12 +637,17 @@ class SyntaxWorkerHost {
         if (this.sessions.get(session.id) !== session) throw aborted();
         if (transaction.parseError || parent.mode.lastTransactionParseError)
           throw transaction.parseError ?? parent.mode.lastTransactionParseError;
-        const snapshot = await createInputSnapshot(
-          parent.mode,
-          buffer,
-          session.initialSyntaxChanges.flatMap((batch) => batch.changes),
-          { signal },
-        );
+        session.inputChanges = session.initialSyntaxChanges.flatMap((batch) => batch.changes);
+        if (
+          !session.inputBaseline?.complete ||
+          session.inputBaseline.source !== parent.buffer.getTextSnapshot() ||
+          session.inputBaseline.epoch !== parent.mode.getSyntaxRequestEpoch()
+        )
+          session.inputBaseline = parent.mode.captureSyntaxSnapshot({ indentationOnly: true });
+        const snapshot = await createInputSnapshot(parent.mode, buffer, session.inputChanges, {
+          signal,
+          snapshot: session.inputBaseline,
+        });
         if (this.sessions.get(session.id) !== session) {
           snapshot?.destroy();
           throw aborted();
@@ -651,8 +661,11 @@ class SyntaxWorkerHost {
           session.initialSyntaxChanges = null;
           return;
         }
+        validateInputOwnership = Boolean(session.inputBaseline?.complete);
       }
-      if (session.parent && data.indentationRanges?.length) {
+      // A parsed ownership proof must discover the complete relevant forest.
+      // Token-changing operations retain the ordinary local-context discovery.
+      if (session.parent && data.indentationRanges?.length && !validateInputOwnership) {
         const contexts = [];
         let deadline = performance.now() + 4;
         let previousEnd = -1;
@@ -779,9 +792,8 @@ class SyntaxWorkerHost {
           runtime.registerBuffer(copy, () => this.contextFor(fork));
           const policy = this.grammars.rootLanguageRangesByBuffer.get(buffer)?.descriptor;
           if (policy) fork.rootRanges = this.grammars.setRootLanguageRanges(copy, policy);
-          fork.initialSyntaxSnapshot = mode
-            .captureSyntaxSnapshot({ indentationOnly: true })
-            ?.fork(copy);
+          fork.inputBaseline = mode.captureSyntaxSnapshot({ indentationOnly: true });
+          fork.initialSyntaxSnapshot = fork.inputBaseline?.fork(copy);
           fork.captureInitialChanges = copy.onDidApplyChanges((batch) =>
             fork.initialSyntaxChanges.push(batch),
           );
@@ -850,12 +862,30 @@ class SyntaxWorkerHost {
       }
       let value;
       if (operation === "prepared-indent" || operation === "input-indent") {
+        if (
+          session.parent &&
+          !session.inputSnapshot &&
+          session.inputChanges &&
+          session.inputBaseline?.complete &&
+          data.options?.isPastedText === false
+        ) {
+          const parent = this.sessions.get(session.parent);
+          if (!parent) throw aborted();
+          mode.ensureQueriesForLayersSync("indentsQuery");
+          session.inputSnapshot = createInputSnapshot(parent.mode, buffer, session.inputChanges, {
+            snapshot: session.inputBaseline,
+            ownershipSnapshot: mode.captureSyntaxSnapshot({ indentationOnly: true }),
+            signal: combined,
+            isCurrent: current,
+          });
+        }
+        const indentationMode = session.inputSnapshot ?? mode;
         const { IndentationLevels } = require("./tree-sitter-indentation-stream");
         const history = new IndentationLevels();
         const levels = data.inline && canInlineIndentation(data.ranges) ? [] : null;
         const scan = async function* () {
           if (data.options?.isPastedText === false) {
-            yield* mode.scanSuggestedIndentation(data.ranges, data.tabLength, {
+            yield* indentationMode.scanSuggestedIndentation(data.ranges, data.tabLength, {
               ...data.options,
               indentationLevels: history,
               signal: combined,
@@ -864,7 +894,7 @@ class SyntaxWorkerHost {
             return;
           }
           for (const [start, end] of data.ranges)
-            yield* mode.scanSuggestedIndentation([[start, end]], data.tabLength, {
+            yield* indentationMode.scanSuggestedIndentation([[start, end]], data.tabLength, {
               ...data.options,
               isPastedText: data.options?.isPastedText !== false,
               indentationLevels: history,
@@ -886,7 +916,7 @@ class SyntaxWorkerHost {
               history.set(
                 row,
                 rowOptions?.preserveLeadingWhitespace
-                  ? mode.indentResolver.indentLevelForBufferRow(
+                  ? indentationMode.indentResolver.indentLevelForBufferRow(
                       row,
                       data.tabLength,
                       rowOptions.insertedIndentLengths?.get(row) ?? 0,

@@ -6,6 +6,8 @@ const Parser = require("../../src/tree-sitter-parser");
 const TextBuffer = require("../../src/text-buffer");
 const SyntaxSnapshot = require("../../src/tree-sitter-syntax-snapshot");
 const captureQuery = require("../../src/tree-sitter-query-cache");
+const TextChangeMap = require("../../src/text-change-map");
+const matchInputOwnership = require("../../src/tree-sitter-input-ownership");
 const { configuration } = require("../../src/syntax-worker-environment");
 const {
   createInputSnapshot,
@@ -74,6 +76,16 @@ async function levels(projection, rows, options = {}) {
   ))
     result.push(...batch);
   return result;
+}
+
+async function discoverOwnership(host, changes) {
+  await host.dispatch("fork", { session: 1, revision: host.sessions.get(1).revision, target: 2 });
+  await host.dispatch("edit", { session: 2, beforeRevision: 0, revision: 1, changes });
+  // Force the ordinary full parse to discover ownership, independently of the
+  // typing fast path whose pre-input syntax is being validated.
+  await host.dispatch("initialize", { session: 2, indentationOptions: { isPastedText: true } });
+  await host.dispatch("settle", { session: 2, revision: 1 });
+  return host.sessions.get(2).mode.captureSyntaxSnapshot({ indentationOnly: true });
 }
 
 function noParsing(t) {
@@ -382,6 +394,159 @@ test("an embedding grammar without an ownership proof declines projection", asyn
   mode.grammar.inputEditPolicy = null;
   const { buffer, changes } = draft(t, text, [text.indexOf("{") + 1]);
   assert.equal(createInputSnapshot(mode, buffer, changes), null);
+});
+
+test("one discovered forest validates quoted IPython suites without using its orphaned statement AST", async (t) => {
+  const text = '# %%\nif ready: print("one")\nelif other: print("two")';
+  const { host, mode } = await setup(t, text, [
+    "language-ipython/grammars/ipython.json",
+    "language-python/grammars/python.json",
+  ]);
+  mode.grammar.inputEditPolicy = path.resolve(
+    path.dirname(require.resolve("language-ipython/package.json")),
+    "lib/input-edit-policy.js",
+  );
+  const { buffer, changes } = draft(t, text, [text.indexOf("print"), text.lastIndexOf("print")]);
+  const snapshot = mode.captureSyntaxSnapshot({ indentationOnly: true });
+  assert.equal(createInputSnapshot(mode, buffer, changes, { snapshot }), null);
+  const ownershipSnapshot = await discoverOwnership(host, changes);
+  assert.ok(
+    ownershipSnapshot.layers.some(
+      (entry) => entry.grammar.scopeName === "source.python" && entry.tree.rootNode.hasError,
+    ),
+  );
+  noParsing(t);
+  const projection = createInputSnapshot(mode, buffer, changes, { snapshot, ownershipSnapshot });
+  t.after(() => projection.close());
+  assert.ok(projection);
+  assert.deepEqual(await levels(projection, [2, 4]), [
+    [2, 1],
+    [4, 1],
+  ]);
+  assert.equal(mode.buffer.getText(), text);
+});
+
+test("a portable root-range policy can validate unchanged coverage for simultaneous suites", async (t) => {
+  const text = "if ready: work()\nelif other: work()";
+  const { host, mode } = await setup(t, text);
+  host.grammars.setRootLanguageRanges(mode.buffer, {
+    module: path.resolve(__dirname, "../fixtures/input-root-ranges.js"),
+    method: "all",
+  });
+  await mode.atGrammarSettlement();
+  const { buffer, changes } = draft(t, text, [text.indexOf("work"), text.lastIndexOf("work")]);
+  const snapshot = mode.captureSyntaxSnapshot({ indentationOnly: true });
+  assert.equal(createInputSnapshot(mode, buffer, changes, { snapshot }), null);
+  const ownershipSnapshot = await discoverOwnership(host, changes);
+  noParsing(t);
+  const projection = createInputSnapshot(mode, buffer, changes, { snapshot, ownershipSnapshot });
+  t.after(() => projection.close());
+  assert.ok(projection);
+  assert.deepEqual(await levels(projection, [1, 3]), [
+    [1, 1],
+    [3, 1],
+  ]);
+});
+
+test("a newly discovered embedded language uses fresh syntax alongside the original forest", async (t) => {
+  const text = "```python if ready: work()\n```\n";
+  const { host, mode } = await setup(t, text, [
+    "language-gfm/grammars/gfm.json",
+    "language-python/grammars/python.json",
+  ]);
+  mode.grammar.inputEditPolicy = null;
+  const snapshot = mode.captureSyntaxSnapshot({ indentationOnly: true });
+  const { buffer, changes } = draft(t, text, [text.indexOf("if ready"), text.indexOf("work")]);
+  const ownershipSnapshot = await discoverOwnership(host, changes);
+  assert.equal(
+    snapshot.layers.some((entry) => entry.grammar.scopeName === "source.python"),
+    false,
+  );
+  assert.equal(
+    ownershipSnapshot.layers.some((entry) => entry.grammar.scopeName === "source.python"),
+    true,
+  );
+  const projection = createInputSnapshot(mode, buffer, changes, { snapshot, ownershipSnapshot });
+  t.after(() => projection.close());
+  assert.ok(projection);
+  assert.deepEqual(await levels(projection, [1, 2]), [
+    [1, 0],
+    [2, 1],
+  ]);
+});
+
+test("mixed ownership changes keep stable Python suites and route the newly created language", async (t) => {
+  const text =
+    '# %%\nif ready: print("one")\nelif other: print("two")\n# %% [markdown]\n```python if added: work_new()\n```\n';
+  const { host, mode } = await setup(t, text, [
+    "language-ipython/grammars/ipython.json",
+    "language-python/grammars/python.json",
+    "language-gfm/grammars/gfm.json",
+  ]);
+  mode.grammar.inputEditPolicy = null;
+  const snapshot = mode.captureSyntaxSnapshot({ indentationOnly: true });
+  const { buffer, changes } = draft(
+    t,
+    text,
+    ['print("one")', 'print("two")', "if added", "work_new()"].map((body) => text.indexOf(body)),
+  );
+  const ownershipSnapshot = await discoverOwnership(host, changes);
+  assert.equal(ownershipSnapshot.layers.length, snapshot.layers.length + 1);
+  noParsing(t);
+  const projection = createInputSnapshot(mode, buffer, changes, { snapshot, ownershipSnapshot });
+  t.after(() => projection.close());
+  assert.ok(projection);
+  assert.deepEqual(await levels(projection, [2, 4, 7, 8]), [
+    [2, 1],
+    [4, 1],
+    [7, 0],
+    [8, 1],
+  ]);
+  assert.equal(mode.buffer.getText(), text);
+});
+
+test("ownership matching excludes incomplete, ambiguous or changed language identities and members", async (t) => {
+  const text = '# %%\nif ready: print("one")\nelif other: print("two")';
+  const { host, mode } = await setup(t, text, [
+    "language-ipython/grammars/ipython.json",
+    "language-python/grammars/python.json",
+  ]);
+  mode.grammar.inputEditPolicy = null;
+  const snapshot = mode.captureSyntaxSnapshot({ indentationOnly: true });
+  const { buffer, changes } = draft(t, text, [text.indexOf("print"), text.lastIndexOf("print")]);
+  const ownership = await discoverOwnership(host, changes);
+  const [root, child] = ownership.layers;
+  const map = new TextChangeMap(snapshot.source);
+  for (const change of changes.toSorted((a, b) => a.startIndex - b.startIndex))
+    map.add(change.startIndex, change.oldEndIndex, change.text.length);
+  map.finish(buffer.getTextSnapshot());
+  assert.equal(
+    matchInputOwnership(snapshot, ownership, buffer.getTextSnapshot(), map, () => {}).size,
+    2,
+  );
+  for (const [name, ownershipSnapshot] of [
+    ["incomplete", { ...ownership, complete: false }],
+    ["policy", { ...ownership, policy: {} }],
+    ["ambiguous", { ...ownership, layers: [root, { ...root }] }],
+    ...[
+      ["language", { languageString: "different" }],
+      ["generation", { generation: child.generation + 1 }],
+      ["parent", { parent: null }],
+      ["injection", { injectionPoint: {} }],
+      ["properties", { injectionProperties: {} }],
+      ["owner", { owner: { ...child.owner, startIndex: child.owner.startIndex + 1 } }],
+      ["member", { ranges: [{ ...child.ranges[0], endIndex: child.ranges[0].endIndex - 1 }] }],
+    ].map(([name, update]) => [name, { ...ownership, layers: [root, { ...child, ...update }] }]),
+  ]) {
+    const matches = matchInputOwnership(
+      snapshot,
+      ownershipSnapshot,
+      buffer.getTextSnapshot(),
+      map,
+      () => {},
+    );
+    assert.equal(matches?.has(ownershipSnapshot.layers[1]) ?? false, false, name);
+  }
 });
 
 test("a captured snapshot can project after the original buffer receives the raw input", async (t) => {

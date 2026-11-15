@@ -55,6 +55,7 @@ const sourceFingerprint = () =>
       "src/tree-sitter-input-snapshot.js",
       "src/tree-sitter-input-node.js",
       "src/tree-sitter-input-policy.js",
+      "src/tree-sitter-input-ownership.js",
       "src/tree-sitter-input-indentation.js",
       "src/tree-sitter-indent-resolver.js",
       "src/tree-sitter-indentation-stream.js",

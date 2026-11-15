@@ -1,5 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const { Tree } = require("web-tree-sitter");
 const Host = require("../../src/syntax-worker-host");
 const Client = require("../../src/syntax-worker-client");
@@ -12,13 +13,13 @@ const { configuration } = require("../../src/syntax-worker-environment");
 
 const counts = [1, 2, 8, 32, 128, 129];
 
-function fixture(kind, count, { ipython = false, fallback = false } = {}) {
+function fixture(kind, count, { ipython = false, fallback = false, quoted = false } = {}) {
   const newline = ipython ? "\r\n" : "\n";
   const padding = Array.from({ length: 24 }, (_, index) => `padding_${index} = ${index}`);
   const targets = Array.from({ length: 129 }, (_, index) =>
     kind === "noop"
       ? `value_${index} = ${index}`
-      : `${kind === "chain" && index ? "elif" : "if"} flag_${index}: work_${index}()`,
+      : `${kind === "chain" && index ? "elif" : "if"} flag_${index}: ${quoted ? `print("value_${index}")` : `work_${index}()`}`,
   );
   const prefix = [...(ipython ? ["# %% public scaling fixture"] : []), ...padding];
   const lines = [...prefix, ...targets, ...padding];
@@ -203,6 +204,86 @@ for (const count of [1, 32, 129])
       host.close();
     }
   });
+
+for (const reason of ["quoted IPython", "Python root-range provider"])
+  for (const count of [2, 32, 129])
+    test(`${reason} at ${count} cursors discovers ownership once per layer while preserving suite indentation`, async (t) => {
+      const ipython = reason === "quoted IPython";
+      const input = fixture("chain", count, { ipython, quoted: ipython });
+      const { host, data } = await setup(input.source, ipython);
+      try {
+        const parent = host.sessions.get(1);
+        if (!ipython) {
+          host.grammars.setRootLanguageRanges(parent.buffer, {
+            module: path.resolve(__dirname, "../fixtures/input-root-ranges.js"),
+            method: "all",
+          });
+          await parent.mode.atGrammarSettlement();
+        }
+        const source = parent.buffer.getTextSnapshot();
+        const trees = parent.mode.getAllLanguageLayers().map((layer) => ({
+          layer,
+          tree: layer.backgroundTree,
+          syntax: layer.backgroundTree.rootNode.toString(),
+        }));
+        const observed = observePrivateParses(t);
+        const owners = new Set();
+        const query = IndentResolver.prototype.captureQuery;
+        t.mock.method(IndentResolver.prototype, "captureQuery", function (owner, ...args) {
+          const captures = query.call(this, owner, ...args);
+          if (this.languageMode.indentationOnly && captureQuery.getStats(owner).entries > 0)
+            owners.add(owner);
+          return captures;
+        });
+        const candidates = [];
+        const close = host.closeSession;
+        t.mock.method(host, "closeSession", function (id) {
+          const session = this.sessions.get(id);
+          if (id === 2 && session)
+            candidates.push({
+              buffer: session.buffer,
+              mode: session.mode,
+              bufferMode: session.buffer.getLanguageMode(),
+            });
+          return close.call(this, id);
+        });
+        assert.deepEqual(await plan(host, data, input), input.expected);
+        const expectedScopes = ipython ? ["source.python", "source.python.ipy"] : ["source.python"];
+        for (const [name, jobs] of [
+          ["started", observed.jobs],
+          ["completed", observed.completed],
+        ]) {
+          const scopes = [...jobs].map((job) => job.runtimeContext.scopeName).sort();
+          assert.deepEqual(
+            scopes,
+            expectedScopes,
+            `${name}: exactly one ownership-discovery job per relevant layer, independent of cursor count; ${JSON.stringify([...jobs].map((job) => ({ session: job.runtimeContext?.session, revision: job.revision, previousRevision: job.previous?.revision, incremental: job.incremental, edits: job.edits.length, ranges: job.includedRanges?.map((range) => [range.startIndex, range.endIndex]), completed: observed.completed.has(job) })))}`,
+          );
+        }
+        assert.equal(parent.buffer.getTextSnapshot(), source);
+        assert.equal(parent.buffer.getText(), input.source);
+        for (const { layer, tree, syntax } of trees) {
+          assert.equal(layer.backgroundTree, tree);
+          assert.equal(tree.rootNode.toString(), syntax);
+        }
+        assert.equal(host.sessions.size, 1);
+        assert.equal(parent.forks.size, 0);
+        assert.ok(candidates.length > 0, "The ownership-discovery candidate must be released");
+        for (const candidate of candidates) {
+          assert.equal(candidate.buffer.isDestroyed(), true);
+          assert.equal(candidate.mode.destroyed, true);
+          assert.equal(candidate.bufferMode.destroyed, true);
+          assert.equal(candidate.bufferMode.parsersByLanguage?.size ?? 0, 0);
+        }
+        assert.ok(owners.size > 0, "The final indentation query must populate a private cache");
+        for (const owner of owners) {
+          assert.equal(captureQuery.getStats(owner).entries, 0);
+          assert.equal(captureQuery.getStats(owner).captures, 0);
+        }
+      } finally {
+        host.close();
+      }
+    });
 
 for (const abortDuringQuery of [false, true])
   test(`projected input releases query caches ${abortDuringQuery ? "after cancellation" : "after a complete plan"} without copying native trees`, async (t) => {

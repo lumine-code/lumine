@@ -2608,12 +2608,29 @@ class TreeSitterLanguageMode {
       options.isCurrent?.() !== false;
     let snapshot;
     try {
-      const { createInputSnapshot } = require("./tree-sitter-input-snapshot");
+      const {
+        createInputSnapshot,
+        isWhitespaceInsertion,
+      } = require("./tree-sitter-input-snapshot");
       snapshot = await createInputSnapshot(this, buffer, options.inputChanges ?? [], {
         snapshot: options.inputSnapshot ?? null,
         signal: options.signal,
         isCurrent,
       });
+      if (
+        !snapshot &&
+        options.inputSnapshot?.complete &&
+        isWhitespaceInsertion(options.inputChanges ?? [])
+      ) {
+        await this.atGrammarSettlement();
+        if (!isCurrent()) return null;
+        snapshot = createInputSnapshot(this, buffer, options.inputChanges, {
+          snapshot: options.inputSnapshot,
+          ownershipSnapshot: this.captureSyntaxSnapshot({ indentationOnly: true }),
+          signal: options.signal,
+          isCurrent,
+        });
+      }
       const mode = snapshot ?? this;
       const result = new Map();
       for await (const batch of mode.scanSuggestedIndentation(
