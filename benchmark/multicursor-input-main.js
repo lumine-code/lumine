@@ -10,9 +10,24 @@ const source = path.resolve(config.sourcePath);
 const benchmark = path.resolve(config.benchmarkPath);
 const CHANNEL = "lumine:multicursor-input-frame";
 const now = () => Number(process.hrtime.bigint()) / 1e6;
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const windows = new Map();
 const captures = new Map();
+
+ipcMain.on(`${CHANNEL}:diagnostic`, (event) => {
+  const window = windows.get(event.sender.id);
+  const state = captures.get(event.sender.id);
+  event.returnValue = {
+    known: Boolean(window),
+    destroyed: window?.isDestroyed(),
+    visible: window && !window.isDestroyed() ? window.isVisible() : null,
+    focused: window && !window.isDestroyed() ? window.isFocused() : null,
+    minimized: window && !window.isDestroyed() ? window.isMinimized() : null,
+    offscreen: event.sender.isOffscreen(),
+    bounds: window && !window.isDestroyed() ? window.getBounds() : null,
+    frameCount: state?.frameIndex,
+    pending: state?.pending,
+  };
+});
 
 function detach(contents) {
   if (!captures.delete(contents.id)) return;
@@ -150,7 +165,9 @@ app.on("browser-window-created", (_event, window) => {
   });
   if (entered) return;
   entered = true;
-  contents.once("did-finish-load", () => {
+  // This notification follows startEditorWindow, including restored panes and
+  // the initial empty editor. did-finish-load only proves the shell loaded.
+  window.once("window:loaded", () => {
     run(window).catch((error) => {
       console.error(error.stack || error);
       detach(contents);
@@ -161,16 +178,6 @@ app.on("browser-window-created", (_event, window) => {
 
 async function run(window) {
   const contents = window.webContents;
-  for (let attempt = 0; attempt < 900; attempt++) {
-    if (
-      await contents.executeJavaScript(
-        "Boolean(window.lumine && lumine.packages.getActivePackages().length)",
-      )
-    )
-      break;
-    if (attempt === 899) throw new Error("Normal benchmark renderer did not become ready");
-    await delay(100);
-  }
   contents.closeDevTools();
   window.setContentSize(1200, 800);
   window.show();
@@ -180,15 +187,22 @@ async function run(window) {
   contents.focus();
   await contents.executeJavaScript(`require(${JSON.stringify(benchmark)})()`);
   detach(contents);
-  const unloaded = await contents.executeJavaScript(
-    `lumine.prepareToUnloadEditorWindow(${JSON.stringify({ id: window.id })}).then((ready) => {
-      if (!ready) return false;
-      lumine.unloadEditorWindow();
-      lumine.destroy();
-      return true;
-    })`,
-  );
-  if (!unloaded) throw new Error("Benchmark window declined its orderly unload");
+  // Native close owns the unload request and its commit token. Calling the
+  // renderer's prepare method directly bypasses that lifecycle handshake.
+  let closeTimer;
+  try {
+    const closed = new Promise((resolve) => window.once("closed", resolve));
+    const timeout = new Promise((_, reject) => {
+      closeTimer = setTimeout(
+        () => reject(new Error("Benchmark window did not close within 15 seconds")),
+        15000,
+      );
+    });
+    window.close();
+    await Promise.race([closed, timeout]);
+  } finally {
+    clearTimeout(closeTimer);
+  }
   app.exit(0);
 }
 

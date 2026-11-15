@@ -39,6 +39,52 @@ async function attach(editor) {
     active.resolve(frame);
   };
   ipcRenderer.on(`${CHANNEL}:capture`, onCapture);
+  const failureDiagnostic = () => {
+    const position = editor.getCursorScreenPosition();
+    const selector = `.line[data-screen-row="${position.row}"]:not([data-off-screen])`;
+    const line = element.querySelector(selector);
+    const rect = element.getBoundingClientRect();
+    const pane = lumine.workspace.paneForItem(editor);
+    const actualPositions = editor.getCursorBufferPositions().map((point) => point.serialize());
+    let nativeWindow;
+    try {
+      nativeWindow = ipcRenderer.sendSync(`${CHANNEL}:diagnostic`);
+    } catch (error) {
+      nativeWindow = { error: error.message };
+    }
+    return {
+      nativeWindow,
+      actualPositions,
+      expectedPositions: active.expectedPositions,
+      cursorScreenPosition: position.serialize(),
+      cursorLine: {
+        selector,
+        found: Boolean(line),
+        actualText: line?.textContent?.slice(0, 200),
+        modelText: editor.screenLineForScreenRow(position.row)?.lineText?.slice(0, 200),
+        rect: line?.getBoundingClientRect().toJSON(),
+      },
+      editor: {
+        connected: element.isConnected,
+        rect: rect.toJSON(),
+        display: getComputedStyle(element).display,
+        visibility: getComputedStyle(element).visibility,
+        scrollTop: component.getScrollTop(),
+        paneExists: Boolean(pane),
+        paneIsActive: lumine.workspace.getActivePane() === pane,
+        paneItemIsActive: pane?.getActiveItem() === editor,
+        workspaceItemIsActive: lumine.workspace.getActivePaneItem() === editor,
+        currentViewIsExpected: lumine.views.getView(editor) === element,
+      },
+      activeElement: {
+        tag: document.activeElement?.tagName,
+        editorContains: element.contains(document.activeElement),
+      },
+      renderedLines: [...element.querySelectorAll(".line:not([data-off-screen])")]
+        .slice(0, 50)
+        .map((node) => ({ row: node.dataset.screenRow, text: node.textContent.slice(0, 200) })),
+    };
+  };
   const snapshot = () =>
     active && {
       revision: active.revision,
@@ -54,6 +100,7 @@ async function attach(editor) {
       textChecks: active.textChecks,
       verificationMs: active.verificationMs,
       capture: active.capture,
+      diagnostic: !active.capture || active.visibilityLost ? failureDiagnostic() : undefined,
     };
   const acknowledge = () => {
     const measured = active;

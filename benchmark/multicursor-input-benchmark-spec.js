@@ -137,6 +137,15 @@ async function measureInput(editor, input, plan, probe, trial) {
       );
     });
     await Promise.race([Promise.all([settlement, capture]), timeout]);
+  } catch (error) {
+    error.inputSample = {
+      ...sample,
+      publications: publications.map(({ ms }) => ms),
+      positions: positions(editor),
+      finalTextMatches: editor.getText() === plan.final.text,
+      probe: probe?.snapshot(),
+    };
+    throw error;
   } finally {
     clearTimeout(timer);
     cancelAnimationFrame(frameHandle);
@@ -328,15 +337,32 @@ async function runBenchmark() {
         module,
         grammarPath: fs.realpathSync(mode.grammar.grammarFilePath),
       };
-      if (config.capture) probe = await require("./helpers/input-frame-probe").attach(editor);
+      if (config.capture) {
+        const pane = lumine.workspace.paneForItem(editor);
+        assert.ok(pane, "Measured editor must belong to a pane");
+        pane.activate();
+        pane.activateItem(editor);
+        probe = await require("./helpers/input-frame-probe").attach(editor);
+      }
       for (let trial = -warmups; trial < samples; trial++) {
         assert.equal(editor.getText(), input.source);
         editor.setSelectedBufferRanges(input.points.map((point) => [point, point]));
         const beforeSelections = editor.getSelectedBufferRanges().map((range) => range.serialize());
         const buffer = editor.getBuffer();
         buffer.clearUndoStack();
+        if (probe) {
+          editor.scrollToCursorPosition({ mode: "center" });
+          editor.getElement().focus();
+        }
         editor.getElement().component.updateSync();
         await new Promise(requestAnimationFrame);
+        if (probe) {
+          const rect = editor.getElement().getBoundingClientRect();
+          assert.ok(
+            rect.width > 0 && rect.height > 0,
+            "Measured editor must be visible before starting the frame sample",
+          );
+        }
         const { sample, publications } = await measureInput(editor, input, plan, probe, trial);
         (trial < 0 ? result.first : result.measured).push(sample);
         const currentMode = buffer.getLanguageMode();
@@ -431,6 +457,7 @@ async function runBenchmark() {
         message: error.message,
         code: error.code,
         reason: error.reason,
+        inputSample: error.inputSample,
       };
       report.failures.push({ id, ...result.failure });
     } finally {
