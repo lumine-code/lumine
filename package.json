@@ -24,7 +24,7 @@
   },
   "lumineTestRunner": "runners/jasmine-test-runner",
   "license": "MIT",
-  "electronVersion": "45.3.1",
+  "electronVersion": "45.3.2",
   "dependencies": {
     "@babel/core": "8.1.2",
     "@jasminejs/reporters": "1.1.0",
@@ -53,9 +53,9 @@
     "dev-live-reload": "github:lumine-code/dev-live-reload#fa6664f3a1d7a5009e478afaac9a38a04f92e723",
     "diacritic": "^0.0.2",
     "diff": "^9.0.0",
-    "dompurify": "^3.4.17",
+    "dompurify": "^3.4.18",
     "encoding-selector": "github:lumine-code/encoding-selector#5ff9f20d5cba6d6dd2e94c8db73f2fd301cd85a8",
-    "focus-trap": "8.2.4",
+    "focus-trap": "8.2.5",
     "git-chunk": "github:lumine-code/git-chunk#3dfb1d7ba234f6348f342b3b7defc6e6c53fbf85",
     "go-to-line": "github:lumine-code/go-to-line#65a4b9abb5c01beb8d2fe6e7771356ff2a30d7ef",
     "grammar-selector": "github:lumine-code/grammar-selector#78fdfbcd8d7a2c224afdf84e396b5c11b7a89de5",
@@ -194,9 +194,9 @@
     "@electron/asar": "4.3.2",
     "@electron/rebuild": "4.2.1",
     "@eslint/js": "^10.0.1",
-    "electron": "45.3.1",
+    "electron": "45.3.2",
     "electron-builder": "27.0.0-alpha.14",
-    "eslint": "^10.14.0",
+    "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-n": "^18.5.0",
     "globals": "^17.14.0",
@@ -211,17 +211,17 @@
     "github:lumine-code/watcher#7aab20ec66bfb59d3209c6f2071c018786ba0d49": true
   },
   "overrides": {
-    "eslint@^10.14.0": {
+    "eslint@^10.15.0": {
       "minimatch": "11.0.8"
     },
     "@eslint/config-array@0.23.5": {
       "minimatch": "11.0.8"
     },
     "jasmine@7.0.0": {
-      "glob": "14.0.5"
+      "glob": "14.0.6"
     },
     "@electron/asar": {
-      "glob@^13.0.2": "14.0.5",
+      "glob@^13.0.2": "14.0.6",
       "minimatch@^10.0.1": "11.0.8"
     },
     "app-builder-lib@27.0.0-alpha.14": {
