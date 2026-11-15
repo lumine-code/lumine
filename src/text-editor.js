@@ -2674,11 +2674,17 @@ module.exports = class TextEditor {
     if (groupLastChanges) this.buffer.groupLastChanges();
 
     if (batchNewlineIndent) {
-      this.adjustNewlineIndentation(indentMarkers, languageMode, indentBaselines, {
-        ...options,
-        inputSnapshot,
-        inputChanges,
-      });
+      const adjustment = this.adjustNewlineIndentation(
+        indentMarkers,
+        languageMode,
+        indentBaselines,
+        {
+          ...options,
+          inputSnapshot,
+          inputChanges,
+        },
+      );
+      if (isPromise(adjustment)) return adjustment.then(() => result);
     } else if (
       typeof languageMode.scanPreparedIndentation !== "function" &&
       (options.autoIndent || options.autoIndentNewline || options.autoDecreaseIndent)

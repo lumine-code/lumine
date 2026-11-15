@@ -1,4 +1,5 @@
 const path = require("node:path");
+const dispatchInput = require("../src/text-editor-input-queue");
 
 const fixtures = [
   {
@@ -220,6 +221,47 @@ describe("Multicursor syntax indentation", () => {
         await check(fixture, backend, fixture.bodies.map((_, index) => index).reverse());
       });
     }
+
+  for (const backend of ["inline", "worker"])
+    for (const fixture of [fixtures[0], fixtures[9], fixtures[12]])
+      it(`orders a rapid Enter, text and Backspace burst for ${fixture.name} with ${backend} syntax`, async () => {
+        await openFixture(fixture, backend);
+        const buffer = editor.getBuffer();
+        const bodies = fixture.bodies.slice(0, 2);
+        const offsets = bodies.map((body) => fixture.source.indexOf(body));
+        const positions = offsets.map((offset) => buffer.positionForCharacterIndex(offset));
+        editor.setSelectedBufferRanges(positions.map((position) => [position, position]));
+        const originalSelections = editor
+          .getSelectedBufferRanges()
+          .map((range) => range.serialize());
+        buffer.clearUndoStack();
+        const expected = (typed = "") => {
+          let text = fixture.source;
+          for (const offset of offsets.toSorted((a, b) => b - a))
+            text = text.slice(0, offset) + `\n    ${typed}` + text.slice(offset);
+          return text;
+        };
+        // Submit the complete burst in one turn, as the editor input queue
+        // receives it. No parser/indentation wait separates these commands.
+        const newline = dispatchInput(editor, () => editor.insertNewline());
+        const typed = dispatchInput(editor, () => editor.insertText("x"));
+        const deleted = dispatchInput(editor, () => editor.backspace());
+        await Promise.all([newline, typed, deleted]);
+        await editor.whenGrammarSettled();
+        expect(editor.getText()).toBe(expected());
+        expect(normalizedPositions(editor.getCursorBufferPositions())).toEqual(
+          positions.map((position, index) => [position.row + index + 1, 4]),
+        );
+        await editor.undo();
+        expect(editor.getText()).toBe(expected("x"));
+        await editor.undo();
+        expect(editor.getText()).toBe(expected());
+        await editor.undo();
+        expect(editor.getText()).toBe(fixture.source);
+        expect(editor.getSelectedBufferRanges().map((range) => range.serialize())).toEqual(
+          originalSelections,
+        );
+      });
 
   for (const backend of ["inline", "worker"]) {
     it(`retains a blank row's suffix prefix before deciding the next cursor with ${backend} syntax`, async () => {
