@@ -682,7 +682,12 @@ class SyntaxWorkerService {
         }
         return result;
       }
-      await this.request(session, "fork", { target: id }, { signal, revision });
+      await this.request(
+        session,
+        "fork",
+        { target: id, purpose: options.isPastedText === false ? "input" : undefined },
+        { signal, revision },
+      );
       client = this.client;
       check();
       await this.sendEdits(

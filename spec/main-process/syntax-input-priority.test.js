@@ -71,7 +71,8 @@ function holdInputPlanning(t, host, count = 1) {
   t.mock.method(host, "dispatchOperation", async function (operation, data, options = {}) {
     const session = this.sessions.get(data.session);
     if (
-      operation === "input-indent" &&
+      (operation === "input-indent" ||
+        (operation === "prepared-indent" && session?.purpose === "input")) &&
       data.target == null &&
       session?.parent != null &&
       next < gates.length
@@ -142,6 +143,33 @@ async function cleanup(host, gates, tasks) {
   for (const gate of gates) gate.release.resolve();
   if (!host.closed) host.close();
   await Promise.allSettled(tasks);
+}
+
+async function planInput(host, data, request, transport) {
+  if (transport === "bounded") return host.dispatch("input-indent", request);
+  const { target } = request;
+  try {
+    await host.dispatch("fork", { ...data, target, purpose: "input" });
+    await host.dispatch("edit", {
+      session: target,
+      beforeRevision: 0,
+      revision: 1,
+      changes: request.changes,
+    });
+    await host.dispatch("initialize", {
+      session: target,
+      indentationRanges: request.ranges,
+      indentationOptions: request.options,
+    });
+    return await host.dispatch("prepared-indent", {
+      ...request,
+      session: target,
+      target: undefined,
+      revision: 1,
+    });
+  } finally {
+    host.closeSession(target);
+  }
 }
 
 test(
@@ -300,67 +328,68 @@ test(
   },
 );
 
-test(
-  "a followed view waits for input before seeking its acknowledged next viewport",
-  { timeout: 10000 },
-  async (t) => {
-    const { host, data, session } = await setup(
-      "class Record:\n    first = 1\n    second = 2\n    third = 3\n",
-    );
-    const gates = holdInputPlanning(t, host),
-      tasks = [],
-      events = [],
-      firstTile = deferred(),
-      acknowledgement = deferred();
-    const blocked = observeView(t, host, session, events);
-    let tiles = 0;
-    try {
-      const pendingView = track(
-        tasks,
-        host.dispatch(
-          "view",
-          {
-            ...data,
-            ranges: [[0, 1]],
-            stream: true,
-            follow: true,
-          },
-          {
-            emit(packet) {
-              if (packet.kind !== "end") return;
-              if (++tiles === 1) {
-                firstTile.resolve();
-                return acknowledgement.promise;
-              }
+for (const transport of ["bounded", "streamed"])
+  test(
+    `a followed view waits for ${transport} input before seeking its acknowledged next viewport`,
+    { timeout: 10000 },
+    async (t) => {
+      const { host, data, session } = await setup(
+        "class Record:\n    first = 1\n    second = 2\n    third = 3\n",
+      );
+      const gates = holdInputPlanning(t, host),
+        tasks = [],
+        events = [],
+        firstTile = deferred(),
+        acknowledgement = deferred();
+      const blocked = observeView(t, host, session, events);
+      let tiles = 0;
+      try {
+        const pendingView = track(
+          tasks,
+          host.dispatch(
+            "view",
+            {
+              ...data,
+              ranges: [[0, 1]],
+              stream: true,
+              follow: true,
             },
-          },
-        ),
-      );
-      await firstTile.promise;
-      const pendingInput = track(
-        tasks,
-        host.dispatch("input-indent", input(data, 2)).then((result) => {
-          events.push("input-result");
-          return result;
-        }),
-      );
-      await gates[0].entered.promise;
-      acknowledgement.resolve({ range: [2, 3] });
-      await blocked;
-      assert.equal(events.filter((event) => event === "seek").length, 1);
-      gates[0].release.resolve();
-      await pendingInput;
-      await pendingView;
-      assert.equal(tiles, 2);
-      const seeks = events.flatMap((event, index) => (event === "seek" ? [index] : []));
-      assert.ok(seeks.length >= 2);
-      assert.ok(seeks[1] > events.indexOf("input-result"));
-    } finally {
-      acknowledgement.resolve();
-      await cleanup(host, gates, tasks);
-    }
-  },
-);
+            {
+              emit(packet) {
+                if (packet.kind !== "end") return;
+                if (++tiles === 1) {
+                  firstTile.resolve();
+                  return acknowledgement.promise;
+                }
+              },
+            },
+          ),
+        );
+        await firstTile.promise;
+        const pendingInput = track(
+          tasks,
+          planInput(host, data, input(data, 2), transport).then((result) => {
+            events.push("input-result");
+            return result;
+          }),
+        );
+        await gates[0].entered.promise;
+        acknowledgement.resolve({ range: [2, 3] });
+        await blocked;
+        assert.equal(events.filter((event) => event === "seek").length, 1);
+        gates[0].release.resolve();
+        await pendingInput;
+        await pendingView;
+        assert.equal(tiles, 2);
+        const seeks = events.flatMap((event, index) => (event === "seek" ? [index] : []));
+        assert.ok(seeks.length >= 2);
+        assert.ok(seeks[1] > events.indexOf("input-result"));
+      } finally {
+        acknowledgement.resolve();
+        await cleanup(host, gates, tasks);
+      }
+    },
+  );
 
 test(
   "an input arriving during a timeout retry yield postpones the repeated paint query",
@@ -401,75 +430,76 @@ test(
   },
 );
 
-test(
-  "input accepted while a preview is loading postpones its first paint query",
-  { timeout: 10000 },
-  async (t) => {
-    const { host, data, session } = await setup();
-    const gates = holdInputPlanning(t, host),
-      tasks = [],
-      events = [],
-      previewReady = deferred(),
-      releasePreview = deferred(),
-      packets = [];
-    const blocked = observeView(t, host, session, events);
-    const getPreview = host.previews.get.bind(host.previews);
-    t.mock.method(host.previews, "get", async (...args) => {
-      const preview = await getPreview(...args);
-      assert.ok(preview);
-      preview.mode.queryBudget = { now: () => 0 };
-      const build = preview.mode.buildHighlightIterator;
-      t.mock.method(preview.mode, "buildHighlightIterator", function (...buildArgs) {
-        const iterator = build.apply(this, buildArgs);
-        const seek = iterator.seek;
-        t.mock.method(iterator, "seek", function (...seekArgs) {
-          events.push("preview-seek");
-          return seek.apply(this, seekArgs);
+for (const transport of ["bounded", "streamed"])
+  test(
+    `${transport} input accepted while a preview is loading postpones its first paint query`,
+    { timeout: 10000 },
+    async (t) => {
+      const { host, data, session } = await setup();
+      const gates = holdInputPlanning(t, host),
+        tasks = [],
+        events = [],
+        previewReady = deferred(),
+        releasePreview = deferred(),
+        packets = [];
+      const blocked = observeView(t, host, session, events);
+      const getPreview = host.previews.get.bind(host.previews);
+      t.mock.method(host.previews, "get", async (...args) => {
+        const preview = await getPreview(...args);
+        assert.ok(preview);
+        preview.mode.queryBudget = { now: () => 0 };
+        const build = preview.mode.buildHighlightIterator;
+        t.mock.method(preview.mode, "buildHighlightIterator", function (...buildArgs) {
+          const iterator = build.apply(this, buildArgs);
+          const seek = iterator.seek;
+          t.mock.method(iterator, "seek", function (...seekArgs) {
+            events.push("preview-seek");
+            return seek.apply(this, seekArgs);
+          });
+          return iterator;
         });
-        return iterator;
+        previewReady.resolve();
+        await releasePreview.promise;
+        return preview;
       });
-      previewReady.resolve();
-      await releasePreview.promise;
-      return preview;
-    });
-    session.mode.publicationPending = true;
-    const current = () => {
-      if (host.closed || host.sessions.get(session.id) !== session)
-        throw Object.assign(new Error("View was superseded"), { name: "AbortError" });
-    };
-    try {
-      const pendingView = track(
-        tasks,
-        host.previewView(session, [0, 1], async (packet) => packets.push(packet), current),
-      );
-      await previewReady.promise;
-      // A pure whitespace projection settles the retained parent source and
-      // supersedes this forced preview. A real token insertion takes the
-      // parsed input path, preserving the independent loading-preview case.
-      const request = input(data, 2);
-      request.changes[0].text = "\n# note";
-      const pendingInput = track(
-        tasks,
-        host.dispatch("input-indent", request).then((result) => {
-          events.push("input-result");
-          return result;
-        }),
-      );
-      await gates[0].entered.promise;
-      releasePreview.resolve();
-      await blocked;
-      assert.deepEqual(events, []);
-      gates[0].release.resolve();
-      await pendingInput;
-      assert.equal((await pendingView).syntaxReady, false);
-      assert.deepEqual(events, ["input-result", "preview-seek"]);
-      assert.ok(packets.some((packet) => packet.quality === "provisional"));
-    } finally {
-      releasePreview.resolve();
-      await cleanup(host, gates, tasks);
-    }
-  },
-);
+      session.mode.publicationPending = true;
+      const current = () => {
+        if (host.closed || host.sessions.get(session.id) !== session)
+          throw Object.assign(new Error("View was superseded"), { name: "AbortError" });
+      };
+      try {
+        const pendingView = track(
+          tasks,
+          host.previewView(session, [0, 1], async (packet) => packets.push(packet), current),
+        );
+        await previewReady.promise;
+        // A pure whitespace projection settles the retained parent source and
+        // supersedes this forced preview. A real token insertion takes the
+        // parsed input path, preserving the independent loading-preview case.
+        const request = input(data, 2);
+        request.changes[0].text = "\n# note";
+        const pendingInput = track(
+          tasks,
+          planInput(host, data, request, transport).then((result) => {
+            events.push("input-result");
+            return result;
+          }),
+        );
+        await gates[0].entered.promise;
+        releasePreview.resolve();
+        await blocked;
+        assert.deepEqual(events, []);
+        gates[0].release.resolve();
+        await pendingInput;
+        assert.equal((await pendingView).syntaxReady, false);
+        assert.deepEqual(events, ["input-result", "preview-seek"]);
+        assert.ok(packets.some((packet) => packet.quality === "provisional"));
+      } finally {
+        releasePreview.resolve();
+        await cleanup(host, gates, tasks);
+      }
+    },
+  );
 
 test(
   "closing the host cancels a view waiting behind input without querying its destroyed mode",
@@ -598,7 +628,7 @@ test(
 );
 
 test(
-  "projected whitespace input avoids parsing while parsed fallback and bulk keep their scheduler priorities",
+  "projected whitespace input avoids parsing while both input transports and paste keep their scheduler priorities",
   { timeout: 10000 },
   async (t) => {
     const source = "# %%\nclass Record:\n    field = 1\n";
@@ -650,18 +680,28 @@ test(
       phase = "input";
       request.changes = [{ startIndex: 18, oldEndIndex: 18, text: "\n# note" }];
       const plannedInput = await host.dispatch("input-indent", { ...request, target: 2 });
+      phase = "streamed-input";
+      const plannedStreamedInput = await host.dispatch("prepared-indent", {
+        ...request,
+        target: 3,
+      });
       phase = "bulk";
-      const plannedBulk = await host.dispatch("prepared-indent", { ...request, target: 3 });
+      const plannedBulk = await host.dispatch("prepared-indent", {
+        ...request,
+        target: 4,
+        options: { ...request.options, isPastedText: true },
+      });
       assert.deepEqual(plannedInput.value.levels, [[2, 1]]);
+      assert.deepEqual(plannedStreamedInput.value, plannedInput.value);
       assert.deepEqual(plannedBulk.value, plannedInput.value);
-      for (const name of ["input", "bulk"]) {
+      for (const name of ["input", "streamed-input", "bulk"]) {
         const submitted = records.filter((record) => record.phase === name);
         const root = submitted.find((record) => record.scopeName === "source.python.ipy"),
           child = submitted.find((record) => record.scopeName === "source.python");
         assert.ok(root, `Missing ${name} root parser submission`);
         assert.ok(child, `Missing ${name} injected parser submission`);
         assert.equal(child.priority - root.priority, 1);
-        if (name === "input") {
+        if (name !== "bulk") {
           for (const { priority } of submitted) {
             assert.ok(priority < -10, "Input must outrank preview parsing");
             assert.ok(priority < 0, "Input must outrank focused-document background parsing");

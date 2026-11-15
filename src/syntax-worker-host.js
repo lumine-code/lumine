@@ -328,6 +328,8 @@ class SyntaxWorkerHost {
     const session = this.sessions.get(id);
     if (!session) return;
     this.sessions.delete(id);
+    session.releaseInputPriority?.();
+    session.releaseInputPriority = null;
     this.sessions.get(session.parent)?.forks?.delete(id);
     session.captureInitialChanges?.dispose();
     session.inputSnapshot?.destroy();
@@ -374,7 +376,7 @@ class SyntaxWorkerHost {
     }
   }
 
-  async withInputPriority(callback) {
+  acquireInputPriority() {
     if (this.closed) throw aborted("Syntax worker was closed");
     if (!this.inputBarrier) {
       let resolve;
@@ -384,10 +386,13 @@ class SyntaxWorkerHost {
       this.inputBarrier = { promise, resolve, count: 0 };
     }
     const barrier = this.inputBarrier;
+    clearImmediate(barrier.wake);
+    barrier.wake = null;
     barrier.count++;
-    try {
-      return await callback();
-    } finally {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
       if (--barrier.count === 0 && this.inputBarrier === barrier) {
         // Deliver the input reply before waking optional presentation. A new
         // input may join this barrier before the next task; do not release it.
@@ -397,6 +402,15 @@ class SyntaxWorkerHost {
           barrier.resolve();
         });
       }
+    };
+  }
+
+  async withInputPriority(callback) {
+    const release = this.acquireInputPriority();
+    try {
+      return await callback();
+    } finally {
+      release();
     }
   }
 
@@ -458,12 +472,19 @@ class SyntaxWorkerHost {
       try {
         await this.dispatch(
           "fork",
-          { session: session.id, revision: data.revision, target },
+          {
+            session: session.id,
+            revision: data.revision,
+            target,
+            purpose:
+              operation === "input-indent" || data.options?.isPastedText === false
+                ? "input"
+                : undefined,
+          },
           { signal },
         );
         const candidate = this.sessions.get(target);
         if (!candidate) throw aborted("Syntax candidate was closed");
-        if (operation === "input-indent") candidate.purpose = "input";
         await this.dispatch(
           "edit",
           { session: target, beforeRevision: 0, revision: 1, changes: data.changes },
@@ -773,6 +794,8 @@ class SyntaxWorkerHost {
       if (operation === "fork") {
         if (!Number.isSafeInteger(data.target) || this.sessions.has(data.target))
           throw new Error("Invalid speculative syntax session");
+        if (data.purpose !== undefined && data.purpose !== "input")
+          throw new TypeError("Invalid speculative syntax purpose");
         const copy = new TextBuffer({ text: buffer.getTextSnapshot() });
         copy.getPath = () => buffer.getPath();
         const fork = {
@@ -783,12 +806,17 @@ class SyntaxWorkerHost {
           revision: 0,
           generation: 0,
           initialized: false,
+          purpose: data.purpose,
           jobs: new Set(),
           initialSyntaxChanges: [],
         };
         this.sessions.set(fork.id, fork);
         (session.forks ??= new Set()).add(fork.id);
         try {
+          // Input intent survives transport boundaries. A streamed operation
+          // owns this lease through initialization and every acknowledged
+          // packet, until its private session is released or invalidated.
+          if (fork.purpose === "input") fork.releaseInputPriority = this.acquireInputPriority();
           runtime.registerBuffer(copy, () => this.contextFor(fork));
           const policy = this.grammars.rootLanguageRangesByBuffer.get(buffer)?.descriptor;
           if (policy) fork.rootRanges = this.grammars.setRootLanguageRanges(copy, policy);

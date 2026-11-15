@@ -6,6 +6,7 @@ const Endpoint = require("../../src/syntax-worker-endpoint");
 const Host = require("../../src/syntax-worker-host");
 const Service = require("../../src/syntax-worker-service");
 const TextBuffer = require("../../src/text-buffer");
+const scheduler = require("../../src/tree-sitter-scheduler");
 const { configuration } = require("../../src/syntax-worker-environment");
 
 function deferred() {
@@ -197,43 +198,227 @@ test("input planning returns one cloneable complete result without stream packet
   }
 });
 
-test("bulk input carries the same planning policy through the real service transport", async () => {
-  const source = "value = 1\n".repeat(129);
-  const state = await setup(source);
-  try {
-    const changes = Array.from({ length: 129 }, (_, row) => ({
+function streamedInput() {
+  const count = 129;
+  // A real token change exercises the private parser instead of the optional
+  // whitespace projection. Every new comment remains at top-level indentation.
+  const text = "\n# note";
+  const ranges = Array.from({ length: count }, (_, row) => [row * 2 + 1, row * 2 + 1]);
+  return {
+    source: "value = 1\n".repeat(count),
+    changes: ranges.map((_, row) => ({
       oldRange: new TextBuffer.Range([row, 9], [row, 9]),
-      startIndex: row * 11 + 9,
-      oldEndIndex: row * 11 + 9,
-      newText: "\n",
-    }));
-    const ranges = changes.map((_, row) => [row * 2 + 1, row * 2 + 1]);
-    const levels = [];
-    for await (const batch of state.service.scanPreparedIndentation(
-      state.session,
-      changes,
-      ranges,
-      4,
-      {
-        isPastedText: false,
-        rowOptions: new Map(
-          ranges.map(([row]) => [
-            row,
-            {
-              preserveLeadingWhitespace: true,
-              skipBlankLines: false,
-            },
-          ]),
-        ),
-      },
-    ))
-      levels.push(...batch);
+      startIndex: row * (10 + text.length) + 9,
+      oldEndIndex: row * (10 + text.length) + 9,
+      newText: text,
+    })),
+    ranges,
+    options: {
+      isPastedText: false,
+      rowOptions: new Map(
+        ranges.map(([row]) => [row, { preserveLeadingWhitespace: true, skipBlankLines: false }]),
+      ),
+    },
+  };
+}
+
+test("129-row input retains parser and presentation priority across fork replies and stream acknowledgements", async (t) => {
+  const { source, changes, ranges, options } = streamedInput();
+  const state = await setup(source);
+  const entered = deferred(),
+    release = deferred(),
+    blocked = deferred();
+  const priorities = [],
+    events = [];
+  const install = state.host.installModeCurrent;
+  t.mock.method(state.host, "installModeCurrent", function (session) {
+    const result = install.call(this, session);
+    if (session.parent) session.mode.syncTimeoutMicros = 0;
+    return result;
+  });
+  const run = scheduler.runSlices;
+  t.mock.method(scheduler, "runSlices", function (operation, parameters) {
+    priorities.push(parameters.priority());
+    return run.call(this, operation, parameters);
+  });
+  const send = state.service.sendEdits;
+  t.mock.method(state.service, "sendEdits", async function (...args) {
+    entered.resolve();
+    await release.promise;
+    return send.apply(this, args);
+  });
+  const wait = state.host.waitForInput;
+  t.mock.method(state.host, "waitForInput", function (...args) {
+    const pending = wait.apply(this, args);
+    if (pending) blocked.resolve();
+    return pending;
+  });
+  const mode = state.host.sessions.get(1).mode;
+  const build = mode.buildHighlightIterator;
+  t.mock.method(mode, "buildHighlightIterator", function (...args) {
+    events.push("paint");
+    return build.apply(this, args);
+  });
+  const iterator = state.service.scanPreparedIndentation(
+    state.session,
+    changes,
+    ranges,
+    4,
+    options,
+  );
+  let pendingView;
+  try {
+    const next = iterator.next();
+    await entered.promise;
+    const fork = state.sent.find((message) => message.operation === "fork");
+    assert.equal(fork.data.purpose, "input");
+    // Endpoint expires each RPC signal after its reply. The logical input
+    // lease must survive that successful fork and the gap before initialization.
+    assert.equal(state.endpoint.jobs.size, 0);
+    pendingView = state.host.dispatch("view", { ...state.data, ranges: [[0, 1]] });
+    pendingView.catch(() => {});
+    await blocked.promise;
+    assert.deepEqual(events, []);
+    release.resolve();
+    const packet = await next;
     assert.deepEqual(
-      levels,
+      packet.value,
       ranges.map(([row]) => [row, 0]),
     );
+    assert.equal(packet.done, false);
+    assert.ok(priorities.length > 0, "The parsed input must submit a native parser job");
+    assert.ok(priorities.every((priority) => priority < -10));
+    await new Promise(setImmediate);
+    assert.deepEqual(events, [], "An unacknowledged input packet still owns presentation priority");
+    assert.equal(
+      state.sent.some((message) => message.type === "ack"),
+      false,
+    );
+    assert.equal((await iterator.next()).done, true);
+    events.push("input-complete");
+    await pendingView;
+    assert.equal(events[0], "input-complete");
+    assert.ok(events.includes("paint"));
+    assert.equal(state.sent.filter((message) => message.type === "ack").length, 1);
     assert.equal(state.host.sessions.size, 1);
     assert.equal(state.host.sessions.get(1).buffer.getText(), source);
+  } finally {
+    release.resolve();
+    await iterator.return();
+    state.close();
+    await Promise.allSettled([pendingView]);
+  }
+});
+
+for (const failure of ["abort", "transport-error"])
+  test(`a streamed input ${failure} releases its priority lease and private session`, async (t) => {
+    const { source, changes, ranges, options } = streamedInput();
+    const state = await setup(source);
+    const entered = deferred(),
+      release = deferred(),
+      blocked = deferred();
+    const controller = new AbortController();
+    const send = state.service.sendEdits;
+    t.mock.method(state.service, "sendEdits", async function (...args) {
+      entered.resolve();
+      await release.promise;
+      if (failure === "transport-error") throw new Error("Interrupted streamed input transport");
+      return send.apply(this, args);
+    });
+    const wait = state.host.waitForInput;
+    t.mock.method(state.host, "waitForInput", function (...args) {
+      const pending = wait.apply(this, args);
+      if (pending) blocked.resolve();
+      return pending;
+    });
+    const iterator = state.service.scanPreparedIndentation(state.session, changes, ranges, 4, {
+      ...options,
+      signal: controller.signal,
+    });
+    let pendingView;
+    try {
+      const next = iterator.next();
+      const rejected = assert.rejects(
+        next,
+        failure === "abort" ? { name: "AbortError" } : /Interrupted/,
+      );
+      await entered.promise;
+      pendingView = state.host.dispatch("view", { ...state.data, ranges: [[0, 1]] });
+      pendingView.catch(() => {});
+      await blocked.promise;
+      if (failure === "abort") controller.abort(Client.abortError("Cancelled queued input"));
+      release.resolve();
+      await rejected;
+      await pendingView;
+      assert.equal(state.host.sessions.size, 1);
+      assert.equal(state.host.inputBarrier, null);
+      assert.equal(state.host.sessions.get(1).buffer.getText(), source);
+    } finally {
+      release.resolve();
+      await iterator.return();
+      state.close();
+      await Promise.allSettled([pendingView]);
+    }
+  });
+
+for (const ending of ["return", "abort"])
+  test(`ending a streamed input with ${ending} while its packet is held releases the priority lease`, async (t) => {
+    const { source, changes, ranges, options } = streamedInput();
+    const state = await setup(source);
+    const controller = new AbortController(),
+      blocked = deferred();
+    const wait = state.host.waitForInput;
+    t.mock.method(state.host, "waitForInput", function (...args) {
+      const pending = wait.apply(this, args);
+      if (pending) blocked.resolve();
+      return pending;
+    });
+    const iterator = state.service.scanPreparedIndentation(state.session, changes, ranges, 4, {
+      ...options,
+      signal: controller.signal,
+    });
+    let pendingView;
+    try {
+      assert.equal((await iterator.next()).value.length, 129);
+      assert.equal(state.host.sessions.get(2).purpose, "input");
+      pendingView = state.host.dispatch("view", { ...state.data, ranges: [[0, 1]] });
+      pendingView.catch(() => {});
+      await blocked.promise;
+      if (ending === "return") await iterator.return();
+      else {
+        controller.abort(Client.abortError("Cancelled held input packet"));
+        await assert.rejects(iterator.next(), { name: "AbortError" });
+      }
+      await pendingView;
+      assert.equal(state.endpoint.jobs.size, 0);
+      assert.equal(state.client.pending.size, 0);
+      assert.equal(state.host.sessions.size, 1);
+      assert.equal(state.host.inputBarrier, null);
+      assert.equal(
+        state.sent.filter(
+          (message) =>
+            message.type === "control" && message.operation === "release" && message.session === 2,
+        ).length,
+        1,
+      );
+      state.host.closeSession(2);
+      assert.equal(state.host.inputBarrier, null);
+    } finally {
+      await iterator.return();
+      state.close();
+      await Promise.allSettled([pendingView]);
+    }
+  });
+
+test("a fork rejects an unknown input purpose without creating a session or priority lease", async () => {
+  const state = await setup();
+  try {
+    await assert.rejects(
+      state.host.dispatch("fork", { ...state.data, target: 2, purpose: "paint" }),
+      TypeError,
+    );
+    assert.equal(state.host.sessions.size, 1);
+    assert.equal(state.host.inputBarrier, undefined);
   } finally {
     state.close();
   }
