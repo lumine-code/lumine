@@ -137,3 +137,5 @@ A complementary normal-window probe avoids relying solely on the spec runner. La
 ## Multicursor input benchmark
 
 `npm run benchmark:multicursor-input -- --case python-500-independent-128 --samples 5 --output <fresh-directory>` runs an isolated actual-worker benchmark. Set `LUMINE_PERF_QUIET_WINDOW=1` only after other local tests and benchmarks have stopped. The launcher requires a clean source revision, removes inherited `CI`, creates a fresh profile and records source, grammar and fixture fingerprints. Use `--package-root <workspace>` to select the same working grammar packages for paired runs, or `--source <archive> --revision <sha>` for an exact archived baseline. The report separates first Enter, atomic publication, command completion and parent syntax settlement, and checks exact text, cursors, one publication and undo/redo outside the timed operation. Failed or cancelled input is excluded from accepted timing samples.
+
+The [15 November 2026 measurements](multicursor-input-performance-2026-11-15.md) record the sequential baseline, final worker timings, correctness checks and source/grammar fingerprints.
