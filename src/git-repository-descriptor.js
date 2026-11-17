@@ -447,9 +447,13 @@ function includeConditionMatches(condition, configPath, gitDirectory) {
     pattern = `**/${pattern}`;
   }
   if (pattern.endsWith("/")) pattern += "**";
+  // Git's includeIf globs treat parentheses and pipes as literal path characters.
+  pattern = pattern.replace(/[()|]/g, "\\$&");
   return picomatch.isMatch(normalizeLexicalPath(gitDirectory), pattern, {
     dot: true,
     nocase: Boolean(match[1]),
+    noext: true,
+    regex: false,
   });
 }
 

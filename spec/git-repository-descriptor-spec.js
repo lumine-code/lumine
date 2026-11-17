@@ -587,9 +587,9 @@ describe("git repository descriptor", () => {
     expect((await inspectRepositoryDescriptorAsync(descriptor)).available).toBe(true);
   });
 
-  it("resolves markerless core.worktree through a matching gitdir includeIf", async () => {
+  it("resolves core.worktree through a gitdir includeIf with literal parentheses", async () => {
     const root = temp.mkdirSync("descriptor-conditional-core-worktree-");
-    const gitDirectory = path.join(root, "configured.git");
+    const gitDirectory = path.join(root, "configured(repo).git");
     const workingDirectory = path.join(root, "conditional-worktree");
     const includedConfig = path.join(root, "worktree.config");
     copyGitDirectory(gitDirectory);
@@ -600,7 +600,7 @@ describe("git repository descriptor", () => {
     );
     fs.writeFileSync(
       path.join(gitDirectory, "config"),
-      `[includeIf "gitdir:**/configured.git"]\n\tpath = ${JSON.stringify(includedConfig)}\n`,
+      `[includeIf "gitdir:**/configured(repo).git"]\n\tpath = ${JSON.stringify(includedConfig)}\n`,
     );
 
     const descriptor = await discoverRepositoryDescriptorAsync(gitDirectory);
