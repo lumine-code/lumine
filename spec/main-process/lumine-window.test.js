@@ -1636,10 +1636,14 @@ describe("LumineWindow", function () {
         });
         await emitterEventPromise(window.browserWindow.webContents, "did-finish-load");
         window.preserveFocus = true;
+        const shown = emitterEventPromise(window.browserWindow, "show");
         const restored = app.windowStateStore.read(window.windowStateName)?.maximized
           ? emitterEventPromise(window.browserWindow, "maximize")
           : Promise.resolve();
         LumineApplication.prototype.showWindow.call(app, window);
+        // A normal saved mode also applies after the native show callback unwinds.
+        await shown;
+        await new Promise(setImmediate);
         await restored;
       };
       const close = async () => {
