@@ -274,9 +274,15 @@ describe("DOM scrollbar navigation", () => {
       await input("Home");
       expect(element.scrollTop).toBe(0);
       controller.activity.clear();
+      const activityChanged = spyOn(controller.activity, "onChange").and.callThrough();
       await input("Up");
+      // The viewport does not move at the boundary. Record the activation even
+      // if the transient chrome has expired by the time the test observes it.
+      await conditionPromise(
+        () => activityChanged.calls.allArgs().some(([active]) => active),
+        "ArrowUp at the scroll boundary to reveal the scrollbar",
+      );
       expect(element.scrollTop).toBe(0);
-      expect(revealed()).toBeTrue();
       await input(" ");
       expect(element.scrollTop).toBeGreaterThan(0);
       await input(" ", ["shift"]);
