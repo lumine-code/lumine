@@ -287,8 +287,12 @@ describe("DOM scrollbar navigation", () => {
       button.addEventListener("click", clicked);
       content.prepend(button);
       button.focus({ preventScroll: true });
+      expect(document.activeElement).toBe(button);
       controller.activity.clear();
       await input(" ");
+      await window.waitForFrames(() => clicked.calls.count() === 1, {
+        description: "native Space activation to reach the focused button",
+      });
       expect(clicked).toHaveBeenCalledTimes(1);
       expect(revealed()).toBeFalse();
       const custom = document.createElement("div");
