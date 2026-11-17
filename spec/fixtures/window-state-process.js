@@ -21,6 +21,7 @@ function recordNativeState(window, point, args) {
     if (window.isDestroyed()) entry.destroyed = true;
     else {
       Object.assign(entry, {
+        visible: window.isVisible(),
         maximized: window.isMaximized(),
         fullScreen: window.isFullScreen(),
         minimized: window.isMinimized(),
@@ -153,6 +154,7 @@ app
     const state = store.track(window, name);
     await window.loadURL("about:blank");
     const snapshot = store.read(name);
+    const shown = change(window, "show", () => {}, () => window.isVisible());
     const restored = snapshot?.fullScreen
       ? modeEvent(window, "enter-full-screen")
       : snapshot?.maximized
@@ -162,6 +164,10 @@ app
     // first so the armed listener observes completion of the native zoom.
     window.showInactive();
     state.restore();
+    // Normal mode restoration also starts after the actual show callback unwinds.
+    // Observe that startup boundary before issuing this stage's next operation.
+    await shown;
+    await new Promise(setImmediate);
     await restored;
     const start = {
       bounds: window.getNormalBounds(),

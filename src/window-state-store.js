@@ -148,12 +148,16 @@ function createController(store, window, name, saved, onDispose) {
   let timer;
   let frozen = false;
   let disposed = false;
+  let restoreRequested = false;
   let restoreCalled = false;
+  let showReady = true;
+  let showRestore;
   let pendingRestore = Boolean(saved);
   let applyingRestore = false;
   let awaitingMaximizedRestore = false;
   let maximizeRestoreObserved = false;
   let fullscreenRestore;
+  let awaitingFullscreenCompletion = false;
   let awaitingNormalGeometry = false;
   let normalExitObserved = false;
   const listeners = [];
@@ -164,6 +168,8 @@ function createController(store, window, name, saved, onDispose) {
     timer = undefined;
   };
   const cancelRestoreContinuation = () => {
+    clearImmediate(showRestore);
+    showRestore = undefined;
     clearImmediate(fullscreenRestore);
     fullscreenRestore = undefined;
     awaitingMaximizedRestore = false;
@@ -172,7 +178,7 @@ function createController(store, window, name, saved, onDispose) {
   const mode = (method) => window[method]?.() === true;
 
   const restoredModeMatches = () => {
-    if (saved.fullScreen) return mode("isFullScreen");
+    if (saved.fullScreen) return !awaitingFullscreenCompletion && mode("isFullScreen");
     return !mode("isFullScreen") && mode("isMaximized") === saved.maximized;
   };
 
@@ -295,7 +301,10 @@ function createController(store, window, name, saved, onDispose) {
           maximizeRestoreObserved = false;
           applyingRestore = true;
           try {
-            if (!mode("isFullScreen")) window.setFullScreen?.(true);
+            if (!mode("isFullScreen")) {
+              awaitingFullscreenCompletion = true;
+              window.setFullScreen?.(true);
+            }
           } finally {
             applyingRestore = false;
           }
@@ -317,35 +326,45 @@ function createController(store, window, name, saved, onDispose) {
     }
   };
 
+  const applyRestore = () => {
+    if (restoreCalled || frozen || disposed || isDestroyed()) return;
+    restoreCalled = true;
+    if (!saved) return;
+    applyingRestore = true;
+    try {
+      const fullscreenFulfilled =
+        saved.fullScreen && !awaitingFullscreenCompletion && mode("isFullScreen");
+      if (saved.maximized && !fullscreenFulfilled) {
+        const maximized = mode("isMaximized");
+        awaitingMaximizedRestore = saved.fullScreen;
+        maximizeRestoreObserved = maximized;
+        if (!maximized) window.maximize?.();
+        // A visible window may already report maximized while Cocoa's zoom
+        // delegate is unwinding. Apply the same transition barrier either way.
+        continueFullscreenRestore();
+      }
+      if (frozen || disposed || isDestroyed()) return;
+      const deferFullscreen = awaitingMaximizedRestore || fullscreenRestore;
+      if (!deferFullscreen && saved.fullScreen !== mode("isFullScreen")) {
+        awaitingFullscreenCompletion = saved.fullScreen;
+        window.setFullScreen?.(saved.fullScreen);
+      }
+      if (!saved.maximized && !saved.fullScreen && mode("isMaximized")) window.unmaximize?.();
+    } catch (error) {
+      cancelRestoreContinuation();
+      pendingRestore = false;
+      report(error);
+    } finally {
+      applyingRestore = false;
+    }
+    capture();
+  };
+
   const controller = {
     restore() {
-      if (restoreCalled || frozen || disposed || isDestroyed()) return;
-      restoreCalled = true;
-      if (!saved) return;
-      applyingRestore = true;
-      try {
-        if (saved.maximized) {
-          const maximized = mode("isMaximized");
-          awaitingMaximizedRestore = saved.fullScreen;
-          maximizeRestoreObserved = maximized;
-          if (!maximized) window.maximize?.();
-          // A visible window may already report maximized while Cocoa's zoom
-          // delegate is unwinding. Apply the same transition barrier either way.
-          continueFullscreenRestore();
-        }
-        if (frozen || disposed || isDestroyed()) return;
-        const deferFullscreen = awaitingMaximizedRestore || fullscreenRestore;
-        if (!deferFullscreen && saved.fullScreen !== mode("isFullScreen"))
-          window.setFullScreen?.(saved.fullScreen);
-        if (!saved.maximized && !saved.fullScreen && mode("isMaximized")) window.unmaximize?.();
-      } catch (error) {
-        cancelRestoreContinuation();
-        pendingRestore = false;
-        report(error);
-      } finally {
-        applyingRestore = false;
-      }
-      capture();
+      if (restoreRequested || frozen || disposed || isDestroyed()) return;
+      restoreRequested = true;
+      if (!saved || showReady) applyRestore();
     },
     boundsChanged() {
       if (frozen || disposed || isDestroyed()) return;
@@ -378,6 +397,27 @@ function createController(store, window, name, saved, onDispose) {
     window.on(event, listener);
     listeners.push([event, listener]);
   };
+  listen("show", () => {
+    if (!saved || showReady || showRestore || frozen || disposed || isDestroyed()) return;
+    try {
+      // Showing a hidden Cocoa window is asynchronous. Its mode transitions
+      // must start after the first actual show notification has unwound.
+      showRestore = setImmediate(() => {
+        showRestore = undefined;
+        if (frozen || disposed || isDestroyed()) return;
+        try {
+          if (window.isVisible?.() === false) return;
+          showReady = true;
+          if (restoreRequested) applyRestore();
+        } catch (error) {
+          report(error);
+        }
+      });
+      showRestore.unref?.();
+    } catch (error) {
+      report(error);
+    }
+  });
   for (const event of ["move", "resize", "resized"])
     listen(event, () => {
       changed(event, false);
@@ -391,6 +431,7 @@ function createController(store, window, name, saved, onDispose) {
     "restore",
   ])
     listen(event, () => {
+      if (event === "enter-full-screen") awaitingFullscreenCompletion = false;
       changed(event, true);
       if (event === "maximize" && awaitingMaximizedRestore) {
         maximizeRestoreObserved = true;
@@ -401,6 +442,7 @@ function createController(store, window, name, saved, onDispose) {
   // Native restoration may still be deferred until Show(). Capture memory now,
   // but never replace native fallback state merely by constructing a window.
   try {
+    showReady = window.isVisible?.() !== false;
     capture();
   } catch (error) {
     report(error);

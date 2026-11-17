@@ -32,6 +32,7 @@ class NativeWindow extends EventEmitter {
   constructor(options = {}) {
     super();
     this.normalBounds = { ...INITIAL_BOUNDS, ...options.bounds };
+    this.visible = options.visible ?? true;
     this.maximized = false;
     this.fullScreen = false;
     this.kiosk = false;
@@ -56,6 +57,11 @@ class NativeWindow extends EventEmitter {
   isMaximized() {
     this.assertLive();
     return this.maximized;
+  }
+
+  isVisible() {
+    this.assertLive();
+    return this.visible;
   }
 
   isFullScreen() {
@@ -513,6 +519,162 @@ test("saved maximized intent survives startup resize events and an unfinished as
   assert.deepEqual(store.read("workspace"), snapshot({ maximized: true }));
 });
 
+for (const ordering of ["restore before show", "restore inside show"])
+  test(`hidden restoration waits for the actual show event and its callback to unwind with ${ordering}`, async (t) => {
+    const failures = [];
+    const store = fixture(t, { onError: (error) => failures.push(error) });
+    store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+    const window = new NativeWindow({ visible: false });
+    const controller = store.track(window, "workspace");
+    t.after(controller.dispose);
+    let showDelegateActive = true;
+    const maximize = window.maximize.bind(window);
+    window.maximize = () => {
+      assert.equal(showDelegateActive, false, "Maximize cannot begin inside the show delegate");
+      maximize();
+    };
+    if (ordering === "restore before show") {
+      controller.restore();
+      controller.restore();
+    } else {
+      window.once("show", () => {
+        controller.restore();
+        controller.restore();
+      });
+    }
+    // A show request can update the getter before the native notification arrives.
+    window.visible = true;
+    await new Promise(setImmediate);
+    assert.deepEqual(window.calls, []);
+    window.emit("show");
+    window.emit("show");
+    assert.deepEqual(window.calls, []);
+    showDelegateActive = false;
+    await new Promise(setImmediate);
+    assert.deepEqual(window.calls, ["maximize"]);
+    await new Promise(setImmediate);
+    controller.restore();
+    window.emit("show");
+    await new Promise(setImmediate);
+
+    assert.deepEqual(failures, []);
+    assert.deepEqual(window.calls, ["maximize", ["setFullScreen", true]]);
+    controller.freeze();
+    assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+  });
+
+test("normal restoration cannot persist transitional geometry before the actual show is applied", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const store = fixture(t);
+  store.write("workspace", snapshot());
+  const window = new NativeWindow({ visible: false });
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  window.visible = true;
+  controller.restore();
+  window.changeBounds({ width: 500 });
+  t.mock.timers.tick(100);
+  assert.deepEqual(store.read("workspace"), snapshot());
+  window.emit("show");
+  window.changeBounds({ width: 600 });
+  t.mock.timers.tick(100);
+  assert.deepEqual(store.read("workspace"), snapshot());
+  await new Promise(setImmediate);
+  const normalBounds = { ...INITIAL_BOUNDS, width: 1100 };
+  window.changeBounds(normalBounds);
+  controller.freeze();
+
+  assert.deepEqual(window.calls, []);
+  assert.deepEqual(store.read("workspace"), snapshot({ bounds: normalBounds }));
+});
+
+for (const method of ["getNormalBounds", "isVisible"])
+  test(`a queued show restore reports ${method} failures and retains the saved cache`, async (t) => {
+    const failures = [];
+    const store = fixture(t, { onError: (error) => failures.push(error) });
+    store.write("workspace", snapshot());
+    const window = new NativeWindow({ visible: false });
+    const controller = store.track(window, "workspace");
+    t.after(controller.dispose);
+    controller.restore();
+    const failure = new Error("Native window state is unavailable");
+    const original = window[method].bind(window);
+    window[method] = () => {
+      throw failure;
+    };
+    window.visible = true;
+    window.emit("show");
+    await new Promise(setImmediate);
+
+    assert.deepEqual(failures, [failure]);
+    assert.deepEqual(window.calls, []);
+    assert.deepEqual(store.read("workspace"), snapshot());
+    window[method] = original;
+    controller.freeze();
+    assert.deepEqual(store.read("workspace"), snapshot());
+  });
+
+test("hiding before queued restoration retains intent until the next actual show", async (t) => {
+  const store = fixture(t);
+  store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+  const window = new NativeWindow({ visible: false });
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  controller.restore();
+  window.visible = true;
+  window.emit("show");
+  window.visible = false;
+  window.emit("hide");
+  await new Promise(setImmediate);
+  assert.deepEqual(window.calls, []);
+  assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+  window.visible = true;
+  window.emit("show");
+  await new Promise(setImmediate);
+  await new Promise(setImmediate);
+
+  assert.deepEqual(window.calls, ["maximize", ["setFullScreen", true]]);
+  controller.freeze();
+  assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+});
+
+for (const phase of ["waiting for show", "queued show", "queued fullscreen"])
+  for (const stop of ["freeze", "dispose", "closed"])
+    test(`${stop} cancels hidden restoration while ${phase} and ignores late show events`, async (t) => {
+      const store = fixture(t);
+      store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+      const window = new NativeWindow({ visible: false });
+      const controller = store.track(window, "workspace");
+      t.after(controller.dispose);
+      controller.restore();
+      if (phase !== "waiting for show") {
+        window.visible = true;
+        window.emit("show");
+      }
+      if (phase === "queued fullscreen") await new Promise(setImmediate);
+      if (stop === "closed") window.destroy();
+      else controller[stop]();
+      window.emit("show");
+      await new Promise(setImmediate);
+
+      assert.deepEqual(window.calls, phase === "queued fullscreen" ? ["maximize"] : []);
+      assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+    });
+
+test("a hidden window without a saved snapshot tracks geometry without awaiting show", (t) => {
+  const store = fixture(t);
+  const window = new NativeWindow({ visible: false });
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  controller.restore();
+  const normalBounds = { ...INITIAL_BOUNDS, width: 1100 };
+  window.changeBounds(normalBounds);
+  controller.freeze();
+
+  assert.deepEqual(window.calls, []);
+  assert.deepEqual(store.read("workspace"), snapshot({ bounds: normalBounds }));
+});
+
 test("fullscreen restoration waits for maximize completion and the native callback to unwind", async (t) => {
   const store = fixture(t);
   store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
@@ -641,6 +803,64 @@ test("fullscreen restoration preserves intent until its native transition comple
   controller.freeze();
 
   assert.deepEqual(window.calls, ["maximize", ["setFullScreen", true]]);
+  assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+});
+
+test("transient fullscreen getters before native entry cannot replace saved fullscreen intent", async (t) => {
+  const store = fixture(t);
+  store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+  const window = new NativeWindow();
+  window.setFullScreen = (value) => window.calls.push(["setFullScreen", value]);
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  controller.restore();
+  await new Promise(setImmediate);
+  assert.deepEqual(window.calls, ["maximize", ["setFullScreen", true]]);
+  window.fullScreen = true;
+  window.emit("resize");
+  window.emit("resized");
+  window.fullScreen = false;
+  window.emit("resize");
+  window.emit("resized");
+  controller.freeze();
+
+  assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+});
+
+test("native fullscreen entry releases restoration protection for later normal changes", async (t) => {
+  const store = fixture(t);
+  store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+  const window = new NativeWindow();
+  window.setFullScreen = (value) => window.calls.push(["setFullScreen", value]);
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  controller.restore();
+  await new Promise(setImmediate);
+  window.fullScreen = true;
+  window.emit("resize");
+  window.emit("enter-full-screen");
+  window.fullScreen = false;
+  window.maximized = false;
+  window.emit("leave-full-screen");
+  const normalBounds = { ...INITIAL_BOUNDS, width: 1100 };
+  window.changeBounds(normalBounds);
+  controller.freeze();
+
+  assert.deepEqual(store.read("workspace"), snapshot({ bounds: normalBounds }));
+});
+
+test("an already fulfilled initial fullscreen state does not start another native transition", async (t) => {
+  const store = fixture(t);
+  store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+  const window = new NativeWindow();
+  window.fullScreen = true;
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  controller.restore();
+  await new Promise(setImmediate);
+  controller.freeze();
+
+  assert.deepEqual(window.calls, []);
   assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
 });
 
