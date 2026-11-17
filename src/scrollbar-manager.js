@@ -21,6 +21,8 @@ module.exports = class ScrollbarManager {
     this.environment = environment;
     this.documents = new Map();
     this.observations = new Set();
+    this.navigationBindings = new Map();
+    this.nextNavigationId = 0;
   }
 
   initialize() {
@@ -118,6 +120,27 @@ module.exports = class ScrollbarManager {
         ];
       }),
     );
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Bind shared viewport navigation to a read-only DOM scrollport.
+   * Owns scoped arrow, page, document-edge and Space bindings while leaving controls, editable content and nested scrollports to their own handlers. Accepted navigation reveals transient chrome even at a boundary; wheel, rendering and automatic scrolling remain quiet.
+   * @param {HTMLElement} element - Actual HTML content scrollport. Use navigationCommands for lists with their own selection model.
+   * @returns {Disposable} Dispose with the view to remove its commands and key bindings. A scrollport has one navigation owner.
+   * @category DOM Surfaces
+   */
+  bindNavigation(element) {
+    if (this.navigationBindings.has(element))
+      throw new Error("Scrollbar navigation is already bound to this scrollport.");
+    this.attach(element);
+    const { bindNavigation, createKeymap } = require("./scrollbar-navigation");
+    this.navigationKeymap ??= createKeymap(this.environment.keymaps);
+    const binding = bindNavigation(this, element, ++this.nextNavigationId);
+    this.navigationBindings.set(element, binding);
+    return binding;
   }
 
   /**
@@ -350,6 +373,8 @@ module.exports = class ScrollbarManager {
     }
   }
   releaseDocument(document) {
+    for (const [element, binding] of this.navigationBindings)
+      if (element.ownerDocument === document) binding.dispose();
     for (const observation of [...this.observations])
       if (observation.element.ownerDocument === document) observation.dispose();
     this.documents.get(document)?.dispose();
@@ -357,6 +382,7 @@ module.exports = class ScrollbarManager {
   }
   clear() {
     this.subscriptions?.dispose();
+    for (const binding of this.navigationBindings.values()) binding.dispose();
     for (const observation of [...this.observations]) observation.dispose();
     for (const manager of this.documents.values()) manager.dispose();
     this.documents.clear();
