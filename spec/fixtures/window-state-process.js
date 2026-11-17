@@ -306,24 +306,32 @@ app
     // observed native change, including a resize immediately before maximizing.
     state.freeze();
     assert.equal(Object.hasOwn(store.read(name), "kiosk"), false);
-    console.log(
-      `WINDOW_STATE_RESULT ${JSON.stringify({
-        stage,
-        start,
-        targets: bounds,
-        area,
-        actual: {
-          maximized: window.isMaximized(),
-          fullScreen: window.isFullScreen(),
-          minimized: window.isMinimized(),
-          bounds: window.getNormalBounds(),
-        },
-        saved: store.read(name),
-      })}`,
-    );
-    // Unwind Cocoa's fullscreen notification before requesting native teardown.
-    // The snapshot above is already committed in the mode event's own turn.
-    setImmediate(() => window.close());
+    const result = {
+      stage,
+      start,
+      targets: bounds,
+      area,
+      actual: {
+        maximized: window.isMaximized(),
+        fullScreen: window.isFullScreen(),
+        minimized: window.isMinimized(),
+        bounds: window.getNormalBounds(),
+      },
+      saved: store.read(name),
+    };
+    await new Promise((resolve, reject) => {
+      process.stdout.write(`WINDOW_STATE_RESULT ${JSON.stringify(result)}\n`, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+    // Let the native mode callback unwind after the snapshot has been saved.
+    // Destroying the minimized fixture guarantees its closed event and allows
+    // the test application to quit through window-all-closed.
+    setImmediate(() => {
+      if (stage === "minimize") window.destroy();
+      else window.close();
+    });
   })
   .catch((error) => {
     console.error(`WINDOW_STATE_TRACE ${JSON.stringify(nativeTrace)}`);
