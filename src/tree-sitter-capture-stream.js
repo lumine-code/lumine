@@ -155,22 +155,27 @@ async function* scanQueryCaptures(mode, queryType, { signal, batchSize = 256 } =
         requireComplete(queried);
         const captures = queried.results;
         for (let offset = 0; offset < captures.length;) {
+          const sliceStart = offset;
           // Scope predicates may inspect node text too. Keep their budget active
           // only during the synchronous pass, never across a consumer's yield.
           const filtered = withPredicateTextBudget(() => {
             const limit = Math.min(captures.length, offset + batchSize);
             while (offset < limit && batch.length < batchSize) {
               const capture = captures[offset];
-              captures[offset++] = null;
               // A capture enclosing several query windows belongs to its first
               // window. Do not deduplicate genuine repeated captures/patterns.
-              if (!firstChunk && capture.node.startIndex < startIndex) continue;
-              if (window.endIndex < endIndex && capture.node.startIndex >= window.endIndex)
-                continue;
-              if (resolver.store(capture, { boundaries: false })) batch.push(capture);
+              const belongsToWindow =
+                (firstChunk || capture.node.startIndex >= startIndex) &&
+                (window.endIndex >= endIndex || capture.node.startIndex < window.endIndex);
+              if (belongsToWindow && resolver.store(capture, { boundaries: false }))
+                batch.push(capture);
+              captures[offset++] = null;
             }
           }, budget);
-          requireComplete(filtered);
+          // The resolver commits range data only after a capture's predicates
+          // finish. Resume at the unfinished capture after a productive slice.
+          // If the capture alone exhausts a fresh slice, fail without replay.
+          if (filtered.reason !== "timeout" || offset === sliceStart) requireComplete(filtered);
           if (batch.length === batchSize) {
             yield { grammar: layer.grammar, captures: batch, layerId, last: false };
             batch = [];

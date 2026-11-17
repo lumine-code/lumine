@@ -406,7 +406,43 @@ test("adaptive windows preserve real WASM captures and genuine repeated patterns
   }
 });
 
-test("does not replay a timeout after the scope resolver has consumed captures", async (t) => {
+test("resumes scope resolution at the unfinished capture after a productive slice", async (t) => {
+  let clock = 0;
+  t.mock.method(performance, "now", () => clock);
+  const f = fixture();
+  const parent = f.capture("definition", 0, 8, {
+    "adjust.endAfterFirstMatchOf": ".+",
+    definition: true,
+  });
+  const child = f.capture("name", 2, 4, { "adjust.endAfterFirstMatchOf": ".+" });
+  child.node.parent = parent.node;
+  child.assertedProperties = { "test.descendantOfNodeWithData": "definition" };
+  const reads = [];
+  for (const [capture, cost] of [
+    [parent, 20],
+    [child, 10],
+  ]) {
+    Object.defineProperty(capture.node, "text", {
+      get() {
+        reads.push(capture.name);
+        clock += cost;
+        const length = capture.node.endIndex - capture.node.startIndex;
+        checkPredicateTextLength(length);
+        return "x".repeat(length);
+      },
+    });
+  }
+  f.layer([parent, child]);
+  const batches = await collect(scanQueryCaptures(f.mode, "tagsQuery"));
+  assert.deepEqual(
+    batches.flatMap(({ captures }) => captures),
+    [parent, child],
+  );
+  assert.deepEqual(reads, ["definition", "name", "name"]);
+  assert.equal(batches.at(-1).last, true);
+});
+
+test("still rejects a scope capture that individually exhausts its budget", async (t) => {
   let clock = 0;
   t.mock.method(performance, "now", () => clock);
   const f = fixture();
