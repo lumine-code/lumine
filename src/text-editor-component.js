@@ -3127,7 +3127,6 @@ module.exports = class TextEditorComponent {
       if (accepted) {
         // The user took over the viewport; stop pinning the inherited anchor.
         this.settlingScrollAnchor = null;
-        this.revealScrollbars();
       }
       return accepted;
     }
@@ -5210,7 +5209,6 @@ module.exports = class TextEditorComponent {
 
   didChangeSelectionRange(event) {
     const { model } = this.props;
-    if (!event?.textChanged && event?.origin !== "reload") this.revealScrollbars();
 
     if (this.getPlatform() === "linux") {
       // Buffer edits move selections to follow their text; they are not a new
@@ -5779,7 +5777,6 @@ module.exports = class TextEditorComponent {
       this.scrollTopPending = true;
       this.scrollTop = scrollTop;
       this.element.emitter.emit("did-change-scroll-top", scrollTop);
-      this.revealScrollbars();
       return true;
     } else {
       return false;
@@ -5821,7 +5818,6 @@ module.exports = class TextEditorComponent {
       this.scrollLeftPending = true;
       this.scrollLeft = scrollLeft;
       this.element.emitter.emit("did-change-scroll-left", scrollLeft);
-      this.revealScrollbars();
       return true;
     } else {
       return false;

@@ -5,7 +5,8 @@ function createScrollbarRuntime() {
   const finite = (value) => (Number.isFinite(value) ? Math.max(0, value) : 0);
 
   // Visibility is independent of geometry. Extending the deadline does not
-  // replace a timer on every scroll frame or repeated navigation command.
+  // replace a timer for repeated navigation commands. Scroll position updates
+  // never extend this deadline: wheel and automatic scrolling use hover only.
   class ScrollbarActivity {
     constructor({ window, onChange, delay = 700 }) {
       this.window = window;
@@ -293,6 +294,7 @@ function createScrollbarRuntime() {
       this.scrollLeft = element.scrollLeft;
       this.positionVersion = 0;
       this.layoutVersion = 0;
+      this.navigationVersion = 0;
       owners.get(element)?.destroy();
       owners.set(element, this);
       this.manager = manager;
@@ -670,6 +672,7 @@ function createScrollbarRuntime() {
         scrollLeft,
         positionVersion: this.positionVersion,
         layoutVersion: this.layoutVersion,
+        navigationVersion: this.navigationVersion,
         wheelChain,
         wheelLineHeight: parseFloat(style.lineHeight) || 16,
         // Match native defaults: macOS preserves the delivered axes; other
@@ -803,6 +806,15 @@ function createScrollbarRuntime() {
         snapshot.layout === "overlay" &&
         snapshot.visible &&
         (snapshot.canScrollVertically || snapshot.canScrollHorizontally);
+      // A command can show the port after this hidden snapshot was read. Keep
+      // its newer deadline before retiring the stale visible activity object;
+      // an ordinary hide still disposes activity without reviving it later.
+      if (
+        !snapshot.visible &&
+        snapshot.navigationVersion !== this.navigationVersion &&
+        this.activity?.active
+      )
+        this.pendingActivityDeadline = this.activity.deadline;
       if (transient && !this.activity)
         this.activity = new ScrollbarActivity({
           window: this.manager.window,
@@ -812,8 +824,7 @@ function createScrollbarRuntime() {
         this.activity.dispose();
         this.activity = null;
       }
-      if (snapshot.persistent || snapshot.layout !== "overlay" || !snapshot.visible)
-        this.pendingActivityDeadline = null;
+      if (snapshot.persistent || snapshot.layout !== "overlay") this.pendingActivityDeadline = null;
       else if (this.pendingActivityDeadline != null) {
         const remaining = this.pendingActivityDeadline - this.manager.window.performance.now();
         if (remaining > 0 && this.activity) this.activity.reveal(remaining);
@@ -852,7 +863,6 @@ function createScrollbarRuntime() {
           this.rtl ? this.geometry.scrollWidth - this.geometry.viewportWidth + left : left,
         );
       }
-      if (moved) this.reveal();
     }
 
     routeWheel(event) {
@@ -963,6 +973,7 @@ function createScrollbarRuntime() {
 
     reveal() {
       if (this.destroyed) return false;
+      this.navigationVersion++;
       if (!this.activity) {
         // A handled expand/navigation can introduce overflow on the next
         // layout pass. Remember its deadline without measuring or a timer.

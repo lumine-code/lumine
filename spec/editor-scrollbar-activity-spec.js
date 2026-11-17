@@ -3,6 +3,7 @@ describe("Editor scrollbar activity", () => {
 
   beforeEach(() => {
     spyOn(window.performance, "now").and.callFake(() => Date.now());
+    lumine.config.set("editor.softWrap", false);
     editor = lumine.workspace.buildTextEditor({ autoHeight: false, softWrapped: false });
     editor.setText(Array(100).fill("long source line ".repeat(20)).join("\n"));
     editor.setCursorBufferPosition([0, 0]);
@@ -53,15 +54,15 @@ describe("Editor scrollbar activity", () => {
     return position;
   }
 
-  it("shares one recent-activity deadline across both scroll axes", () => {
+  it("shares one recent-activity deadline across explicit navigation commands", async () => {
     expect(revealed()).toBeFalse();
-    expect(component.canScrollHorizontally()).toBeTrue();
     window.setTimeout.calls.reset();
-    expect(component.setScrollTop(30)).toBeTrue();
+    await lumine.commands.dispatch(element, "core:move-down");
+    expect(editor.getCursorBufferPosition().row).toBe(1);
     expect(revealed()).toBeTrue();
     advanceClock(600);
-    expect(component.setScrollLeft(40)).toBeTrue();
-    expect(component.getScrollLeft()).toBe(40);
+    await lumine.commands.dispatch(element, "core:move-right");
+    expect(editor.getCursorBufferPosition().column).toBe(1);
     expect(window.setTimeout.calls.allArgs().filter((args) => args[1] === 700).length).toBe(1);
     advanceClock(100);
     expect(revealed()).toBeTrue();
@@ -71,20 +72,91 @@ describe("Editor scrollbar activity", () => {
     expect(revealed()).toBeFalse();
   });
 
-  it("reveals an accepted smooth wheel before its first animation frame", () => {
-    editor.update({ smoothScrolling: true });
-    expect(component.getScrollTop()).toBe(0);
-    expect(component.applyWheelScroll(0, 100, 0)).toBeTrue();
-    expect(component.getScrollTop()).toBe(0);
-    expect(revealed()).toBeTrue();
-  });
+  for (const smoothScrolling of [false, true]) {
+    it(`keeps wheel scrolling and its animation frames quiet with smoothScrolling=${smoothScrolling}`, () => {
+      editor.update({ smoothScrolling });
+      spyOn(component.scrollAnimator, "raf").and.returnValue(1);
+      spyOn(component.scrollAnimator, "caf");
+      window.setTimeout.calls.reset();
+      const event = new WheelEvent("wheel", {
+        deltaX: 80,
+        deltaY: 100,
+        bubbles: true,
+        cancelable: true,
+      });
+      element.dispatchEvent(event);
+      expect(event.defaultPrevented).toBeTrue();
+      expect(revealed()).toBeFalse();
+      if (smoothScrolling) {
+        expect(component.getScrollTop()).toBe(0);
+        component.scrollAnimator.advance(1000 / 60);
+        expect(component.getScrollTop()).toBeGreaterThan(0);
+        expect(revealed()).toBeFalse();
+        component.scrollAnimator.advance(1000);
+      }
+      expect(component.getScrollTop()).toBeGreaterThan(0);
+      expect(component.getScrollLeft()).toBeGreaterThan(0);
+      expect(revealed()).toBeFalse();
+      expect(window.setTimeout.calls.allArgs().filter((args) => args[1] === 700).length).toBe(0);
+    });
 
-  it("reveals cursor navigation inside the viewport without requiring a scroll", () => {
-    editor.moveDown();
+    it(`does not extend or cancel a command deadline with wheel or momentum when smoothScrolling=${smoothScrolling}`, async () => {
+      editor.update({ smoothScrolling });
+      spyOn(component.scrollAnimator, "raf").and.returnValue(1);
+      spyOn(component.scrollAnimator, "caf");
+      await lumine.commands.dispatch(element, "core:move-down");
+      advanceClock(600);
+      expect(component.applyWheelScroll(80, 100, performance.now())).toBeTrue();
+      if (smoothScrolling) component.scrollAnimator.advance(1000 / 60);
+      expect(revealed()).toBeTrue();
+      advanceClock(99);
+      expect(revealed()).toBeTrue();
+      advanceClock(1);
+      expect(revealed()).toBeFalse();
+      expect(component.applyWheelScroll(20, 30, performance.now(), true)).toBeTrue();
+      if (smoothScrolling) component.scrollAnimator.advance(1000);
+      expect(revealed()).toBeFalse();
+    });
+  }
+
+  it("reveals an explicit cursor command inside the viewport without requiring a scroll", async () => {
+    await lumine.commands.dispatch(element, "core:move-down");
     expect(editor.getCursorBufferPosition().row).toBe(1);
     expect(component.getScrollTop()).toBe(0);
     expect(revealed()).toBeTrue();
     advanceClock(700);
+    expect(revealed()).toBeFalse();
+  });
+
+  it("keeps programmatic cursor, selection and scroll changes quiet", () => {
+    window.setTimeout.calls.reset();
+    editor.moveDown();
+    editor.setSelectedBufferRange([
+      [2, 1],
+      [3, 4],
+    ]);
+    element.setScrollTop(30);
+    element.setScrollLeft(40);
+    expect(component.getScrollTop()).toBe(30);
+    expect(component.getScrollLeft()).toBe(40);
+    component.refs.scrollContainer.dispatchEvent(new Event("scroll"));
+    expect(revealed()).toBeFalse();
+    expect(window.setTimeout.calls.allArgs().filter((args) => args[1] === 700).length).toBe(0);
+  });
+
+  it("does not renew a command deadline during a programmatic animated scroll", async () => {
+    spyOn(component.scrollAnimator, "raf").and.returnValue(1);
+    spyOn(component.scrollAnimator, "caf");
+    await lumine.commands.dispatch(element, "core:move-down");
+    advanceClock(600);
+    expect(component.scrollAnimator.scrollTo({ top: 100, left: 80, duration: 120 })).toBeTrue();
+    component.scrollAnimator.advance(1000 / 60);
+    expect(revealed()).toBeTrue();
+    advanceClock(100);
+    expect(revealed()).toBeFalse();
+    component.scrollAnimator.advance(1000);
+    expect(component.getScrollTop()).toBe(100);
+    expect(component.getScrollLeft()).toBe(80);
     expect(revealed()).toBeFalse();
   });
 
@@ -94,6 +166,8 @@ describe("Editor scrollbar activity", () => {
       expect(editor.getCursorBufferPosition().row).toBe(0);
       expect(component.getScrollTop()).toBe(0);
       expect(revealed()).toBeTrue();
+      advanceClock(700);
+      expect(revealed()).toBeFalse();
     });
   }
 
@@ -160,6 +234,29 @@ describe("Editor scrollbar activity", () => {
       expect(revealed()).toBeTrue();
       pointer(scrollbar.element, release, position);
       expect(revealed()).toBeFalse();
+    });
+  }
+
+  for (const orientation of ["vertical", "horizontal"]) {
+    it(`keeps a ${orientation} track click visible only while held without creating activity`, () => {
+      const scrollbar = component.refs[`${orientation}Scrollbar`].scrollbar;
+      const bounds = scrollbar.element.getBoundingClientRect();
+      const position = {
+        x: bounds.left + bounds.width * (orientation === "horizontal" ? 0.8 : 0.5),
+        y: bounds.top + bounds.height * (orientation === "vertical" ? 0.8 : 0.5),
+      };
+      window.setTimeout.calls.reset();
+      pointer(scrollbar.element, "pointerdown", position);
+      expect(
+        orientation === "vertical" ? component.getScrollTop() : component.getScrollLeft(),
+      ).toBeGreaterThan(0);
+      expect(component.scrollbarActivity.active).toBeFalse();
+      expect(revealed()).toBeTrue();
+      advanceClock(701);
+      expect(revealed()).toBeTrue();
+      pointer(scrollbar.element, "pointerup", position);
+      expect(revealed()).toBeFalse();
+      expect(window.setTimeout.calls.allArgs().filter((args) => args[1] === 700).length).toBe(0);
     });
   }
 

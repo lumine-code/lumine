@@ -75,7 +75,7 @@ module.exports = class ScrollbarManager {
    * @status public
    *
    * Reveal transient overlay chrome after a handled navigation action, even at a boundary.
-   * Hover and dragging retain visibility; activity expires 700 ms after the last action.
+   * Hover and dragging retain visibility; activity expires 700 ms after the last navigation action. Wheel, position updates and automatic scrolling do not extend or cancel it.
    * @param {HTMLElement} element - Editor element or the actual DOM scrollport, already attached.
    * @returns {Boolean} Whether transient chrome accepted the activity. Persistent surfaces are unchanged.
    * @category DOM Surfaces
@@ -126,7 +126,7 @@ module.exports = class ScrollbarManager {
    *
    * Create the shared activity timer for renderer-owned scrollbar chrome.
    * @param {HTMLElement} element - Surface whose document owns the timer.
-   * @param {Function} onChange - Receives the active Boolean when recent activity starts or expires; combine it with hover and dragging in the renderer.
+   * @param {Function} onChange - Receives the active Boolean when recent navigation starts or expires; combine it with hover and dragging in the renderer. Report handled navigation rather than raw scroll notifications.
    * @returns {Object|null} Controller with active, reveal(), clear() and dispose(), or null for an inert document. Dispose when the surface is removed or moves to another document.
    * @category DOM Surfaces
    */

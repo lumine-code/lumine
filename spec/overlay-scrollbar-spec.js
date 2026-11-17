@@ -575,25 +575,33 @@ describe("Shared overlay scrollbars", () => {
     expect(callback).not.toHaveBeenCalled();
   });
 
-  it("reveals actual native scroll changes while ignoring duplicate scroll events", () => {
+  it("projects native scrolling without starting navigation activity", () => {
     const { element, controller } = scrollport({ kind: "panel" });
     spyOn(controller.activity, "reveal").and.callThrough();
     element.scrollTop = 100;
     element.dispatchEvent(new Event("scroll"));
-    expect(controller.activity.reveal).toHaveBeenCalledTimes(1);
+    expect(controller.vertical.metrics.position).toBe(100);
     element.dispatchEvent(new Event("scroll"));
-    expect(controller.activity.reveal).toHaveBeenCalledTimes(1);
     element.scrollLeft = 100;
     element.dispatchEvent(new Event("scroll"));
-    expect(controller.activity.reveal).toHaveBeenCalledTimes(2);
+    expect(controller.horizontal.metrics.position).toBe(100);
+    expect(controller.activity.reveal).not.toHaveBeenCalled();
+    expect(controller.activity.active).toBeFalse();
   });
 
-  it("reveals scrollbar gestures even when thumb geometry already has the destination", () => {
+  it("does not renew or cancel navigation activity when either axis scrolls", () => {
     const { element, controller } = scrollport({ kind: "panel" });
-    controller.vertical.updatePosition(100);
+    spyOn(window.performance, "now").and.callFake(() => Date.now());
+    lumine.scrollbars.reveal(element);
+    advanceClock(600);
     element.scrollTop = 100;
+    element.scrollLeft = 100;
     element.dispatchEvent(new Event("scroll"));
     expect(controller.activity.active).toBeTrue();
+    advanceClock(100);
+    expect(controller.activity.active).toBeFalse();
+    expect(controller.vertical.metrics.position).toBe(100);
+    expect(controller.horizontal.metrics.position).toBe(100);
   });
 
   it("routes common select-list navigation to its actual list scrollport", async () => {

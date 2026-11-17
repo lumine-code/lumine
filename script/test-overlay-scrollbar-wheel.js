@@ -118,6 +118,7 @@ async function main(argv) {
       { name: "vertical thumb", hit: "thumb", y: 60 },
       { name: "vertical track", hit: "track", y: 60 },
       { name: "overlay thumb", hit: "thumb", y: 60, layout: "overlay" },
+      { name: "transient overlay thumb", hit: "thumb", y: 60, layout: "overlay", policy: "hover" },
       { name: "horizontal track", hit: "track", x: 60, horizontal: true },
       { name: "Shift wheel", hit: "thumb", y: 60, horizontal: true, modifiers: 8 },
       { name: "RTL horizontal thumb", hit: "thumb", x: 60, horizontal: true, rtl: true },
@@ -179,6 +180,8 @@ async function main(argv) {
         mismatches.push("nativeInputNotTrusted");
       if (rail.after.railTrusted.length !== 1 || rail.after.railTrusted[0] !== true)
         mismatches.push("railInputNotTrusted");
+      if (native.after.navigationActive || rail.after.navigationActive)
+        mismatches.push("wheelStartedNavigationActivity");
       report.cases.push({ name: scenario.name, native, rail, mismatches });
     }
     const failed = report.cases.filter((item) => item.mismatches.length);

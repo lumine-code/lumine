@@ -178,9 +178,10 @@ describe("DOM scrollbar initialization", () => {
     ["horizontal", "ltr", "scrollLeft", 40],
     ["horizontal", "rtl", "scrollLeft", -40],
   ]) {
-    it(`retains the original deadline of a real ${direction} ${axis} scroll before first geometry`, () => {
+    it(`retains explicit navigation before first geometry while ${direction} ${axis} scrolling stays quiet`, () => {
       scrollport({ direction });
       advanceClock(100);
+      controller.reveal();
       element[property] = position;
       scrollEvent();
       advanceClock(300);
@@ -191,8 +192,8 @@ describe("DOM scrollbar initialization", () => {
       expect(revealed()).toBeTrue();
       expectThumbPosition(axis);
       advanceClock(50);
-      // A duplicate after publication must not extend the premeasurement
-      // activity either: it still ends at t=100+700, not t=650+700.
+      // Scroll publication must not extend the explicit premeasurement
+      // navigation: it still ends at t=100+700, not t=650+700.
       scrollEvent();
       advanceClock(99);
       expect(revealed()).toBeTrue();
@@ -219,19 +220,21 @@ describe("DOM scrollbar initialization", () => {
       flush(writes);
       expect(controller.publicGeometry).toBeDefined();
       expectThumbPosition(axis);
-      expect(revealed()).toBeTrue();
+      expect(revealed()).toBeFalse();
       advanceClock(300);
       scrollEvent();
       advanceClock(199);
-      expect(revealed()).toBeTrue();
+      expect(revealed()).toBeFalse();
       advanceClock(1);
       expect(revealed()).toBeFalse();
+      expect(frameWindow.setTimeout).not.toHaveBeenCalled();
     });
   }
 
   it("does not flash a fresh pulse when the original activity expired before first geometry", () => {
     scrollport();
     advanceClock(100);
+    controller.reveal();
     element.scrollTop = 60;
     scrollEvent();
     advanceClock(701);
@@ -241,7 +244,77 @@ describe("DOM scrollbar initialization", () => {
     expectThumbPosition("vertical");
   });
 
-  it("continues projecting measured scrolls without renewing duplicate activity or geometry", () => {
+  for (const initiallyVisible of [false, true]) {
+    it(`retains navigation after a held hidden read with an initially ${initiallyVisible ? "visible" : "hidden"} port`, () => {
+      scrollport({ width: 100 });
+      element.hidden = !initiallyVisible;
+      settleGeometry();
+      expect(controller.geometry.visible).toBe(initiallyVisible);
+      element.hidden = true;
+      controller.refresh();
+      flush(reads);
+      expect(writes.length).toBeGreaterThan(0);
+      const measured = measurementCount();
+      advanceClock(100);
+      element.hidden = false;
+      expect(controller.reveal()).toBe(initiallyVisible);
+      expectMeasurementCount(measured);
+      // The authored mutation observer has not run in this held phase. A
+      // delivered invalidation would reject this old snapshot by layoutVersion;
+      // visibility must preserve the new intent in either ordering.
+      flush(writes);
+      expect(controller.geometry.visible).toBeFalse();
+      if (!initiallyVisible) expect(frameWindow.setTimeout).not.toHaveBeenCalled();
+      advanceClock(200);
+      controller.refresh();
+      settleGeometry();
+      expect(controller.geometry.visible).toBeTrue();
+      expect(revealed()).toBeTrue();
+      advanceClock(499);
+      expect(revealed()).toBeTrue();
+      advanceClock(1);
+      expect(revealed()).toBeFalse();
+    });
+  }
+
+  it("expires pending navigation while hidden without a timer or a fresh pulse when shown", () => {
+    scrollport({ width: 100 });
+    element.hidden = true;
+    settleGeometry();
+    advanceClock(100);
+    controller.reveal();
+    controller.refresh();
+    settleGeometry();
+    expect(controller.geometry.visible).toBeFalse();
+    expect(frameWindow.setTimeout).not.toHaveBeenCalled();
+    advanceClock(701);
+    element.hidden = false;
+    controller.refresh();
+    settleGeometry();
+    expect(controller.geometry.visible).toBeTrue();
+    expect(revealed()).toBeFalse();
+    expect(frameWindow.setTimeout).not.toHaveBeenCalled();
+  });
+
+  it("disposes an active pulse on hide without reviving it when the port is shown again", () => {
+    scrollport({ width: 100 });
+    settleGeometry();
+    controller.reveal();
+    expect(revealed()).toBeTrue();
+    advanceClock(100);
+    element.hidden = true;
+    controller.refresh();
+    settleGeometry();
+    expect(controller.activity).toBeNull();
+    expect(revealed()).toBeFalse();
+    element.hidden = false;
+    controller.refresh();
+    settleGeometry();
+    expect(controller.activity.active).toBeFalse();
+    expect(revealed()).toBeFalse();
+  });
+
+  it("projects measured scrolls without renewing explicit navigation or geometry", () => {
     scrollport();
     settleGeometry();
     const changedGeometry = jasmine.createSpy("changed geometry");
@@ -249,12 +322,15 @@ describe("DOM scrollbar initialization", () => {
     const geometry = controller.publicGeometry;
     const measured = measurementCount();
     advanceClock(100);
+    controller.reveal();
     element.scrollTop = 60;
     scrollEvent();
     expectThumbPosition("vertical");
     expect(revealed()).toBeTrue();
     advanceClock(500);
+    element.scrollTop = 100;
     scrollEvent();
+    expectThumbPosition("vertical");
     advanceClock(199);
     expect(revealed()).toBeTrue();
     advanceClock(1);

@@ -25,6 +25,7 @@
     ancestorCalls,
     railTrusted,
     ownerTrusted,
+    navigationActive: !!controller?.activity?.active,
   });
   globalThis.overlayWheelProbe = {
     async setup(options) {
@@ -95,8 +96,9 @@
         }
       });
       controller = lumine.scrollbars.attach(inner, {
+        kind: "panel",
         layout: options.layout || "gutter",
-        policy: "always",
+        policy: options.policy || "always",
       });
       controller.layer.addEventListener("wheel", (event) => railTrusted.push(event.isTrusted), {
         capture: true,

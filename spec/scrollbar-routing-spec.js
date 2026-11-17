@@ -168,6 +168,23 @@ describe("Scrollbar event routing", () => {
     expect(port.controller.layer.classList.contains("is-revealed")).toBeTrue();
   });
 
+  it("shows wheel-scrolled content through hover without leaving an activity tail", async () => {
+    const current = await fixture();
+    const port = current.port();
+    await current.flush();
+    const reveal = spyOn(port.controller.activity, "reveal").and.callThrough();
+    current.hovered.add(port.owner);
+    current.pointer(port.content, "pointerover");
+    port.element.scrollTop = 100;
+    current.scroll(port.element);
+    expect(port.controller.vertical.metrics.position).toBe(100);
+    expect(port.controller.layer.classList.contains("is-revealed")).toBeTrue();
+    expect(reveal).not.toHaveBeenCalled();
+    current.hovered.delete(port.owner);
+    current.pointer(port.content, "pointerout");
+    expect(port.controller.layer.classList.contains("is-revealed")).toBeFalse();
+  });
+
   it("updates an own position once and invalidates only descendant portal geometry", async () => {
     const current = await fixture();
     const outer = current.port();
