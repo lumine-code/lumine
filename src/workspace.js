@@ -1372,7 +1372,7 @@ module.exports = class Workspace extends Model {
       } catch (error) {
         if (isCurrent())
           this.notificationManager.addError("Unable to open default dock item", {
-            description: error.message,
+            detail: error.message,
             stack: error.stack,
           });
       }
@@ -1408,7 +1408,7 @@ module.exports = class Workspace extends Model {
       } catch (error) {
         if (isCurrent())
           this.notificationManager.addError("Unable to open default dock item", {
-            description: error.message,
+            detail: error.message,
             stack: error.stack,
           });
       } finally {
@@ -3457,7 +3457,9 @@ module.exports = class Workspace extends Model {
         case "CANCELLED":
           return Promise.resolve();
         case "EACCES":
-          this.notificationManager.addWarning(`Permission denied '${error.path}'`);
+          this.notificationManager.addWarning("Unable to open file", {
+            detail: `Path: ${error.path ?? uri}\n${error.message}`,
+          });
           return Promise.resolve();
         case "EPERM":
         case "EBUSY":
@@ -3470,10 +3472,9 @@ module.exports = class Workspace extends Model {
         case "EMFILE":
         case "ENOTDIR":
         case "EAGAIN":
-          this.notificationManager.addWarning(
-            `Unable to open '${error.path != null ? error.path : uri}'`,
-            { detail: error.message },
-          );
+          this.notificationManager.addWarning("Unable to open file", {
+            detail: `Path: ${error.path ?? uri}\n${error.message}`,
+          });
           return Promise.resolve();
         default:
           throw error;

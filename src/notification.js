@@ -6,6 +6,10 @@ const _ = require("@lumine-code/underscore-plus");
  * @status public
  *
  * A notification to the user containing a message and type.
+ *
+ * The message is a concise authored Markdown summary. Paths, error messages and
+ * other raw data belong in `options.detail`, which is displayed literally. Use
+ * `options.description` for authored Markdown explanations and links.
  */
 module.exports = class Notification {
   constructor(type, message, options = {}) {
@@ -84,7 +88,7 @@ module.exports = class Notification {
    * @public
    * @status public
    *
-   * Get the notification message.
+   * Get the authored Markdown source of the notification summary.
    *
    * @returns {String} message.
    */

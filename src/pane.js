@@ -1932,28 +1932,27 @@ module.exports = class Pane {
 
   handleSaveError(error, item) {
     const itemPath = error.path || (typeof item.getPath === "function" && item.getPath());
-    const addWarningWithPath = (message, options) => {
-      if (itemPath) message = `${message} '${itemPath}'`;
-      this.notificationManager.addWarning(message, options);
+    const addWarning = (reason, affectedPath = itemPath) => {
+      this.notificationManager.addWarning("Unable to save file", {
+        detail: `${affectedPath ? `Path: ${affectedPath}\n` : ""}${reason}`,
+      });
     };
 
     const customMessage = this.getMessageForErrorCode(error.code);
     if (customMessage != null) {
-      addWarningWithPath(`Unable to save file: ${customMessage}`);
+      addWarning(error.message || customMessage);
     } else if (
       error.code === "EISDIR" ||
       (error.message && error.message.endsWith("is a directory"))
     ) {
-      return this.notificationManager.addWarning(`Unable to save file: ${error.message}`);
+      return addWarning(error.message);
     } else if (["EPERM", "EBUSY", "UNKNOWN", "EEXIST", "ELOOP", "EAGAIN"].includes(error.code)) {
-      addWarningWithPath("Unable to save file", { detail: error.message });
+      addWarning(error.message);
     } else {
       const errorMatch = /ENOTDIR, not a directory '([^']+)'/.exec(error.message);
       if (errorMatch) {
         const fileName = errorMatch[1];
-        this.notificationManager.addWarning(
-          `Unable to save file: A directory in the path '${fileName}' could not be written to`,
-        );
+        addWarning(error.message, fileName);
       } else {
         throw error;
       }

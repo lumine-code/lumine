@@ -1077,8 +1077,8 @@ describe("Pane", () => {
 
         const subscription = lumine.notifications.onDidAddNotification(function (notification) {
           expect(notification.getType()).toBe("warning");
-          expect(notification.getMessage()).toContain("Permission denied");
-          expect(notification.getMessage()).toContain("/foo");
+          expect(notification.getMessage()).toBe("Unable to save file");
+          expect(notification.getDetail()).toBe("Path: /foo\nEACCES, permission denied '/foo'");
           subscription.dispose();
           done();
         });
@@ -1097,8 +1097,8 @@ describe("Pane", () => {
 
         const subscription = lumine.notifications.onDidAddNotification(function (notification) {
           expect(notification.getType()).toBe("warning");
-          expect(notification.getMessage()).toContain("Permission denied");
-          expect(notification.getMessage()).toContain("/foo");
+          expect(notification.getMessage()).toBe("Unable to save file");
+          expect(notification.getDetail()).toBe("Path: /foo\nEACCES, permission denied '/foo'");
           subscription.dispose();
           done();
         });
@@ -1152,8 +1152,8 @@ describe("Pane", () => {
 
         const subscription = lumine.notifications.onDidAddNotification(function (notification) {
           expect(notification.getType()).toBe("warning");
-          expect(notification.getMessage()).toContain("Permission denied");
-          expect(notification.getMessage()).toContain("/foo");
+          expect(notification.getMessage()).toBe("Unable to save file");
+          expect(notification.getDetail()).toBe("Path: /foo\nEACCES, permission denied '/foo'");
           subscription.dispose();
           done();
         });

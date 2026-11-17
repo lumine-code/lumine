@@ -1251,10 +1251,10 @@ var stopEventPropagationAndGroupUndo = function (config, notificationManager, co
 };
 
 var showCursorScope = function (descriptor, notificationManager) {
-  let list = descriptor.scopes.toString().split(",");
-  list = list.map((item) => `* ${item}`);
-  const content = `Scopes at Cursor\n${list.join("\n")}`;
-  return notificationManager.addInfo(content, { dismissable: true });
+  return notificationManager.addInfo("Scopes at Cursor", {
+    detail: descriptor.scopes.toString().split(",").join("\n"),
+    dismissable: true,
+  });
 };
 
 var showSyntaxTree = function (descriptor, notificationManager) {
@@ -1265,10 +1265,10 @@ var showSyntaxTree = function (descriptor, notificationManager) {
         if (error.name !== "AbortError") throw error;
       },
     );
-  let list = descriptor.scopes.toString().split(",");
-  list = list.map((item) => `* ${item}`);
-  const content = `Syntax tree at Cursor\n${list.join("\n")}`;
-  return notificationManager.addInfo(content, { dismissable: true });
+  return notificationManager.addInfo("Syntax tree at Cursor", {
+    detail: descriptor.scopes.toString().split(",").join("\n"),
+    dismissable: true,
+  });
 };
 
 var copyPathToClipboard = function (editor, project, clipboard, relative) {

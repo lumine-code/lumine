@@ -621,8 +621,8 @@ module.exports = class LumineWindow extends EventEmitter {
     this.sendMessage("did-change-user-settings", settings);
   }
 
-  didFailToReadUserSettings(message) {
-    this.sendMessage("did-fail-to-read-user-settings", message);
+  didFailToReadUserSettings(notification) {
+    this.sendMessage("did-fail-to-read-user-settings", notification);
   }
 
   addLocationsToOpen(locationsToOpen) {

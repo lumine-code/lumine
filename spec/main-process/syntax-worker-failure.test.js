@@ -9,8 +9,41 @@ const Service = require("../../src/syntax-worker-service");
 const Client = require("../../src/syntax-worker-client");
 const Mode = require("../../src/tree-sitter-worker-language-mode");
 const TextBuffer = require("../../src/text-buffer");
+const UnavailableSyntaxLanguageMode = require("../../src/unavailable-syntax-language-mode");
 const analyze = require("../../src/buffer-syntax-analysis");
 const processor = path.resolve(__dirname, "../fixtures/syntax-worker-analysis.js");
+
+test("syntax failure notifications keep document paths out of authored Markdown", () => {
+  const previous = globalThis.lumine;
+  const filePath = "C:\\Projects\\[settings]\\source`file.js";
+  const failure = { code: "query-budget", message: "Unable to parse _cache" };
+  let notification;
+  globalThis.lumine = {
+    notifications: {
+      addWarning(message, options) {
+        notification = { message, options, dismiss() {} };
+        return notification;
+      },
+    },
+  };
+  const mode = new UnavailableSyntaxLanguageMode({
+    buffer: { getPath: () => filePath },
+    failure,
+    retry() {},
+  });
+  try {
+    mode.notify();
+    assert.equal(notification.message, "Syntax analysis is unavailable");
+    assert.equal(notification.options.description.includes(filePath), false);
+    assert.equal(
+      notification.options.detail,
+      `Path: ${filePath}\n${JSON.stringify(failure, null, 2)}`,
+    );
+  } finally {
+    mode.destroy();
+    globalThis.lumine = previous;
+  }
+});
 
 function setup() {
   const config = new Config();

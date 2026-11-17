@@ -51,6 +51,24 @@ describe("Notification", () => {
     });
   });
 
+  describe("::isEqual()", () => {
+    it("keeps failures with the same summary and different path details distinct", () => {
+      const sourcePath = "C:\\Projects\\[20260616]\\[f] sofi";
+      const first = new Notification("warning", "Failed to copy", {
+        detail: `Source: ${sourcePath}`,
+      });
+      const same = new Notification("warning", "Failed to copy", {
+        detail: `Source: ${sourcePath}`,
+      });
+      const other = new Notification("warning", "Failed to copy", {
+        detail: `Source: ${sourcePath} - test`,
+      });
+
+      expect(first.isEqual(same)).toBe(true);
+      expect(first.isEqual(other)).toBe(false);
+    });
+  });
+
   describe("dismissing notifications", () => {
     describe("when the notfication is dismissable", () =>
       it("calls a callback when the notification is dismissed", () => {

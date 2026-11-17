@@ -48,6 +48,29 @@ describe("registerDefaultCommands", () => {
     });
   }
 
+  for (const [command, message, method] of [
+    ["editor:log-cursor-scope", "Scopes at Cursor", "getCursorScope"],
+    ["editor:log-cursor-syntax-tree-scope", "Syntax tree at Cursor", "getCursorSyntaxTreeScope"],
+  ]) {
+    it(`keeps ${command} output below its summary`, async () => {
+      const notificationManager = { addInfo: jasmine.createSpy("addInfo") };
+      const [listener] = commandsRegisteredOn("win32", { notificationManager }).get(command);
+      const model = {
+        getUndoGroupingInterval: () => 100,
+        transact: (_interval, callback) => callback(),
+        getBuffer: () => ({ getLanguageMode: () => ({ asynchronousSyntax: false }) }),
+        [method]: () => ({ scopes: ["source.python", "meta[tuple]", "raw`scope"] }),
+      };
+
+      await listener.didDispatch.call({ getModel: () => model }, { stopPropagation() {} });
+
+      expect(notificationManager.addInfo).toHaveBeenCalledOnceWith(message, {
+        detail: "source.python\nmeta[tuple]\nraw`scope",
+        dismissable: true,
+      });
+    });
+  }
+
   // Every registration, keyed by command name. A name registered against more
   // than one selector keeps each listener, in registration order, so a spec
   // naming one cannot silently be handed another.

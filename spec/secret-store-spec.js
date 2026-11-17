@@ -70,7 +70,7 @@ describe("SecretStore", () => {
     const store = new SecretStore({
       safeStorage: fakeSafeStorage(false),
       storagePath,
-      notify: (message) => warnings.push(message),
+      notify: (message, options) => warnings.push({ message, ...options }),
     });
 
     await store.set("k", "v");
@@ -78,7 +78,42 @@ describe("SecretStore", () => {
     expect(fs.existsSync(storagePath)).toBe(false); // never written to disk
 
     await store.get("other"); // a second operation must not warn again
-    expect(warnings.length).toBe(1);
+    expect(warnings).toEqual([
+      {
+        message: "Secret storage encryption is unavailable",
+        description:
+          "Secrets such as access tokens are kept only for this session and are not saved to disk.",
+      },
+    ]);
+  });
+
+  it("reports watcher diagnostics as literal details under a concise summary", () => {
+    const callbacks = new Map();
+    const subscription = { dispose() {} };
+    const watcher = {
+      ready: Promise.resolve(),
+      dispose() {},
+      onDidChange: () => subscription,
+      onDidInvalidate: () => subscription,
+      onDidError: (callback) => {
+        callbacks.set("error", callback);
+        return subscription;
+      },
+    };
+    const notify = jasmine.createSpy("notify");
+    const store = new SecretStore({
+      storagePath,
+      notify,
+      fileWatchClient: { watchFile: () => watcher },
+    });
+    store.startWatching();
+    const error = new Error("Cannot watch [settings] _cache");
+    callbacks.get("error")(error);
+
+    expect(notify).toHaveBeenCalledOnceWith("Unable to observe secret storage", {
+      detail: `Path: ${storagePath}\n${error.message}`,
+    });
+    store.dispose();
   });
 
   it("retries native encryption and persists a session value after a transient failure", async () => {

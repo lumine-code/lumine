@@ -72,11 +72,16 @@ describe("IPC request responses", () => {
     const delegate = createDelegate(transport);
     const messages = [];
     const subscription = delegate.onDidFailToReadUserSettings((message) => messages.push(message));
-    transport.ipcRenderer.emit("message", {}, "did-fail-to-read-user-settings", "cannot read");
-    assert.deepEqual(messages, ["cannot read"]);
+    const notification = {
+      message: "Unable to load user settings",
+      detail: "Path: C:\\Projects\\[settings]\\config.json\ncannot read",
+      description: "See the [troubleshooting guide](https://example.com/help).",
+    };
+    transport.ipcRenderer.emit("message", {}, "did-fail-to-read-user-settings", notification);
+    assert.deepEqual(messages, [notification]);
     subscription.dispose();
-    transport.ipcRenderer.emit("message", {}, "did-fail-to-read-user-settings", "later failure");
-    assert.deepEqual(messages, ["cannot read"]);
+    transport.ipcRenderer.emit("message", {}, "did-fail-to-read-user-settings", notification);
+    assert.deepEqual(messages, [notification]);
   });
 
   it("resumes settings notifications after concurrent updates reject", async () => {

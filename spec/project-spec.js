@@ -637,9 +637,10 @@ describe("Project", () => {
 
       const notification = noteSpy.calls.mostRecent().args[0];
       expect(notification.getType()).toBe("warning");
-      expect(notification.getDetail()).toBe("SomeError");
-      expect(notification.getMessage()).toContain("`resurrect`");
-      expect(notification.getMessage()).toContain(path.join("fixtures", "dir", "a"));
+      expect(notification.getMessage()).toBe("Unable to read file after a filesystem event");
+      expect(notification.getDetail()).toBe(
+        `Path: ${editor.getPath()}\nEvent: resurrect\nSomeError`,
+      );
     });
   });
 

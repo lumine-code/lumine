@@ -408,8 +408,9 @@ module.exports = class FileIndex {
     entry.truncationWarningShown = true;
     const notifications = this.project?.notificationManager;
     notifications?.addWarning("Project is too large to index", {
+      detail: `Path: ${entry.rootPath}`,
       description:
-        `\`${entry.rootPath}\` holds more than ${PathLimitPerRoot} files, so the file ` +
+        `The project root holds more than ${PathLimitPerRoot} files, so the file ` +
         "index stopped there. The file finder and path suggestions will not list them all. " +
         (this.getConfig()?.get("core.excludeVcsIgnoredPaths") === false
           ? "VCS-ignored paths are currently included, so dependency or build-output directories may be the cause."

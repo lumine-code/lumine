@@ -1509,12 +1509,12 @@ module.exports = class LumineApplication extends EventEmitter {
       }),
     );
 
-    this.configFile.onDidError((message) => {
+    this.configFile.onDidError((notification) => {
       const window = this.focusedWindow() || this.getLastFocusedWindow();
       if (window) {
-        window.didFailToReadUserSettings(message);
+        window.didFailToReadUserSettings(notification);
       } else {
-        console.error(message);
+        console.error(notification.message, notification.detail);
       }
     });
 

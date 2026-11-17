@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const sinon = require("sinon");
 const CSON = require("@lumine-code/season");
 const ConfigFile = require("../../src/config-file");
+const fs = require("@lumine-code/fs-plus");
 
 describe("ConfigFile updates", function () {
   let sandbox, file, writes, reads, writeWaiters, readWaiters, changes, errors;
@@ -51,6 +52,27 @@ describe("ConfigFile updates", function () {
       : new Promise((resolve) => readWaiters.set(index, resolve));
   }
 
+  it("keeps watcher startup diagnostics separate from authored troubleshooting links", async function () {
+    file.path = "C:\\Projects\\[settings]\\config`local.json";
+    const error = new Error("Unable to watch _cache");
+    sandbox.stub(fs, "existsSync").returns(true);
+    file.fileWatchClient = {
+      watchFile() {
+        throw error;
+      },
+    };
+    const watching = file.watch();
+    (await whenRead(0))(null, {});
+    const subscription = await watching;
+
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0].message, "Unable to watch user settings");
+    assert.equal(errors[0].detail, `Path: ${file.path}\n${error.message}`);
+    assert.match(errors[0].description, /\[troubleshooting guide\]\(https:\/\//);
+    assert.equal(errors[0].description.includes(file.path), false);
+    subscription.dispose();
+  });
+
   it("coalesces updates into the latest write and completes them after reading disk", async function () {
     let completed = 0;
     const first = file.update({ value: "earlier" }).then(() => completed++);
@@ -86,8 +108,10 @@ describe("ConfigFile updates", function () {
     assert.deepEqual(changes, []);
     assert.equal(reads.length, 0);
     assert.equal(errors.length, 1);
-    assert.match(errors[0], /Failed to write `the-config.json`/);
-    assert.match(errors[0], /Write denied/);
+    assert.deepEqual(errors[0], {
+      message: "Unable to write user settings",
+      detail: `Path: ${file.path}\nWrite denied`,
+    });
     assert.equal(file.pendingUpdates.length, 0);
     assert.equal(file.reloadCallbacks.length, 0);
 
@@ -109,7 +133,10 @@ describe("ConfigFile updates", function () {
     assert.deepEqual(file.get(), { value: "previous" });
     assert.deepEqual(changes, []);
     assert.equal(errors.length, 1);
-    assert.match(errors[0], /Failed to load `the-config.json`/);
+    assert.deepEqual(errors[0], {
+      message: "Unable to load user settings",
+      detail: `Path: ${file.path}\nInvalid configuration on disk`,
+    });
     assert.equal(file.reloadCallbacks.length, 0);
 
     const recovered = file.update({ value: "recovered" });
@@ -194,7 +221,10 @@ describe("ConfigFile updates", function () {
     assert.deepEqual(file.get(), { value: "previous" });
     assert.deepEqual(changes, []);
     assert.equal(errors.length, 1);
-    assert.match(errors[0], /Failed to load `the-config.json`/);
+    assert.deepEqual(errors[0], {
+      message: "Unable to load user settings",
+      detail: `Path: ${file.path}\nRead failed`,
+    });
     assert.equal(file.reloadCallbacks.length, 0);
   });
 

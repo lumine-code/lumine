@@ -515,7 +515,10 @@ describe("lumine.themes", () => {
         expect(addErrorHandler).toHaveBeenCalled();
         const note = addErrorHandler.calls.mostRecent().args[0];
         expect(note.getType()).toBe("error");
-        expect(note.getMessage()).toContain("Error loading");
+        expect(note.getMessage()).toBe("Unable to load the user stylesheet");
+        expect(note.getDetail()).toBe(
+          `Path: ${lumine.styles.getUserStyleSheetPath()}\nEACCES permission denied "styles.css"`,
+        );
         const styleElement =
           lumine.styles.styleElementsBySourcePath[lumine.styles.getUserStyleSheetPath()];
         expect(styleElement).not.toBeUndefined();
@@ -540,7 +543,10 @@ describe("lumine.themes", () => {
         expect(addErrorHandler).toHaveBeenCalled();
         const note = addErrorHandler.calls.mostRecent()?.args[0];
         expect(note?.getType()).toBe("error");
-        expect(note?.getMessage()).toContain("Unable to watch path");
+        expect(note?.getMessage()).toBe("Unable to watch the user stylesheet");
+        expect(note?.getDetail()).toBe(
+          `Path: ${lumine.styles.getUserStyleSheetPath()}\nUnable to watch path`,
+        );
       });
     });
 

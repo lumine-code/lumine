@@ -1459,11 +1459,9 @@ module.exports = class Project extends Model {
     });
     buffer.onWillThrowWatchError(({ error, handle }) => {
       handle();
-      const message =
-        `Unable to read file after file \`${error.eventType}\` event.` +
-        `Make sure you have permission to access \`${buffer.getPath()}\`.`;
-      this.notificationManager.addWarning(message, {
-        detail: error.message,
+      this.notificationManager.addWarning("Unable to read file after a filesystem event", {
+        detail: `Path: ${buffer.getPath()}\nEvent: ${error.eventType}\n${error.message}`,
+        description: "Make sure you have permission to access the file.",
         dismissable: true,
       });
     });

@@ -1219,8 +1219,8 @@ describe("Workspace", () => {
           expect(notificationSpy).toHaveBeenCalled();
           const notification = notificationSpy.calls.mostRecent().args[0];
           expect(notification.getType()).toBe("warning");
-          expect(notification.getMessage()).toContain("Permission denied");
-          expect(notification.getMessage()).toContain("file1");
+          expect(notification.getMessage()).toBe("Unable to open file");
+          expect(notification.getDetail()).toContain("file1");
         });
       });
 
@@ -1241,7 +1241,7 @@ describe("Workspace", () => {
           const notification = notificationSpy.calls.mostRecent().args[0];
           expect(notification.getType()).toBe("warning");
           expect(notification.getMessage()).toContain("Unable to open");
-          expect(notification.getMessage()).toContain("file1");
+          expect(notification.getDetail()).toContain("file1");
         });
       });
 
@@ -1262,7 +1262,7 @@ describe("Workspace", () => {
           const notification = notificationSpy.calls.mostRecent().args[0];
           expect(notification.getType()).toBe("warning");
           expect(notification.getMessage()).toContain("Unable to open");
-          expect(notification.getMessage()).toContain("file1");
+          expect(notification.getDetail()).toContain("file1");
         });
       });
 

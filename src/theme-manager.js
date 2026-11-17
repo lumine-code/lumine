@@ -578,19 +578,17 @@ module.exports = class ThemeManager {
           });
       });
       await handle.ready;
-    } catch {
-      let message = `
-Unable to watch path: \`${path.basename(userStylesheetPath)}\`. Make sure
-you have permissions to \`${userStylesheetPath}\`.
-`;
+    } catch (error) {
+      let description = "Make sure you have permission to read the file.";
       if (process.platform === "linux") {
-        message = `${message}
-
-On Linux the per-user inotify watch limit is often too low. See [this document][watches] for more info.
-[watches]:https://lumine-code.github.io/docs.html#troubleshooting/common-issues
-`;
+        description +=
+          " On Linux the per-user inotify watch limit is often too low. See the [troubleshooting guide](https://lumine-code.github.io/docs.html#troubleshooting/common-issues).";
       }
-      this.notificationManager.addError(message, { dismissable: true });
+      this.notificationManager.addError("Unable to watch the user stylesheet", {
+        detail: `Path: ${userStylesheetPath}\n${error.message}`,
+        description,
+        dismissable: true,
+      });
     }
   }
 
@@ -605,8 +603,8 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     } catch (error) {
       // Unreadable — say so and keep the previous styles applied, rather than
       // leaving the window silently stuck on them.
-      this.notificationManager.addError(`Error loading \`${path.basename(sourcePath)}\``, {
-        detail: error.message,
+      this.notificationManager.addError("Unable to load the user stylesheet", {
+        detail: `Path: ${sourcePath}\n${error.message}`,
         dismissable: true,
       });
       return { sourcePath, exists: true, contents: null };

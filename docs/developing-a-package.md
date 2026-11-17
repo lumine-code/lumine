@@ -50,6 +50,17 @@ module.exports = {
 };
 ```
 
+## Notifications
+
+Give a notification a concise authored Markdown summary. Put paths, error messages and other raw data in `detail`, which is displayed literally and preserves whitespace and line breaks. Reserve `description` for authored Markdown explanations and documentation links; sanitizing Markdown does not protect interpolated data from being interpreted as formatting. For fatal errors, `reportTitle` can preserve a plain-text diagnostic summary for issue titles and searches while the displayed message describes the operation that failed.
+
+```js
+lumine.notifications.addWarning("Unable to copy file", {
+  detail: `Source: ${sourcePath}\nDestination: ${destinationPath}\n${error.message}`,
+  dismissable: true,
+});
+```
+
 ## CommonJS and native ESM
 
 CommonJS and native ES modules can coexist in one package. Use `.cjs` for an explicit CommonJS file, `.mjs` for an explicit ES module, or `"type": "module"` in `package.json` to make `.js` files ESM. Set `main` to the entry file, including its extension. Babel removes JSX, TypeScript types and legacy syntax while preserving `import`, `export` and asynchronous `import()`.

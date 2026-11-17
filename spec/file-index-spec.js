@@ -425,8 +425,10 @@ describe("FileIndex", () => {
 
       const warnings = project.notificationManager.warnings;
       expect(warnings.length).toBe(2);
-      expect(warnings[0].options.description).toContain(ROOT);
-      expect(warnings[1].options.description).toContain(second);
+      expect(warnings[0].options.detail).toBe(`Path: ${ROOT}`);
+      expect(warnings[1].options.detail).toBe(`Path: ${second}`);
+      expect(warnings[0].options.description).not.toContain(ROOT);
+      expect(warnings[1].options.description).not.toContain(second);
     });
 
     it("can warn again after the oversized root is removed and reopened", async () => {

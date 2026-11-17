@@ -430,7 +430,8 @@ class Environment {
       fileWatchClient: this.fileWatchClient,
       applicationDelegate: this.applicationDelegate,
       storagePath: path.join(this.getConfigDirPath(), "secret-store.json"),
-      notify: (message) => this.notifications.addWarning(message, { dismissable: true }),
+      notify: (message, options) =>
+        this.notifications.addWarning(message, { ...options, dismissable: true }),
     });
     /**
      * @public
@@ -1195,8 +1196,8 @@ class Environment {
         ),
       );
       this.disposables.add(
-        this.applicationDelegate.onDidFailToReadUserSettings((message) =>
-          this.notifications.addError(message),
+        this.applicationDelegate.onDidFailToReadUserSettings(({ message, ...options }) =>
+          this.notifications.addError(message, options),
         ),
       );
 
@@ -1310,7 +1311,9 @@ class Environment {
         try {
           await this.paneItemTransfers.acceptInitialTransfer(initialTransfer);
         } catch (error) {
-          this.notifications.addWarning(error.message);
+          this.notifications.addWarning("Unable to restore the transferred pane item", {
+            detail: error.message,
+          });
         }
       }
       await this.openInitialEmptyEditorIfNecessary();
@@ -1897,7 +1900,7 @@ class Environment {
         // We handle the missingProjectPaths case in openLocations().
         if (!error.missingProjectPaths) {
           this.notifications.addError("Unable to deserialize project", {
-            description: error.message,
+            detail: error.message,
             stack: error.stack,
           });
         }
@@ -1923,22 +1926,9 @@ class Environment {
     if (missingProjectPaths.length > 0) {
       const count = missingProjectPaths.length === 1 ? "" : missingProjectPaths.length + " ";
       const noun = missingProjectPaths.length === 1 ? "folder" : "folders";
-      const toBe = missingProjectPaths.length === 1 ? "is" : "are";
-      const escaped = missingProjectPaths.map((projectPath) => `\`${projectPath}\``);
-      let group;
-      switch (escaped.length) {
-        case 1:
-          group = escaped[0];
-          break;
-        case 2:
-          group = `${escaped[0]} and ${escaped[1]}`;
-          break;
-        default:
-          group = escaped.slice(0, -1).join(", ") + `, and ${escaped[escaped.length - 1]}`;
-      }
-
       this.notifications.addError(`Unable to open ${count}project ${noun}`, {
-        description: `Project ${noun} ${group} ${toBe} no longer on disk.`,
+        detail: missingProjectPaths.map((projectPath) => `Path: ${projectPath}`).join("\n"),
+        description: `The project ${noun} ${missingProjectPaths.length === 1 ? "is" : "are"} no longer on disk.`,
       });
     }
   }
@@ -1959,8 +1949,8 @@ class Environment {
       try {
         if (fs.isFileSync(userInitScriptPath)) require(userInitScriptPath);
       } catch (error) {
-        this.notifications.addError(`Failed to load \`${userInitScriptPath}\``, {
-          detail: error.message,
+        this.notifications.addError("Failed to load the user init script", {
+          detail: `Path: ${userInitScriptPath}\n${error.message}`,
           dismissable: true,
         });
       }
@@ -2184,25 +2174,6 @@ class Environment {
         message += "s";
       }
 
-      let description = "The ";
-      if (missingFolders.length === 1) {
-        description += "directory `";
-        description += missingFolders[0].pathToOpen;
-        description += "` does not exist.";
-      } else if (missingFolders.length === 2) {
-        description += `directories \`${missingFolders[0].pathToOpen}\` `;
-        description += `and \`${missingFolders[1].pathToOpen}\` do not exist.`;
-      } else {
-        description += "directories ";
-        description += missingFolders
-          .slice(0, -1)
-          .map((location) => location.pathToOpen)
-          .map((pathToOpen) => "`" + pathToOpen + "`, ")
-          .join("");
-        description +=
-          "and `" + missingFolders[missingFolders.length - 1].pathToOpen + "` do not exist.";
-      }
-
       let notification;
 
       let removeMissingPaths = async () => {
@@ -2220,7 +2191,11 @@ class Environment {
       };
 
       notification = this.notifications.addWarning(message, {
-        description,
+        detail: missingFolders.map((location) => `Path: ${location.pathToOpen}`).join("\n"),
+        description:
+          missingFolders.length === 1
+            ? "The directory does not exist."
+            : "The directories do not exist.",
         dismissable: true,
         buttons: [
           { text: "Remove all", onDidClick: removeMissingPaths },

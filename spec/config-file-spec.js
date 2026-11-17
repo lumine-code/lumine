@@ -80,7 +80,9 @@ describe("ConfigFile", () => {
         2,
       );
 
-      expect(await message).toContain("Failed to load `the-config.json`");
+      const notification = await message;
+      expect(notification.message).toBe("Unable to load user settings");
+      expect(notification.detail).toContain(`Path: ${filePath}\n`);
 
       const event = new Promise((resolve) => configFile.onDidChange(resolve));
 
@@ -236,7 +238,10 @@ describe("ConfigFile", () => {
       expect(configFile.get()).toEqual({ value: "previous" });
       expect(changes).toEqual([]);
       expect(errors.length).toBe(1);
-      expect(errors[0]).toContain("Current contents are invalid");
+      expect(errors[0]).toEqual({
+        message: "Unable to load user settings",
+        detail: `Path: ${filePath}\nCurrent contents are invalid`,
+      });
     });
 
     it("completes update callbacks only after the newest read succeeds", async () => {

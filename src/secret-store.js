@@ -113,12 +113,13 @@ class SecretStore {
   warnUnavailable() {
     if (this.warned) return;
     this.warned = true;
-    const message =
-      "Secret storage encryption is unavailable, so secrets such as access tokens are kept only for this session and are not saved to disk.";
+    const message = "Secret storage encryption is unavailable";
+    const description =
+      "Secrets such as access tokens are kept only for this session and are not saved to disk.";
     if (this.notify) {
-      this.notify(message);
+      this.notify(message, { description });
     } else {
-      console.warn(message);
+      console.warn(`${message}. ${description}`);
     }
   }
 
@@ -160,7 +161,10 @@ class SecretStore {
       watcher.onDidChange(this.handleStorageChange),
       watcher.onDidInvalidate(this.handleStorageChange),
       watcher.onDidError((error) => {
-        if (this.notify) this.notify(`Unable to observe secret storage: ${error.message}`);
+        if (this.notify)
+          this.notify("Unable to observe secret storage", {
+            detail: `Path: ${this.storagePath}\n${error.message}`,
+          });
         else console.error(error);
       }),
     );

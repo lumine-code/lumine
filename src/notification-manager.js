@@ -10,6 +10,11 @@ const Notification = require("../src/notification");
  *
  * An instance of this class is always available as the `lumine.notifications`
  * global.
+ *
+ * Messages are concise authored Markdown summaries. Put paths, error messages and
+ * other raw data in `options.detail`, which is displayed literally. Reserve
+ * `options.description` for authored Markdown explanations and links. Markdown
+ * sanitization does not make interpolated raw data literal.
  */
 module.exports = class NotificationManager {
   constructor() {
@@ -71,15 +76,15 @@ module.exports = class NotificationManager {
    *
    * Add a success notification.
    *
-   * @param {String} message - A `String` message
+   * @param {String} message - A concise authored Markdown summary. Put paths and raw error messages in `detail`.
    * @param {Object} [options] - An `Object` with the following keys:
    * @param {Array<Object>} [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-success`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
    * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
-   * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
-   * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.description] - An authored Markdown `String` containing a longer explanation and links. Put raw paths and error messages in `detail` instead. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.detail] - A literal plain-text `String` containing paths, error messages or other additional details. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'check'`.
    * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
@@ -103,15 +108,15 @@ module.exports = class NotificationManager {
    *
    * Prefer a warning when something the user asked for did not happen.
    *
-   * @param {String} message - A `String` message
+   * @param {String} message - A concise authored Markdown summary. Put paths and raw error messages in `detail`.
    * @param {Object} [options] - An `Object` with the following keys:
    * @param {Array<Object>} [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
    * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
-   * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
-   * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.description] - An authored Markdown `String` containing a longer explanation and links. Put raw paths and error messages in `detail` instead. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.detail] - A literal plain-text `String` containing paths, error messages or other additional details. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'light-bulb'`.
    * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
@@ -127,15 +132,15 @@ module.exports = class NotificationManager {
    *
    * Add an informational notification.
    *
-   * @param {String} message - A `String` message
+   * @param {String} message - A concise authored Markdown summary. Put paths and raw error messages in `detail`.
    * @param {Object} [options] - An `Object` with the following keys:
    * @param {Array<Object>} [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-info`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
    * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
-   * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
-   * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.description] - An authored Markdown `String` containing a longer explanation and links. Put raw paths and error messages in `detail` instead. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.detail] - A literal plain-text `String` containing paths, error messages or other additional details. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'info'`.
    * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
@@ -151,15 +156,15 @@ module.exports = class NotificationManager {
    *
    * Add a warning notification.
    *
-   * @param {String} message - A `String` message
+   * @param {String} message - A concise authored Markdown summary. Put paths and raw error messages in `detail`.
    * @param {Object} [options] - An `Object` with the following keys:
    * @param {Array<Object>} [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-warning`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
    * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
-   * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
-   * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.description] - An authored Markdown `String` containing a longer explanation and links. Put raw paths and error messages in `detail` instead. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.detail] - A literal plain-text `String` containing paths, error messages or other additional details. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'alert'`.
    * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
@@ -175,15 +180,15 @@ module.exports = class NotificationManager {
    *
    * Add an error notification.
    *
-   * @param {String} message - A `String` message
+   * @param {String} message - A concise authored Markdown summary. Put paths and raw error messages in `detail`.
    * @param {Object} [options] - An `Object` with the following keys:
    * @param {Array<Object>} [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-error`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
    * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
-   * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
-   * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.description] - An authored Markdown `String` containing a longer explanation and links. Put raw paths and error messages in `detail` instead. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.detail] - A literal plain-text `String` containing paths, error messages or other additional details. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'flame'`.
    * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
@@ -200,19 +205,21 @@ module.exports = class NotificationManager {
    *
    * Add a fatal error notification.
    *
-   * @param {String} message - A `String` message
+   * @param {String} message - A concise authored Markdown summary. Put paths and raw error messages in `detail`.
    * @param {Object} [options] - An `Object` with the following keys:
    * @param {Array<Object>} [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
    * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn btn-error`).
    * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
    * @param {String} options.buttons.text - inner text for the button
    * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
-   * @param {String} [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
-   * @param {String} [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.description] - An authored Markdown `String` containing a longer explanation and links. Put raw paths and error messages in `detail` instead. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param {String} [options.detail] - A literal plain-text `String` containing paths, error messages or other additional details. By default, this **will** preserve newlines and whitespace when it is rendered.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'bug'`.
    * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
    * @param {String} [options.stack] - A preformatted `String` with stack trace information describing the location of the error. Requires `detail` to be set.
+   * @param {String} [options.reportTitle] - A plain-text diagnostic summary used only for issue titles and searches, preserving the exception identity when the displayed message is concise. Defaults to `message`.
+   * @param {String} [options.sourcePath] - The literal source file path used to identify the package responsible for the error. Separate from the displayed `detail` text; an explicit `packageName` takes precedence.
    * @returns {Notification} that was added.
    */
   addFatalError(message, options) {

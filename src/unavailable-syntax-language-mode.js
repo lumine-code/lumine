@@ -1,4 +1,3 @@
-const path = require("node:path");
 const NullLanguageMode = require("./null-language-mode");
 
 // Preserve the selected language and its settings, but own no worker, syntax
@@ -12,7 +11,7 @@ module.exports = class UnavailableSyntaxLanguageMode extends NullLanguageMode {
 
   notify() {
     const { failure } = this.syntaxAvailability;
-    const name = this.buffer.getPath() ? path.basename(this.buffer.getPath()) : "Untitled";
+    const filePath = this.buffer.getPath();
     const reason =
       failure.code === "memory-limit"
         ? "The syntax parser stopped at its memory limit."
@@ -27,8 +26,8 @@ module.exports = class UnavailableSyntaxLanguageMode extends NullLanguageMode {
       "Syntax analysis is unavailable",
       {
         dismissable: true,
-        description: `${name}: ${reason} You can continue editing and saving this document.`,
-        detail: JSON.stringify(failure, null, 2),
+        description: `${reason} You can continue editing and saving this document.`,
+        detail: `${filePath ? `Path: ${filePath}\n` : ""}${JSON.stringify(failure, null, 2)}`,
         buttons: [{ text: "Retry Analysis", onDidClick: () => this.retrySyntaxAnalysis() }],
       },
     );

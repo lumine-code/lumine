@@ -1388,7 +1388,7 @@ describe("Environment", () => {
         expect(lumine.notifications.addError).toHaveBeenCalledWith(
           "Unable to deserialize project",
           {
-            description: "deserialization failure",
+            detail: "deserialization failure",
             stack: err.stack,
           },
         );
@@ -3079,7 +3079,8 @@ describe("Environment", () => {
 
           expect(lumine.notifications.addWarning.calls.mostRecent().args[1]).toEqual(
             jasmine.objectContaining({
-              description: `The directories \`${nonExistent}\` and \`${existingFile}\` do not exist.`,
+              detail: `Path: ${nonExistent}\nPath: ${existingFile}`,
+              description: "The directories do not exist.",
               dismissable: true,
               buttons: jasmine.arrayContaining([
                 jasmine.objectContaining({

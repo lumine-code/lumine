@@ -55,28 +55,36 @@ KeymapManager.prototype.loadUserKeymap = function () {
     this.loadKeymap(userKeymapPath, { watch: true, suppressErrors: true, priority: 100 });
   } catch (error) {
     if (error.message.indexOf("Unable to watch path") > -1) {
-      const message = `Unable to watch path: \`${path.basename(userKeymapPath)}\`. Make sure you \
-        have permission to read \`${userKeymapPath}\`.
-
-        On Linux the per-user inotify watch limit is often too low. See \
-        [this document][watches] for more info. \
-        [watches]:https://lumine-code.github.io/docs.html#troubleshooting/common-issues`;
-      this.notificationManager.addError(message, { dismissable: true });
+      this.notificationManager.addError("Unable to watch the user keymap", {
+        detail: `Path: ${userKeymapPath}\n${error.message}`,
+        description:
+          "Make sure you have permission to read the file. On Linux the per-user inotify watch limit is often too low. See the [troubleshooting guide](https://lumine-code.github.io/docs.html#troubleshooting/common-issues).",
+        dismissable: true,
+      });
     } else {
-      const detail = error.path;
+      const detail = `Path: ${error.path || userKeymapPath}\n${error.message}`;
       const stack = error.stack;
-      this.notificationManager.addFatalError(error.message, { detail, stack, dismissable: true });
+      this.notificationManager.addFatalError("Failed to load the user keymap", {
+        detail,
+        stack,
+        reportTitle: error.message,
+        sourcePath: error.path || userKeymapPath,
+        dismissable: true,
+      });
     }
   }
   return this.emitter.emit("did-load-user-keymap");
 };
 
 KeymapManager.prototype.subscribeToFileReadFailure = function () {
-  return this.onDidFailToReadFile((error) => {
-    const userKeymapPath = this.getUserKeymapPath();
-    const message = `Failed to load \`${userKeymapPath}\``;
-    const detail = error.location != null ? error.stack : error.message;
-    this.notificationManager.addError(message, { detail, dismissable: true });
+  return this.onDidFailToReadFile((failure) => {
+    const error = failure.error ?? failure;
+    const userKeymapPath = failure.path || this.getUserKeymapPath();
+    const cause = error.location != null ? error.stack : error.message;
+    this.notificationManager.addError("Failed to load the user keymap", {
+      detail: `Path: ${userKeymapPath}\n${cause}`,
+      dismissable: true,
+    });
   });
 };
 

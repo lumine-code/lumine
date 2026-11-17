@@ -1,6 +1,5 @@
 const _ = require("@lumine-code/underscore-plus");
 const fs = require("@lumine-code/fs-plus");
-const dedent = require("dedent");
 const { Disposable, Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 const CSON = require("@lumine-code/season");
 const Path = require("path");
@@ -41,14 +40,10 @@ module.exports = class ConfigFile {
         });
       } catch (error) {
         for (const update of updates) update.reject(error);
-        this.emitter.emit(
-          "did-error",
-          dedent`
-            Failed to write \`${Path.basename(this.path)}\`.
-
-            ${error.message}
-          `,
-        );
+        this.emitter.emit("did-error", {
+          message: "Unable to write user settings",
+          detail: `Path: ${this.path}\n${error.message}`,
+        });
         return;
       }
       // A watcher read before this write finishes must not complete its updates.
@@ -94,28 +89,24 @@ module.exports = class ConfigFile {
         watcher.onDidChange(() => this.requestLoad()),
         watcher.onDidInvalidate(() => this.requestLoad()),
         watcher.onDidError((error) =>
-          this.emitter.emit("did-error", `Unable to watch ${this.path}: ${error.message}`),
+          this.emitter.emit("did-error", {
+            message: "Unable to watch user settings",
+            detail: `Path: ${this.path}\n${error.message}`,
+          }),
         ),
       );
       await watcher.ready;
       await this.reload();
       return subscriptions;
-    } catch {
+    } catch (error) {
       subscriptions?.dispose();
       await this.reload();
-      //TODO_LUMINE: Find out why the lumine global variable isn't available at this point
-      this.emitter.emit(
-        "did-error",
-        dedent`
-        Unable to watch path: \`${Path.basename(this.path)}\`.
-
-        Make sure you have permissions to \`${this.path}\`.
-        On Linux the per-user inotify watch limit is often too low.
-        See [this document][watches] for more info.
-
-        [watches]:https://lumine-code.github.io/docs.html#troubleshooting/common-issues
-      `,
-      );
+      this.emitter.emit("did-error", {
+        message: "Unable to watch user settings",
+        detail: `Path: ${this.path}\n${error.message}`,
+        description:
+          "Make sure you have permission to read the file. On Linux the per-user inotify watch limit is often too low. See the [troubleshooting guide](https://lumine-code.github.io/docs.html#troubleshooting/common-issues).",
+      });
       return new Disposable();
     }
   }
@@ -125,6 +116,8 @@ module.exports = class ConfigFile {
   }
 
   onDidError(callback) {
+    // Notification fields keep authored Markdown separate from literal diagnostics
+    // while crossing the main-process-to-renderer IPC boundary.
     return this.emitter.on("did-error", callback);
   }
 
@@ -149,10 +142,10 @@ module.exports = class ConfigFile {
     const updates = this.reloadCallbacks.splice(0);
     if (error) {
       for (const update of updates) update.reject(error);
-      this.emitter.emit(
-        "did-error",
-        `Failed to load \`${Path.basename(this.path)}\` - ${error.message}`,
-      );
+      this.emitter.emit("did-error", {
+        message: "Unable to load user settings",
+        detail: `Path: ${this.path}\n${error.message}`,
+      });
     } else {
       const value = data || {};
       const changed = !this.loaded || !_.isEqual(this.value, value);

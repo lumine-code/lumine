@@ -3889,8 +3889,8 @@ class TextBuffer {
    * preserves its pending warning and session approval.
    *
    * @param {Object|null} confirmation - Warning text, or null to clear it.
-   * @param {String} confirmation.message - The question shown before saving.
-   * @param {String} [confirmation.detail] - Additional plain-text context.
+   * @param {String} confirmation.message - A concise authored Markdown question shown before saving. Put paths and other raw data in `detail`.
+   * @param {String} [confirmation.detail] - Literal plain-text context, including paths and other raw data.
    */
   setSaveConfirmation(confirmation) {
     if (confirmation != null) {
