@@ -324,10 +324,14 @@ function createController(store, window, name, saved, onDispose) {
       if (!saved) return;
       applyingRestore = true;
       try {
-        if (saved.maximized && !mode("isMaximized")) {
+        if (saved.maximized) {
+          const maximized = mode("isMaximized");
           awaitingMaximizedRestore = saved.fullScreen;
-          maximizeRestoreObserved = false;
-          window.maximize?.();
+          maximizeRestoreObserved = maximized;
+          if (!maximized) window.maximize?.();
+          // A visible window may already report maximized while Cocoa's zoom
+          // delegate is unwinding. Apply the same transition barrier either way.
+          continueFullscreenRestore();
         }
         if (frozen || disposed || isDestroyed()) return;
         const deferFullscreen = awaitingMaximizedRestore || fullscreenRestore;

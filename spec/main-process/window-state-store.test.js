@@ -539,6 +539,34 @@ test("fullscreen restoration waits for maximize completion and the native callba
   assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
 });
 
+test("already maximized fullscreen restoration waits for the native callback to unwind", async (t) => {
+  const failures = [];
+  const store = fixture(t, { onError: (error) => failures.push(error) });
+  store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+  const window = new NativeWindow();
+  window.maximized = true;
+  const controller = store.track(window, "workspace");
+  t.after(controller.dispose);
+  let zoomDelegateActive = true;
+  const setFullScreen = window.setFullScreen.bind(window);
+  window.setFullScreen = (value) => {
+    assert.equal(zoomDelegateActive, false, "Fullscreen cannot begin inside the zoom delegate");
+    setFullScreen(value);
+  };
+
+  controller.restore();
+  assert.deepEqual(window.calls, []);
+  assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+  zoomDelegateActive = false;
+  await new Promise(setImmediate);
+
+  assert.deepEqual(failures, []);
+  assert.deepEqual(window.calls, [["setFullScreen", true]]);
+  assert.equal(window.fullScreen, true);
+  controller.freeze();
+  assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+});
+
 test("a later geometry event can complete the one observed maximize transition without polling", async (t) => {
   const store = fixture(t);
   store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
@@ -578,21 +606,23 @@ test("freezing before maximize completes cancels the next native restore transit
   assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
 });
 
-for (const stop of ["freeze", "dispose"]) {
-  test(`${stop} cancels a queued fullscreen restore while retaining saved intent`, async (t) => {
-    const store = fixture(t);
-    store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
-    const window = new NativeWindow();
-    const controller = store.track(window, "workspace");
-    t.after(controller.dispose);
-    controller.restore();
-    controller[stop]();
-    await new Promise(setImmediate);
+for (const maximized of [false, true])
+  for (const stop of ["freeze", "dispose"]) {
+    test(`${stop} cancels a queued fullscreen restore ${maximized ? "from an already maximized window" : "after maximizing"} while retaining saved intent`, async (t) => {
+      const store = fixture(t);
+      store.write("workspace", snapshot({ maximized: true, fullScreen: true }));
+      const window = new NativeWindow();
+      window.maximized = maximized;
+      const controller = store.track(window, "workspace");
+      t.after(controller.dispose);
+      controller.restore();
+      controller[stop]();
+      await new Promise(setImmediate);
 
-    assert.deepEqual(window.calls, ["maximize"]);
-    assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
-  });
-}
+      assert.deepEqual(window.calls, maximized ? [] : ["maximize"]);
+      assert.deepEqual(store.read("workspace"), snapshot({ maximized: true, fullScreen: true }));
+    });
+  }
 
 test("fullscreen restoration preserves intent until its native transition completes", async (t) => {
   const store = fixture(t);

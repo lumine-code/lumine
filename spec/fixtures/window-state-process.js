@@ -5,6 +5,61 @@ const { windowStateOptions } = require("../../src/window-state-persistence");
 
 const name = "lumine-window-restart-spec";
 const stage = process.env.LUMINE_WINDOW_STATE_STAGE;
+const nativeTrace = [];
+const nativeTraceStartedAt = Date.now();
+let nativeTraceSequence = 0;
+
+function recordNativeState(window, point, args) {
+  const entry = {
+    sequence: ++nativeTraceSequence,
+    elapsedMs: Date.now() - nativeTraceStartedAt,
+    stage,
+    point,
+    ...(args ? { args } : {}),
+  };
+  try {
+    if (window.isDestroyed()) entry.destroyed = true;
+    else {
+      Object.assign(entry, {
+        maximized: window.isMaximized(),
+        fullScreen: window.isFullScreen(),
+        minimized: window.isMinimized(),
+        bounds: window.getBounds(),
+        normalBounds: window.getNormalBounds(),
+      });
+    }
+  } catch (error) {
+    entry.error = error.message;
+  }
+  nativeTrace.push(entry);
+  if (nativeTrace.length > 64) nativeTrace.shift();
+}
+
+function traceNativeTransitions(window) {
+  for (const event of [
+    "show",
+    "maximize",
+    "unmaximize",
+    "enter-full-screen",
+    "leave-full-screen",
+    "move",
+    "resize",
+    "resized",
+  ])
+    window.on(event, () => recordNativeState(window, `event:${event}`));
+  for (const method of ["maximize", "setFullScreen"]) {
+    const original = window[method];
+    window[method] = function (...args) {
+      recordNativeState(window, `call:${method}`, args);
+      try {
+        return Reflect.apply(original, this, args);
+      } finally {
+        recordNativeState(window, `return:${method}`, args);
+      }
+    };
+  }
+}
+
 app.setPath("userData", process.env.LUMINE_WINDOW_STATE_PROFILE);
 app.on("window-all-closed", () => app.quit());
 
@@ -94,6 +149,7 @@ app
       focusable: process.platform !== "win32",
       show: false,
     });
+    traceNativeTransitions(window);
     const state = store.track(window, name);
     await window.loadURL("about:blank");
     const snapshot = store.read(name);
@@ -264,6 +320,7 @@ app
     setImmediate(() => window.close());
   })
   .catch((error) => {
+    console.error(`WINDOW_STATE_TRACE ${JSON.stringify(nativeTrace)}`);
     console.error(error);
     app.exit(1);
   });
