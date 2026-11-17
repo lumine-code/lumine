@@ -49,7 +49,8 @@ describe("Package syntax analyses with a worker owner", () => {
     const info = spyOn(lumine.notifications, "addInfo").and.callThrough();
     lumine.commands.dispatch(editor.getElement(), "editor:log-cursor-syntax-tree-scope");
     await conditionPromise(() => info.calls.count() > 0);
-    expect(info.calls.mostRecent().args[0]).toContain("number");
+    expect(info.calls.mostRecent().args[0]).toBe("Syntax tree at Cursor");
+    expect(info.calls.mostRecent().args[1].detail).toContain("number");
     editor.setCursorBufferPosition([0, 5]);
     const scrollStates = [];
     spyOn(editor, "scrollToCursorPosition").and.callFake(() =>

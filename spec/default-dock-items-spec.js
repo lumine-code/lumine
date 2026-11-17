@@ -622,7 +622,7 @@ describe("default dock items", () => {
 
       expect(report).toHaveBeenCalledTimes(1);
       expect(report.calls.first().args[0]).toBe("Unable to open default dock item");
-      expect(report.calls.first().args[1].description).toContain(
+      expect(report.calls.first().args[1].detail).toContain(
         failureSource === "invalid visibility" ? "sometimes" : failure.message,
       );
       expect(workspace.getLeftDock().getPaneItems()).toEqual([item]);
