@@ -69,8 +69,6 @@ function parseFrontMatter(content) {
  * @param {Boolean} [givenOpts.useDefaultEmoji=false] - Whether `markdown-it-emoji` should be enabled.
  * @param {Boolean} [givenOpts.useGitHubHeadings=false] - Whether `markdown-it-github-headings`
  * should be enabled. False by default.
- * @param {Function[]} [givenOpts.markdownItPlugins=[]] - Additional plugins for this render's
- * `markdown-it` instance.
  * @param {Boolean} [givenOpts.useTaskCheckbox=true] - Whether `markdown-it-task-checkbox`
  * should be enabled. True by default.
  * @param {Boolean} [givenOpts.taskCheckboxDisabled=true] - Controls `markdown-it-task-checkbox`
@@ -104,7 +102,6 @@ function renderMarkdown(content, givenOpts = {}) {
     handleFrontMatter: true, // Determines if Front Matter content should be parsed
     useDefaultEmoji: false, // Use `markdown-it-emoji`
     useGitHubHeadings: false, // Use `markdown-it-github-headings`
-    markdownItPlugins: [],
     useTaskCheckbox: true, // Use `markdown-it-task-checkbox`
     taskCheckboxDisabled: true, // `markdown-it-task-checkbox`: Disable checkbox interactivity
     taskCheckboxDivWrap: false, // `markdown-it-task-checkbox`: Wrap div around checkbox
@@ -176,7 +173,6 @@ function renderMarkdown(content, givenOpts = {}) {
       divWrap: opts.taskCheckboxDivWrap,
     });
   }
-  for (const plugin of opts.markdownItPlugins) md.use(plugin);
   if (opts.transformImageLinks && (validateRootDomain() || validateFilePath())) {
     // Here we will take any links for images provided in the content, and do
     // our best to ensure they can accurately resolve.
