@@ -169,6 +169,32 @@ describe("frame-bound layout resizing", () => {
         expect(dockSize(dock)).toBe(260);
         expect(update.calls.allArgs().filter(([component]) => component === dock).length).toBe(1);
       });
+
+      it(`preserves the pointer's grab offset while resizing the ${location} dock`, () => {
+        const dock = makeDock(location);
+        const grip = dock.getElement().querySelector(".lumine-dock-resize-handle");
+        const gripBounds = grip.getBoundingClientRect();
+        const dockBounds = dock.getElement().getBoundingClientRect();
+        const clientX = gripBounds.left + gripBounds.width / 2 + (location === "bottom" ? 0 : 1);
+        const clientY = gripBounds.top + gripBounds.height / 2 + (location === "bottom" ? 1 : 0);
+        const sizeAtPress = {
+          left: clientX - dockBounds.left,
+          right: dockBounds.right - clientX,
+          bottom: dockBounds.bottom - clientY,
+        }[location];
+        grip.dispatchEvent(
+          new MouseEvent("mousedown", { detail: 1, buttons: 1, clientX, clientY }),
+        );
+
+        moveDock(dock, sizeAtPress);
+        advanceFrame();
+        expect(dockSize(dock)).toBe(200);
+
+        moveDock(dock, sizeAtPress + 25);
+        advanceFrame();
+        expect(dockSize(dock)).toBe(225);
+        releaseDock();
+      });
     }
 
     it("settles the final size before drag-end observers run, even before the frame", () => {

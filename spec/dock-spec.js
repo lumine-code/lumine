@@ -1,4 +1,5 @@
 const { copyableElement } = require("./helpers/pane-item-fixtures");
+const { waitForFrames } = require("./helpers/async-spec-helpers");
 const etch = require("@lumine-code/etch");
 
 const getNextUpdatePromise = () => etch.getScheduler().nextUpdatePromise;
@@ -285,6 +286,410 @@ describe("Dock", () => {
         expect(pane.isActive()).toBe(true);
       });
     });
+  });
+
+  describe("dock toggle geometry", () => {
+    let workspace;
+
+    beforeEach(() => {
+      workspace = lumine.workspace;
+      const themeStyle = document.createElement("style");
+      themeStyle.textContent = `
+        .lumine-dock-toggle-button.left { margin-left: -2px; }
+        .lumine-dock-toggle-button.right { margin-right: -2px; }
+        .lumine-dock-inner:not(.lumine-dock-open) .lumine-dock-toggle-button.bottom {
+          margin-bottom: -1px;
+        }
+        .lumine-dock-toggle-button-inner { transition: none !important; }
+      `;
+      jasmine.attachToDOM(themeStyle);
+      const root = workspace.getElement();
+      root.style.cssText = "position: fixed; left: 0; top: 0; width: 800px; height: 500px;";
+      root.style.setProperty("--pane-item-border-color", "rgb(147, 72, 13)");
+      root.style.setProperty("--tool-panel-border-color", "rgb(20, 40, 60)");
+      jasmine.attachToDOM(root);
+    });
+
+    for (const location of ["left", "right", "bottom"]) {
+      it(`covers the ${location} divider with the toggle without shifting its exterior cap`, async () => {
+        const dock = workspace
+          .getPaneContainers()
+          .find((container) => container.getLocation() === location);
+        dock.setState({ size: 160 });
+        dock.show();
+        dock.setHovered(true);
+        await getNextUpdatePromise();
+
+        const element = dock.getElement();
+        const grip = element.querySelector(".lumine-dock-resize-handle");
+        const toggle = element.querySelector(".lumine-dock-toggle-button");
+        const button = toggle.querySelector(".lumine-dock-toggle-button-inner");
+        const divider = grip.getBoundingClientRect();
+        const bounds = toggle.getBoundingClientRect();
+        const buttonBounds = button.getBoundingClientRect();
+        const icon = button.querySelector(".icon").getBoundingClientRect();
+        const [dockEdge, workspaceEdge] = {
+          left: ["left", "right"],
+          right: ["right", "left"],
+          bottom: ["bottom", "top"],
+        }[location];
+        const x =
+          location === "bottom"
+            ? (bounds.left + bounds.right) / 2
+            : (bounds[workspaceEdge] + divider[workspaceEdge]) / 2;
+        const y =
+          location === "bottom" ? (bounds.top + divider.top) / 2 : (bounds.top + bounds.bottom) / 2;
+        const centerX = (buttonBounds.left + buttonBounds.right) / 2;
+        const centerY = (buttonBounds.top + buttonBounds.bottom) / 2;
+        const capBase = location === "bottom" ? centerY : centerX;
+        const buttonStyle = getComputedStyle(button);
+        const fillRadius = buttonBounds.width / 2 - parseFloat(buttonStyle.borderTopWidth);
+        const centroidOffset = (4 * fillRadius) / (3 * Math.PI);
+        const [iconX, iconY] = {
+          left: [centerX + centroidOffset, centerY],
+          right: [centerX - centroidOffset, centerY],
+          bottom: [centerX, centerY - centroidOffset],
+        }[location];
+        const borderSide = { left: "Right", right: "Left", bottom: "Top" }[location];
+
+        expect(bounds[dockEdge]).toBeCloseTo(divider[dockEdge], 2);
+        expect(capBase).toBeCloseTo(divider[workspaceEdge], 2);
+        expect(buttonStyle.borderTopColor).toBe(getComputedStyle(grip)[`border${borderSide}Color`]);
+        expect((icon.left + icon.right) / 2).toBeCloseTo(iconX, 1);
+        expect((icon.top + icon.bottom) / 2).toBeCloseTo(iconY, 1);
+
+        const hitAtDivider =
+          location === "bottom"
+            ? document.elementFromPoint(x, Math.ceil(divider.top))
+            : document.elementFromPoint(Math.ceil(divider.left), y);
+        expect(button.contains(hitAtDivider)).toBe(true);
+
+        // Blink can round fractional hit-test coordinates to the next pixel.
+        const hitInDock = {
+          left: () => document.elementFromPoint(Math.ceil(divider.left) - 1, y),
+          right: () => document.elementFromPoint(Math.ceil(divider.right), y),
+          bottom: () => document.elementFromPoint(x, Math.ceil(divider.bottom)),
+        }[location]();
+        expect(toggle.contains(hitInDock)).toBe(false);
+
+        dock.setHovered(false);
+        await getNextUpdatePromise();
+
+        const hiddenEdge = button.getBoundingClientRect()[workspaceEdge];
+        const maskEdge = toggle.getBoundingClientRect()[dockEdge];
+        const overlap = (hiddenEdge - maskEdge) * (location === "left" ? 1 : -1);
+        expect(overlap).toBeLessThanOrEqual(0);
+      });
+    }
+
+    it("keeps the closed bottom toggle above the footer boundary", async () => {
+      const footerItem = document.createElement("div");
+      footerItem.style.height = "32px";
+      const footer = workspace.addFooterPanel({ item: footerItem }).getElement();
+      const dock = workspace.getBottomDock();
+      dock.setHovered(true);
+      await getNextUpdatePromise();
+
+      const toggle = dock.getElement().querySelector(".lumine-dock-toggle-button");
+      const button = toggle.querySelector(".lumine-dock-toggle-button-inner");
+      const bounds = toggle.getBoundingClientRect();
+      const icon = button.querySelector(".icon").getBoundingClientRect();
+      const footerTop = footer.getBoundingClientRect().top;
+      const x = (bounds.left + bounds.right) / 2;
+      const fillRadius = bounds.width / 2 - parseFloat(getComputedStyle(button).borderTopWidth);
+      const iconY = footerTop - (4 * fillRadius) / (3 * Math.PI) - 1;
+
+      expect(dock.isVisible()).toBe(false);
+      expect(bounds.bottom).toBeCloseTo(footerTop, 2);
+      expect((icon.top + icon.bottom) / 2).toBeCloseTo(iconY, 1);
+      expect(button.contains(document.elementFromPoint(x, Math.ceil(footerTop) - 1))).toBe(true);
+      expect(footer.contains(document.elementFromPoint(x, Math.ceil(footerTop)))).toBe(true);
+    });
+  });
+
+  describe("resize handle hit testing", () => {
+    let workspace, controllers;
+
+    beforeEach(() => {
+      workspace = lumine.workspace;
+      controllers = [];
+      // Existing themes absolutely position dock grips and add their own border.
+      // Keep those overrides in play because core also runs with older theme pins.
+      const themeStyle = document.createElement("style");
+      themeStyle.textContent = `
+        .lumine-dock-resize-handle { position: absolute; z-index: 11; }
+        .lumine-dock-resize-handle.left { inset: 0 0 0 auto; }
+        .lumine-dock-resize-handle.right { inset: 0 auto 0 0; }
+        .lumine-dock-resize-handle.bottom { inset: 0 0 auto; }
+        .lumine-dock-inner.lumine-dock-open.left { border-right: 1px solid; }
+        .lumine-dock-inner.lumine-dock-open.right { border-left: 1px solid; }
+        .lumine-dock-inner.lumine-dock-open.bottom { border-top: 1px solid; }
+      `;
+      jasmine.attachToDOM(themeStyle);
+      const root = workspace.getElement();
+      root.style.cssText = "position: fixed; left: 0; top: 0; width: 800px; height: 500px;";
+      jasmine.attachToDOM(root);
+    });
+
+    afterEach(() => {
+      for (const controller of controllers) controller.dispose();
+    });
+
+    async function showDock(dock) {
+      dock.setState({ size: 160 });
+      dock.show();
+      await getNextUpdatePromise();
+    }
+
+    function addScrollbar(container, location, { edge, horizontal = false } = {}) {
+      const item = copyableElement("div", [location]);
+      item.style.zIndex = "1";
+      const context = item.appendChild(document.createElement("div"));
+      context.style.cssText = "position: absolute; inset: 0; isolation: isolate;";
+      const scrollport = context.appendChild(document.createElement("div"));
+      scrollport.style.cssText = "position: absolute; inset: 0; overflow: auto;";
+      const content = scrollport.appendChild(document.createElement("div"));
+      content.style[horizontal ? "width" : "height"] = "2000px";
+      container.getActivePane().activateItem(item);
+      const controller = lumine.scrollbars.attach(scrollport, {
+        kind: "panel",
+        layout: "overlay",
+        policy: "always",
+        edge,
+        horizontal,
+        vertical: !horizontal,
+      });
+      controllers.push(controller);
+      return horizontal ? controller.horizontal.element : controller.vertical.element;
+    }
+
+    function getDock(location) {
+      return workspace
+        .getPaneContainers()
+        .find((container) => container.getLocation() === location);
+    }
+
+    async function waitForScrollbar(track) {
+      await waitForFrames(() => Boolean(track.offsetHeight && track.offsetWidth), {
+        frames: 30,
+        description: "dock scrollbar geometry",
+      });
+      return track.getBoundingClientRect();
+    }
+
+    function pressAt(x, y) {
+      const target = document.elementFromPoint(x, y);
+      target?.dispatchEvent(
+        new MouseEvent("mousedown", {
+          clientX: x,
+          clientY: y,
+          buttons: 1,
+          detail: 1,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      return target;
+    }
+
+    for (const location of ["left", "right", "bottom"]) {
+      it(`fits ${location} dock content to its one-pixel divider and resizes from both sides`, async () => {
+        const dock = getDock(location);
+        const item = copyableElement("div", [location]);
+        item.style.backgroundColor = "rgb(20, 40, 60)";
+        dock.getActivePane().activateItem(item);
+        await showDock(dock);
+        const element = dock.getElement();
+        const mask = element.querySelector(".lumine-dock-mask").getBoundingClientRect();
+        const center = workspace.getCenter().getActivePane().getElement().getBoundingClientRect();
+        const itemBounds = item.getBoundingClientRect();
+        const grip = element.querySelector(".lumine-dock-resize-handle");
+        const rect = grip.getBoundingClientRect();
+        const style = getComputedStyle(grip);
+        const { edges, contentEdge, dividerStart, size, borderWidth, cross, direction } = {
+          left: {
+            edges: [rect.right, mask.right, center.left],
+            contentEdge: itemBounds.right,
+            dividerStart: rect.left,
+            size: rect.width,
+            borderWidth: style.borderRightWidth,
+            cross: (rect.top + rect.bottom) / 2,
+            direction: 1,
+          },
+          right: {
+            edges: [rect.left, mask.left, center.right],
+            contentEdge: itemBounds.left,
+            dividerStart: rect.right,
+            size: rect.width,
+            borderWidth: style.borderLeftWidth,
+            cross: (rect.top + rect.bottom) / 2,
+            direction: -1,
+          },
+          bottom: {
+            edges: [rect.top, mask.top, center.bottom],
+            contentEdge: itemBounds.top,
+            dividerStart: rect.bottom,
+            size: rect.height,
+            borderWidth: style.borderTopWidth,
+            cross: (rect.left + rect.right) / 2,
+            direction: -1,
+          },
+        }[location];
+        const [dividerEnd, dockPaintEdge, workspaceEdge] = edges;
+        expect(dividerEnd).toBe(dockPaintEdge);
+        expect(dividerEnd).toBe(workspaceEdge);
+        expect(contentEdge).toBe(dividerStart);
+        expect(size).toBe(1);
+        expect(borderWidth).toBe("1px");
+
+        const line = (dividerStart + dividerEnd) / 2;
+        for (const offset of [-5, -3, 3, 5]) {
+          const position = line + direction * offset;
+          const target =
+            location === "bottom" ? pressAt(cross, position) : pressAt(position, cross);
+          const onGrip = Math.abs(offset) < 4;
+          expect(target === grip).toBe(onGrip);
+          if (offset === -5) expect(target).toBe(item);
+          expect(Boolean(dock.layoutDrag)).toBe(onGrip);
+          window.dispatchEvent(new MouseEvent("mouseup"));
+        }
+      });
+    }
+
+    it("leaves the dock corner to the outer chrome when the active item is a panel", async () => {
+      const themeStyle = document.createElement("style");
+      themeStyle.textContent = "lumine-panel { border-bottom: 1px solid; }";
+      jasmine.attachToDOM(themeStyle);
+
+      const dock = workspace.getLeftDock();
+      const item = copyableElement("lumine-panel", ["left"]);
+      const section = item.appendChild(document.createElement("lumine-panel"));
+      dock.getActivePane().activateItem(item);
+      await showDock(dock);
+
+      expect(getComputedStyle(item).borderBottomWidth).toBe("0px");
+      expect(getComputedStyle(section).borderBottomWidth).toBe("1px");
+    });
+
+    it("keeps a single separator above the bottom dock without erasing split pane borders", async () => {
+      const themeStyle = document.createElement("style");
+      themeStyle.textContent = "lumine-pane, lumine-panel { border-bottom: 1px solid; }";
+      jasmine.attachToDOM(themeStyle);
+
+      const upperPane = workspace.getCenter().getActivePane();
+      const lowerPane = upperPane.splitDown();
+      const lowerRightPane = lowerPane.splitRight();
+      const upper = upperPane.getElement();
+      const lower = lowerPane.getElement();
+      const lowerRight = lowerRightPane.getElement();
+      const bottomBorder = (element) => getComputedStyle(element).borderBottomWidth;
+
+      const dock = workspace.getBottomDock();
+      expect(bottomBorder(lower)).toBe("1px");
+      await showDock(dock);
+      expect(bottomBorder(upper)).toBe("1px");
+      expect(bottomBorder(lower)).toBe("0px");
+      expect(bottomBorder(lowerRight)).toBe("0px");
+
+      const panel = workspace.addBottomPanel({
+        item: document.createElement("div"),
+        visible: false,
+      });
+      expect(bottomBorder(lower)).toBe("0px");
+      panel.show();
+      expect(bottomBorder(panel.getElement())).toBe("0px");
+      expect(bottomBorder(lower)).toBe("1px");
+      expect(bottomBorder(lowerRight)).toBe("1px");
+      panel.hide();
+      expect(bottomBorder(lower)).toBe("0px");
+      expect(bottomBorder(lowerRight)).toBe("0px");
+    });
+
+    for (const location of ["left", "right"]) {
+      it(`keeps scrollbar pixels on both sides of the ${location} dock divider clickable`, async () => {
+        const dock = getDock(location);
+        const dockEdge = location === "left" ? "right" : "left";
+        const dockTrack = addScrollbar(dock, location, { edge: dockEdge });
+        const centerTrack = addScrollbar(workspace.getCenter(), "center", { edge: location });
+        await showDock(dock);
+        const divider = dock.getElement().querySelector(".lumine-dock-resize-handle");
+        const dividerBounds = divider.getBoundingClientRect();
+        const dividerX = dividerBounds.left + dividerBounds.width / 2;
+        for (const [track, edge] of [
+          [dockTrack, dockEdge],
+          [centerTrack, location],
+        ]) {
+          const rect = await waitForScrollbar(track);
+          const x = edge === "right" ? rect.right - 1 : rect.left + 1;
+          const y = (rect.top + rect.bottom) / 2;
+          expect(Math.abs(x - dividerX)).toBeLessThan(4);
+          expect(track.contains(pressAt(x, y))).toBe(true);
+          expect(dock.layoutDrag).toBeNull();
+          window.dispatchEvent(new MouseEvent("mouseup"));
+        }
+      });
+
+      it(`keeps the workspace side of the ${location} grip available with a far-edge scrollbar`, async () => {
+        const dock = getDock(location);
+        const farEdge = location === "left" ? "right" : "left";
+        const center = workspace.getCenter();
+        const tabBar = document.createElement("ul");
+        tabBar.className = "tab-bar";
+        tabBar.dataset.scrollbar = "none";
+        tabBar.appendChild(document.createElement("li")).textContent = "Workspace tab";
+        center.getActivePane().getElement().prepend(tabBar);
+        const track = addScrollbar(center, "center", { edge: farEdge });
+        await showDock(dock);
+        const trackBounds = await waitForScrollbar(track);
+
+        const grip = dock.getElement().querySelector(".lumine-dock-resize-handle");
+        const gripBounds = grip.getBoundingClientRect();
+        const centerOffset = location === "left" ? 3 : -3;
+        const x = gripBounds.left + gripBounds.width / 2 + centerOffset;
+        const y = (trackBounds.top + trackBounds.bottom) / 2;
+        expect(pressAt(x, y)).toBe(grip);
+        expect(dock.layoutDrag).not.toBeNull();
+        window.dispatchEvent(new MouseEvent("mouseup"));
+      });
+    }
+
+    it("keeps the center's horizontal scrollbar clickable above the bottom dock", async () => {
+      const track = addScrollbar(workspace.getCenter(), "center", { horizontal: true });
+      const dock = workspace.getBottomDock();
+      await showDock(dock);
+      const rect = await waitForScrollbar(track);
+      const divider = dock.getElement().querySelector(".lumine-dock-resize-handle");
+      const dividerBounds = divider.getBoundingClientRect();
+      const y = rect.bottom - 1;
+      expect(Math.abs(y - dividerBounds.top - dividerBounds.height / 2)).toBeLessThan(4);
+      const target = pressAt((rect.left + rect.right) / 2, y);
+      expect(track.contains(target)).toBe(true);
+      expect(dock.layoutDrag).toBeNull();
+      window.dispatchEvent(new MouseEvent("mouseup"));
+    });
+
+    for (const location of ["left", "right"]) {
+      it(`preserves the native scrollbar next to the ${location} dock divider`, async () => {
+        const style = document.createElement("style");
+        style.textContent = ".dock-spec-native-scrollport::-webkit-scrollbar { width: 12px; }";
+        jasmine.attachToDOM(style);
+        const scrollLocation = location === "left" ? "left" : "center";
+        const scrollport = copyableElement("div", [scrollLocation]);
+        scrollport.dataset.scrollbar = "none";
+        scrollport.classList.add("dock-spec-native-scrollport");
+        scrollport.style.cssText = "overflow-y: scroll; scrollbar-gutter: stable;";
+        scrollport.appendChild(document.createElement("div")).style.height = "2000px";
+        getDock(scrollLocation).getActivePane().activateItem(scrollport);
+        const dock = getDock(location);
+        await showDock(dock);
+
+        const rect = scrollport.getBoundingClientRect();
+        expect(scrollport.offsetWidth - scrollport.clientWidth).toBeGreaterThan(4);
+        expect(pressAt(rect.right - 2, (rect.top + rect.bottom) / 2)).toBe(scrollport);
+        expect(dock.layoutDrag).toBeNull();
+        window.dispatchEvent(new MouseEvent("mouseup"));
+      });
+    }
   });
 
   describe("when the dock resize handle is double-clicked", () => {

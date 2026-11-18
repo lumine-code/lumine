@@ -133,8 +133,13 @@ describe("layout resizing with focused embedded content", () => {
         await loadFrame(opaque);
         const grip = dock.getElement().querySelector(".lumine-dock-resize-handle");
         const rect = grip.getBoundingClientRect();
-        const x = rect.left + rect.width / 2;
-        const y = rect.top + rect.height / 2;
+        // Electron takes integer coordinates. Keep the press inside the painted
+        // pixel instead of rounding the divider's midpoint into the iframe.
+        const x =
+          location === "bottom" ? Math.round(rect.left + rect.width / 2) : Math.ceil(rect.left);
+        const y =
+          location === "bottom" ? Math.ceil(rect.top) : Math.round(rect.top + rect.height / 2);
+        expect(document.elementFromPoint(x, y)).toBe(grip);
         const nextX = x + (location === "left" ? 60 : location === "right" ? -60 : 0);
         const nextY = y - (location === "bottom" ? 60 : 0);
         await mouse("mouseMove", x, y);

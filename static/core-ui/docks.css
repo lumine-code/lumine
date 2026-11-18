@@ -3,44 +3,31 @@
 /* The actual dock element is used as a kind of placeholder in the DOM, relative
    to which its children can be positioned. */
 lumine-dock {
+  --lumine-dock-divider-size: 1px;
+  --dock-grip-size: 8px;
+  --dock-grip-overlap: calc((var(--dock-grip-size) - var(--lumine-dock-divider-size)) / 2);
   display: flex;
   position: relative;
+  anchor-scope: --lumine-dock-divider;
 }
 
 .lumine-dock-inner {
   display: flex;
+  align-items: center;
 
+  /* Position each dock flush with its edge and center its toggle. */
   &.bottom {
     width: 100%;
+    flex-direction: column;
+    bottom: 0;
   }
   &.left,
   &.right {
     height: 100%;
   }
 
-  /* Make sure to center the toggle buttons */
-  &.bottom {
-    flex-direction: column;
-  }
-  align-items: center;
-
-  /* Position the docks flush with their side of the editor. */
   &.right {
     right: 0;
-  }
-  &.bottom {
-    bottom: 0;
-  }
-  &.left {
-    left: 0;
-  }
-
-  /* Position the docks flush with their side of the editor. */
-  &.right {
-    right: 0;
-  }
-  &.bottom {
-    bottom: 0;
   }
   &.left {
     left: 0;
@@ -108,26 +95,19 @@ lumine-dock {
   height: 100%;
 
   /* The contents of the dock should be "stuck" to the moving edge of the mask,
-     so it looks like they're sliding in (instead of being unmasked in place). */
+     so it looks like they're sliding in. Flex direction puts the resize handle
+     on the workspace-facing side. */
   &.right {
     left: 0;
+    flex-direction: row;
   }
   &.bottom {
     top: 0;
+    flex-direction: column;
   }
   &.left {
     right: 0;
-  }
-
-  /* Use flex-direction to put the resize handle in the correct place. */
-  &.left {
     flex-direction: row-reverse;
-  }
-  &.bottom {
-    flex-direction: column;
-  }
-  &.right {
-    flex-direction: row;
   }
 }
 
@@ -137,8 +117,39 @@ lumine-dock {
 
 /* Toggle button -------------- */
 
+/* Keep the arc centered on the outer edge. Expose one more pixel of the
+   circle over the divider so the button joins the line and owns that click. */
+.lumine-dock-inner.lumine-dock-open > .lumine-dock-toggle-button {
+  --lumine-dock-toggle-overlap: var(--lumine-dock-divider-size);
+
+  &.left {
+    margin-left: calc(-1 * var(--lumine-dock-toggle-overlap));
+  }
+  &.right {
+    margin-right: calc(-1 * var(--lumine-dock-toggle-overlap));
+  }
+  &.bottom {
+    margin-bottom: calc(-1 * var(--lumine-dock-toggle-overlap));
+  }
+}
+
+/* The closed bottom dock ends at the workspace boundary. Older themes
+   shifted its button a pixel into the panel below. */
+lumine-dock > .lumine-dock-inner:not(.lumine-dock-open) > .lumine-dock-toggle-button.bottom {
+  margin-bottom: 0;
+}
+
 .lumine-dock-toggle-button {
   --lumine-dock-toggle-button-size: 50px;
+  --lumine-dock-toggle-radius: calc(var(--lumine-dock-toggle-button-size) / 2);
+  --lumine-dock-toggle-overlap: 0px;
+  --lumine-dock-toggle-mask-depth: calc(
+    var(--lumine-dock-toggle-radius) + var(--lumine-dock-toggle-overlap)
+  );
+  /* The filled half-disk's centroid is 4r / (3π) from its flat edge. */
+  --lumine-dock-toggle-icon-offset: calc(
+    4 * (var(--lumine-dock-toggle-radius) - var(--lumine-dock-divider-size)) / (3 * pi)
+  );
 
   position: absolute;
   overflow: hidden; /* Mask half of the circle. */
@@ -164,17 +175,20 @@ lumine-dock {
   width: var(--lumine-dock-toggle-button-size);
   height: var(--lumine-dock-toggle-button-size);
   &.bottom {
-    height: calc(var(--lumine-dock-toggle-button-size) / 2);
+    height: var(--lumine-dock-toggle-mask-depth);
   }
   &.left,
   &.right {
-    width: calc(var(--lumine-dock-toggle-button-size) / 2);
+    width: var(--lumine-dock-toggle-mask-depth);
   }
 
   .lumine-dock-toggle-button-inner {
     width: var(--lumine-dock-toggle-button-size);
     height: var(--lumine-dock-toggle-button-size);
-    border-radius: calc(var(--lumine-dock-toggle-button-size) / 2);
+    border-radius: var(--lumine-dock-toggle-radius);
+    background-color: var(--tool-panel-background-color);
+    border: var(--lumine-dock-divider-size) solid var(--tool-panel-border-color);
+    transition: transform 0.2s ease-out 0s;
 
     position: absolute;
     display: flex;
@@ -186,48 +200,38 @@ lumine-dock {
     /* Promote to its own compositing layer to avoid a rendering artifact */
     will-change: transform;
 
+    /* Center the icon in the portion of the circle exposed by the mask. */
     &.right {
       left: 0;
+
+      .icon {
+        transform: translateX(calc(-1 * var(--lumine-dock-toggle-icon-offset)));
+      }
     }
     &.bottom {
       top: 0;
+
+      .icon {
+        transform: translateY(calc(-1 * var(--lumine-dock-toggle-icon-offset)));
+
+        &.icon-chevron-up {
+          /* Octicons draws the up chevron one pixel below its box center. */
+          translate: 0 -1px;
+        }
+      }
     }
     &.left {
       right: 0;
+
+      .icon {
+        transform: translateX(var(--lumine-dock-toggle-icon-offset));
+      }
     }
   }
 
   &.lumine-dock-toggle-button-visible {
     .lumine-dock-toggle-button-inner {
       pointer-events: auto;
-    }
-  }
-
-  /* Hide the button. */
-  &:not(.lumine-dock-toggle-button-visible) {
-    .lumine-dock-toggle-button-inner {
-      &.right {
-        transform: translateX(50%);
-      }
-      &.bottom {
-        transform: translateY(50%);
-      }
-      &.left {
-        transform: translateX(-50%);
-      }
-    }
-  }
-
-  /* Center the icon. (@offset: 8px) */
-  .lumine-dock-toggle-button-inner {
-    &.right .icon {
-      transform: translateX(-8px);
-    }
-    &.bottom .icon {
-      transform: translateY(-8px);
-    }
-    &.left .icon {
-      transform: translateX(8px);
     }
   }
 
@@ -242,50 +246,192 @@ lumine-dock {
       margin: 0;
     }
   }
-  &:not(.lumine-dock-toggle-button-visible) .icon {
-    opacity: 0;
-    transition: opacity 0.2s ease-out 0s; /* outro */
-  }
-
-  .lumine-dock-toggle-button-inner {
-    background-color: var(--tool-panel-background-color);
-    border: 1px solid var(--pane-item-border-color);
-    transition: transform 0.2s ease-out 0s; /* intro */
-  }
-
   &:not(.lumine-dock-toggle-button-visible) {
     .lumine-dock-toggle-button-inner {
-      transition: transform 0.2s ease-out 0.1s; /* outro */
+      transition: transform 0.2s ease-out 0.1s;
+
+      &.right {
+        transform: translateX(calc(50% + var(--lumine-dock-toggle-overlap)));
+      }
+      &.bottom {
+        transform: translateY(calc(50% + var(--lumine-dock-toggle-overlap)));
+      }
+      &.left {
+        transform: translateX(calc(-50% - var(--lumine-dock-toggle-overlap)));
+      }
+    }
+
+    .icon {
+      opacity: 0;
+      transition: opacity 0.2s ease-out 0s;
     }
   }
 }
 
 /* Resize handle -------------- */
 
-.lumine-dock-resize-handle {
-  --lumine-dock-resize-handle-size: 4px;
+/* A panel used as a dock pane item shares the pane's outside edge. */
+lumine-dock lumine-pane > .item-views > lumine-panel[data-active-pane-item] {
+  border-bottom-width: 0;
+}
 
+/* The open bottom dock supplies the divider. Drop the facing border of the
+   last visible tool panel, or of the center panes that meet it directly. */
+lumine-panel-container.bottom:has(> lumine-dock > .lumine-dock-open)
+  > lumine-panel:nth-last-child(1 of lumine-panel:not([style*="display: none"])) {
+  border-bottom-width: 0;
+}
+
+lumine-workspace-axis.vertical:has(
+    > lumine-panel-container.bottom > lumine-dock > .lumine-dock-open
+  ):not(:has(> lumine-panel-container.bottom > lumine-panel:not([style*="display: none"])))
+  > lumine-pane-container
+  lumine-pane:not(
+    lumine-pane-axis.vertical > :not(:last-child),
+    lumine-pane-axis.vertical > :not(:last-child) lumine-pane
+  ) {
+  border-bottom-width: 0;
+
+  > .item-views > lumine-panel[data-active-pane-item] {
+    border-bottom-width: 0;
+  }
+}
+
+/* The divider is drawn by the handle. Discard the old theme borders at the
+   workspace-facing edge so there is only one separator. */
+lumine-dock > .lumine-dock-inner.lumine-dock-open {
+  &.left {
+    border-right-width: 0;
+  }
+  &.right {
+    border-left-width: 0;
+  }
+  &.bottom {
+    border-top-width: 0;
+  }
+}
+
+lumine-dock .lumine-dock-content-wrapper > .lumine-dock-resize-handle {
+  anchor-name: --lumine-dock-divider;
+  position: static;
+  inset: auto;
+  z-index: auto;
+  box-sizing: border-box;
   width: auto;
   height: auto;
   flex: 0 0 auto;
+  pointer-events: none;
 
-  /* Use the resize cursor when the handle's resizable */
   &.lumine-dock-resize-handle-resizable {
+    pointer-events: auto;
+
+    &::before {
+      content: "";
+      /* The viewport-positioned hit area can extend past the dock's mask. */
+      position: fixed;
+      position-anchor: --lumine-dock-divider;
+      z-index: 9;
+      cursor: inherit;
+    }
+
     &.left,
     &.right {
       cursor: col-resize;
+
+      &::before {
+        inset: anchor(top) auto anchor(bottom) calc(anchor(center) - var(--dock-grip-size) / 2);
+        width: var(--dock-grip-size);
+      }
+    }
+    &.left::before {
+      clip-path: inset(
+        0 var(--dock-grip-workspace-inset, 0px) 0 var(--dock-grip-content-inset, 0px)
+      );
+    }
+    &.right::before {
+      clip-path: inset(
+        0 var(--dock-grip-content-inset, 0px) 0 var(--dock-grip-workspace-inset, 0px)
+      );
     }
     &.bottom {
       cursor: row-resize;
+
+      &::before {
+        inset: calc(anchor(center) - var(--dock-grip-size) / 2) anchor(right) auto anchor(left);
+        height: var(--dock-grip-size);
+        clip-path: inset(
+          var(--dock-grip-workspace-inset, 0px) 0 var(--dock-grip-content-inset, 0px)
+        );
+      }
     }
   }
 
   &.left,
   &.right {
-    width: var(--lumine-dock-resize-handle-size);
+    width: var(--lumine-dock-divider-size);
+  }
+  &.left {
+    border-right: var(--lumine-dock-divider-size) solid var(--tool-panel-border-color);
+  }
+  &.right {
+    border-left: var(--lumine-dock-divider-size) solid var(--tool-panel-border-color);
   }
   &.bottom {
-    height: var(--lumine-dock-resize-handle-size);
+    height: var(--lumine-dock-divider-size);
+    border-top: var(--lumine-dock-divider-size) solid var(--tool-panel-border-color);
+  }
+}
+
+/* Inside :has(), & identifies renderer-owned scroll surfaces. These surfaces
+   and horizontal tracks can meet either end of a side divider. */
+:is([data-scrollbar="none"], [role="scrollbar"], textarea, iframe, webview, .xterm) {
+  lumine-dock:has(.item-views :is(.lumine-scrollbar.horizontal.is-scrollable, &)) {
+    --dock-grip-content-inset: var(--dock-grip-overlap);
+  }
+
+  lumine-workspace-axis.horizontal:has(
+      > lumine-workspace-axis.vertical
+        :is(.item-views, lumine-panel.tool-panel:not([style*="display: none"]))
+        :is(.lumine-scrollbar.horizontal.is-scrollable, &)
+    )
+    > lumine-panel-container:is(.left, .right)
+    > lumine-dock,
+  lumine-workspace-axis.vertical:has(
+      > lumine-pane-container .item-views :is(.lumine-scrollbar.is-scrollable, &),
+      > lumine-panel-container.bottom
+        > lumine-panel:not([style*="display: none"])
+        :is(.lumine-scrollbar.is-scrollable, &)
+    )
+    > lumine-panel-container.bottom
+    > lumine-dock {
+    --dock-grip-workspace-inset: var(--dock-grip-overlap);
+  }
+}
+
+/* Managed vertical tracks only affect a side divider when they face it. */
+.lumine-scrollbar.vertical.is-scrollable {
+  lumine-dock.left:has(.item-views &:not(.is-left > *)),
+  lumine-dock.right:has(.item-views .is-left > &),
+  lumine-dock.bottom:has(.item-views &) {
+    --dock-grip-content-inset: var(--dock-grip-overlap);
+  }
+
+  lumine-workspace-axis.horizontal:has(
+      > lumine-workspace-axis.vertical
+        :is(.item-views, lumine-panel.tool-panel:not([style*="display: none"]))
+        .is-left
+        > &
+    )
+    > lumine-panel-container.left
+    > lumine-dock,
+  lumine-workspace-axis.horizontal:has(
+      > lumine-workspace-axis.vertical
+        :is(.item-views, lumine-panel.tool-panel:not([style*="display: none"]))
+        &:not(.is-left > *)
+    )
+    > lumine-panel-container.right
+    > lumine-dock {
+    --dock-grip-workspace-inset: var(--dock-grip-overlap);
   }
 }
 

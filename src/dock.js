@@ -330,9 +330,16 @@ module.exports = class Dock {
     }
   }
 
-  handleResizeHandleDragStart() {
+  handleResizeHandleDragStart(event) {
     if (this.destroyed || this.layoutDrag) return;
-    this.resizeDocument = this.getElement().ownerDocument;
+    const element = this.getElement();
+    this.resizeGrabOffset = 0;
+    // Keep the grabbed point under the pointer, including presses off the line.
+    if (event) {
+      const rect = element.getBoundingClientRect();
+      this.resizeGrabOffset = rect[this.widthOrHeight] - this.resizeSizeAt(rect, event);
+    }
+    this.resizeDocument = element.ownerDocument;
     this.resizeWindow = this.resizeDocument.defaultView;
     this.resizeWindow.addEventListener("mousemove", this.handleMouseMove);
     this.resizeWindow.addEventListener("mouseup", this.handleMouseUp);
@@ -357,7 +364,7 @@ module.exports = class Dock {
     }
 
     if (!this.layoutDrag) return;
-    this.pendingResizePosition = { x: event.pageX, y: event.pageY };
+    this.pendingResizePosition = { clientX: event.clientX, clientY: event.clientY };
     if (this.resizeFrame == null) {
       this.resizeFrame = this.resizeWindow.requestAnimationFrame(this.flushPendingResize);
     }
@@ -377,19 +384,18 @@ module.exports = class Dock {
     // Read geometry and synchronously commit only the newest pointer position
     // once per frame. Programmatic sizing still uses setState immediately.
     const rect = this.element.getBoundingClientRect();
-    let size = 0;
+    this.setState({ size: this.resizeSizeAt(rect, position) + this.resizeGrabOffset });
+  }
+
+  resizeSizeAt(rect, { clientX, clientY }) {
     switch (this.location) {
       case "left":
-        size = position.x - rect.left;
-        break;
+        return clientX - rect.left;
       case "bottom":
-        size = rect.bottom - position.y;
-        break;
+        return rect.bottom - clientY;
       case "right":
-        size = rect.right - position.x;
-        break;
+        return rect.right - clientX;
     }
-    this.setState({ size });
   }
 
   handleMouseUp(_event) {
@@ -968,13 +974,10 @@ class DockResizeHandle {
   }
 
   handleMouseDown(event) {
-    if (event.button !== 0) return;
+    if (!this.props.dockIsVisible || event.button !== 0) return;
     event.preventDefault();
-    if (event.detail === 2) {
-      this.props.onResizeToFit();
-    } else if (this.props.dockIsVisible) {
-      this.props.onResizeStart();
-    }
+    if (event.detail === 2) this.props.onResizeToFit();
+    else this.props.onResizeStart(event);
   }
 }
 
