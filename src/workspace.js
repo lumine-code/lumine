@@ -128,6 +128,14 @@ function getBasenamesFromProjectRoots() {
 
 const STOPPED_CHANGING_ACTIVE_PANE_ITEM_DELAY = 100;
 const ALL_LOCATIONS = ["center", "left", "right", "bottom"];
+
+function hasPaneItemsToDeserialize(root) {
+  if (!root) return false;
+  if (root.deserializer === "Pane") return Boolean(root.items?.length);
+  if (root.deserializer === "PaneAxis") return root.children.some(hasPaneItemsToDeserialize);
+  // A custom deserializer can create an editor even without serialized items.
+  return true;
+}
 const DOCK_LOCATIONS = ["left", "right", "bottom"];
 
 /**
@@ -1502,6 +1510,22 @@ module.exports = class Workspace extends Model {
     } catch (error) {
       this.#recoverPersistentItems(persistentItems, assertLayoutCurrent, error);
     }
+  }
+
+  hasPaneItemsToRestore(state, { locations = ALL_LOCATIONS } = {}) {
+    return locations.some((location) => {
+      const container = state.paneContainers?.[location];
+      if (!container) return false;
+      if (location === "center") {
+        return (
+          hasPaneItemsToDeserialize((container.main ?? container).root) ||
+          Boolean(
+            container.windows?.some(({ container }) => hasPaneItemsToDeserialize(container?.root)),
+          )
+        );
+      }
+      return hasPaneItemsToDeserialize(container.paneContainer?.root);
+    });
   }
 
   /** @private Prepare hosts before deserializing documents; unavailable hosts restore in main. */

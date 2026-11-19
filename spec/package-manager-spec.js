@@ -2510,6 +2510,7 @@ describe("PackageManager", () => {
       const stable = lumine.packages.getAvailablePackage("package-identity-stable");
       expect(lumine.packages.getAvailablePackages()).toContain(stable);
       expect(index.get("package-identity-stable")).toBe(stable);
+      expect(Object.isFrozen(stable)).toBe(true);
       expect(scan).toHaveBeenCalledTimes(1);
 
       fs.writeFileSync(path.join(edited, "package.json"), JSON.stringify({ version: "2.0.0" }));

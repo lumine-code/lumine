@@ -2516,10 +2516,20 @@ describe("Environment", () => {
       expect(env.project.getPaths()).toEqual([]);
     });
 
-    it("finishes a window with no documents while grammar discovery is pending", async () => {
-      const env = buildEnvironment({ initialProjectRoots: [] });
+    it("restores an empty saved window while grammar discovery is pending", async () => {
+      const state = {
+        workspace: {
+          paneContainers: {
+            center: { main: { root: { deserializer: "Pane", items: [] } }, windows: [] },
+          },
+        },
+      };
+      const env = buildEnvironment({ initialProjectRoots: [], state });
+      spyOn(env.window, "isSafeMode").and.returnValue(true);
+      const restore = spyOn(env.workspace, "deserialize");
       const grammar = Promise.withResolvers();
       spyOn(env.packages, "activate").and.returnValue(grammar.promise);
+      spyOn(env.packages, "getPendingInitialActivation").and.returnValue(grammar.promise);
       const shell = Promise.withResolvers();
       spyOn(env.packages, "getInitialShellReadiness").and.returnValue(shell.promise);
       const opened = spyOn(env.workspace, "openDefaultDockItems").and.resolveTo();
@@ -2528,10 +2538,35 @@ describe("Environment", () => {
         expect(opened).not.toHaveBeenCalled();
         shell.resolve();
         await start;
+        expect(restore).toHaveBeenCalledTimes(1);
         expect(opened).toHaveBeenCalledTimes(1);
       } finally {
         grammar.resolve();
       }
+    });
+
+    it("keeps pane item deserialization behind document readiness", async () => {
+      const state = { workspace: null };
+      const env = buildEnvironment({ initialProjectRoots: [], state });
+      spyOn(env.window, "isSafeMode").and.returnValue(true);
+      state.workspace = env.workspace.serialize();
+      state.workspace.paneContainers.center.main.root.items.push({ deserializer: "PackageView" });
+      const grammar = Promise.withResolvers();
+      spyOn(env.packages, "activate").and.returnValue(grammar.promise);
+      spyOn(env.packages, "getInitialShellReadiness").and.resolveTo();
+      const documentReadiness = spyOn(env.packages, "getPendingInitialActivation").and.returnValue(
+        grammar.promise,
+      );
+      const deserialize = spyOn(env.workspace, "deserialize");
+      const start = env.startEditorWindow();
+      try {
+        await conditionPromise(() => documentReadiness.calls.count() > 0);
+        expect(deserialize).not.toHaveBeenCalled();
+      } finally {
+        grammar.resolve();
+        await start;
+      }
+      expect(deserialize).toHaveBeenCalledTimes(1);
     });
 
     it("holds the initial dock restore open through activation and deserialization", async () => {

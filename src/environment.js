@@ -1294,7 +1294,8 @@ class Environment {
 
         const startTime = Date.now();
         StartupTime.addMarker("window:environment:start-editor-window:deserialize-state");
-        await Promise.all([shellReady, this.deserialize(state)]);
+        const readiness = await Promise.allSettled([shellReady, this.deserialize(state)]);
+        for (const result of readiness) if (result.status === "rejected") throw result.reason;
         this.deserializeTimings.lumine = Date.now() - startTime;
         // Saved project paths can omit roots requested for this launch. Restore
         // that intent before revealing dock contents, rather than waiting for
@@ -1926,7 +1927,7 @@ class Environment {
       // Pane deserializers may synchronously construct editors outside the
       // restored project buffers and still need the same grammar registry.
       const startup = this.packages.getPendingInitialActivation();
-      if (startup) await startup;
+      if (startup && this.workspace.hasPaneItemsToRestore(state.workspace, options)) await startup;
       assertCurrent();
       const prepared = await this.workspace.prepareEditorWindowRestore(
         state.workspace,

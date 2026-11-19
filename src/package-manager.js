@@ -721,7 +721,8 @@ module.exports = class PackageManager {
    * Take an inventory snapshot for a batch of related package lookups. Both
    * lists are read-only and sorted by name. `get(name)` returns the winner.
    * Repeated lookups in the same synchronous batch share one directory scan.
-   * File changes outside the package manager can be seen on the next batch.
+   * Package directories added or removed externally are visible on the next batch.
+   * Refresh the index explicitly after changing a manifest outside the package manager.
    *
    * @returns {Object} The current package inventory snapshot.
    */
@@ -742,6 +743,10 @@ module.exports = class PackageManager {
 
   buildAvailablePackageIndex(copies) {
     copies.sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+    for (const pack of copies) {
+      if (pack.shadowedBy) Object.freeze(pack.shadowedBy);
+      Object.freeze(pack);
+    }
     const winners = copies.filter((pack) => pack.isWinner);
     const byName = new Map(winners.map((pack) => [pack.name, pack]));
     return Object.freeze({
