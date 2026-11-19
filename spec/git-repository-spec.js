@@ -177,6 +177,59 @@ describe("GitRepository", () => {
     });
   });
 
+  it("checks current ignore rules in one read and leaves the status cache lazy", async () => {
+    const workingDirectory = copyRepository();
+    const ignored = path.join(workingDirectory, "hidden.build");
+    const visible = path.join(workingDirectory, "visible.build");
+    const tracked = path.join(workingDirectory, "a.txt");
+    fs.writeFileSync(path.join(workingDirectory, ".gitignore"), "*.build\n!visible.build\na.txt\n");
+    repo = await createGitRepository(workingDirectory);
+    expect(await repo.checkIgnoredPaths([ignored, visible, tracked])).toEqual([ignored, tracked]);
+    expect(repo.getStatusSnapshot().initialized).toBe(false);
+
+    fs.writeFileSync(path.join(workingDirectory, ".gitignore"), "visible.build\n");
+    expect(await repo.checkIgnoredPaths([ignored, visible])).toEqual([visible]);
+    expect(repo.getStatusSnapshot().initialized).toBe(false);
+  });
+
+  it("reports only changed status paths, directory aggregates and ignore prefixes", async () => {
+    const workingDirectory = copyRepository();
+    let output = "? left/a.txt\0? right/b.txt\0! old-cache/\0! quiet.log\0";
+    repo = await createGitRepository(workingDirectory, {
+      gitHostClient: snapshotClient({ statusSnapshotProvider: { getStatus: () => output } }),
+    });
+    const listener = jasmine.createSpy("status change");
+    const subscription = repo.onDidChangeStatusPaths(listener);
+    try {
+      await repo.refreshStatusSnapshot();
+      expect(listener.calls.mostRecent().args[0].reset).toBe(true);
+      expect(repo.isPathIgnoredCached(path.join(workingDirectory, "old-cache", "a.txt"))).toBe(
+        true,
+      );
+      expect(repo.isPathIgnoredCached(path.join(workingDirectory, "old-cache-other"))).toBe(false);
+
+      output = "? left/c.txt\0? right/b.txt\0! new-cache/\0! quiet.log\0";
+      await repo.refreshStatusSnapshot();
+      const change = listener.calls.mostRecent().args[0];
+      expect(change.reset).toBe(false);
+      expect(change.files.slice().sort()).toEqual(["left/a.txt", "left/c.txt"]);
+      expect(change.directories).toEqual([]);
+      expect(change.ignoredFiles).toEqual([]);
+      expect(change.ignoredDirectories.slice().sort()).toEqual(["new-cache", "old-cache"]);
+      expect(Object.isFrozen(change.files)).toBe(true);
+      expect(repo.getStatusPathKey(path.join(workingDirectory, "left", "c.txt"))).toBe(
+        "left/c.txt",
+      );
+
+      output = "? right/b.txt\0! new-cache/\0";
+      await repo.refreshStatusSnapshot();
+      expect(listener.calls.mostRecent().args[0].directories).toEqual(["left"]);
+      expect(listener.calls.mostRecent().args[0].ignoredFiles).toEqual(["quiet.log"]);
+    } finally {
+      subscription.dispose();
+    }
+  });
+
   describe(".isPathModified(path)", () => {
     let filePath, newPath, workingDirPath;
 

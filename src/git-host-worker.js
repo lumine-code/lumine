@@ -28,6 +28,7 @@ const { assertRepositoryDescriptorAvailableAsync } = require("./git-repository-d
 
 const REPOSITORY_READS = new Set([
   "snapshot",
+  "readHead",
   "diff",
   "history",
   "commit",
@@ -38,6 +39,8 @@ const REPOSITORY_READS = new Set([
   "readObjects",
   "blame",
   "readConfig",
+  "checkIgnoredPaths",
+  "readRemotes",
 ]);
 
 // git.trustAllRepositories is passed in the fork environment; trust unless

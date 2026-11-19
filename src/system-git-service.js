@@ -15,7 +15,7 @@ const {
   parseCommitRecords,
   parseNameStatusTokens,
 } = require("./repository-history");
-const { parseRefsSnapshot } = require("./repository-refs-snapshot");
+const { parseHead, parseRefsSnapshot, parseRemotes } = require("./repository-refs-snapshot");
 const { parseStatusSnapshot } = require("./repository-status-snapshot");
 const GitLineDiffWorker = require("./git-line-diff-worker-client");
 const { assertGitRevision } = require("./git-revision");
@@ -304,6 +304,16 @@ module.exports = class SystemGitService {
     return paths;
   }
 
+  readHead(descriptor, options = {}) {
+    return this.readRepository(descriptor, "readHead", options, async (validated) => {
+      const { symbolicHead, headOid } = await this.refsProvider.readHead(
+        workingDirectoryFor(descriptor),
+        validated,
+      );
+      return parseHead(symbolicHead, headOid);
+    });
+  }
+
   async snapshot(descriptor, request, requestOptions = {}) {
     if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
       return this.readRepository(descriptor, "snapshot", requestOptions, (validatedOptions) =>
@@ -543,6 +553,13 @@ module.exports = class SystemGitService {
     );
   }
 
+  async checkIgnoredPaths(descriptor, paths, requestOptions = {}) {
+    return this.readRepository(descriptor, "checkIgnoredPaths", requestOptions, (options) => {
+      if (!descriptor.workingDirectory) return [];
+      return this.statusProvider.checkIgnoredPaths(descriptor.workingDirectory, paths, options);
+    });
+  }
+
   async readConfig(descriptor, keys, requestOptions = {}) {
     if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
       return this.readRepository(descriptor, "readConfig", requestOptions, (validatedOptions) =>
@@ -582,6 +599,13 @@ module.exports = class SystemGitService {
       }
     }
     return values;
+  }
+
+  async readRemotes(descriptor, requestOptions = {}) {
+    const output = await this.readRepository(descriptor, "readRemotes", requestOptions, (options) =>
+      this.refsProvider.getRemotes(workingDirectoryFor(descriptor), options),
+    );
+    return parseRemotes(output);
   }
 
   lineDiff(oldSource, newSource, options) {

@@ -2232,6 +2232,26 @@ describe("RepositoryRegistry", () => {
       expect(commit).not.toHaveBeenCalled();
     });
 
+    it("checks the fresh HEAD for protected writes without refreshing status", async () => {
+      repository.statusSnapshot.head = { name: "feature", oid: "a".repeat(40) };
+      repository.readHead = jasmine
+        .createSpy("fresh HEAD")
+        .and.resolveTo({ name: "main", oid: "b".repeat(40) });
+      const values = { "git.protectCommits": true, "git.protectedBranches": ["main"] };
+      spyOn(registry.config, "get").and.callFake((key) => values[key]);
+      const commit = jasmine.createSpy("commit");
+      registry.addOperationProvider({ createRepositoryOperations: () => ({ commit }) });
+
+      const signal = new AbortController().signal;
+      await expectAsync(operations.commit("Subject", { signal })).toBeRejectedWith(
+        jasmine.objectContaining({ code: "ERR_GIT_OPERATION_BLOCKED", outcome: "not-started" }),
+      );
+
+      expect(repository.readHead).toHaveBeenCalledOnceWith({ priority: "interactive", signal });
+      expect(repository.refreshStatusSnapshotCount).toBe(0);
+      expect(commit).not.toHaveBeenCalled();
+    });
+
     it("checks the captured HEAD once before a workflow that creates its own commit", async () => {
       const capturedHead = { name: "feature", oid: "a".repeat(40) };
       repository.statusSnapshot.head = capturedHead;
@@ -2320,6 +2340,27 @@ describe("RepositoryRegistry", () => {
       expect(failure.code).toBe("ERR_GIT_OPERATION_CANCELLED");
       expect(registry.operationManager.workflowPolicy.confirm).toHaveBeenCalledTimes(1);
       expect(executeGit).not.toHaveBeenCalled();
+    });
+
+    it("rechecks the fresh HEAD after force-push confirmation", async () => {
+      const head = { name: "feature", oid: "a".repeat(40) };
+      repository.readHead = jasmine
+        .createSpy("fresh HEAD")
+        .and.returnValues(Promise.resolve(head), Promise.resolve({ ...head, oid: "b".repeat(40) }));
+      spyOn(registry.config, "get").and.callFake((key) => key === "git.confirmForcePush");
+      registry.operationManager.workflowPolicy.confirm = jasmine
+        .createSpy("confirm force push")
+        .and.resolveTo(0);
+      const push = jasmine.createSpy("push");
+      registry.addOperationProvider({ createRepositoryOperations: () => ({ push }) });
+
+      await expectAsync(operations.push("origin", "feature", { force: true })).toBeRejectedWith(
+        jasmine.objectContaining({ code: "ERR_GIT_CONTEXT_CHANGED", outcome: "not-started" }),
+      );
+      expect(repository.readHead).toHaveBeenCalledTimes(2);
+      expect(registry.operationManager.workflowPolicy.confirm).toHaveBeenCalledTimes(1);
+      expect(repository.refreshStatusSnapshotCount).toBe(0);
+      expect(push).not.toHaveBeenCalled();
     });
 
     it("queues raw repository writes behind named writes", async () => {
@@ -2436,6 +2477,51 @@ describe("RepositoryRegistry", () => {
     await first.getOperations().stageFiles(["a.txt"]);
     expect(second.refreshRefsSnapshotCount).toBe(2);
     expect(second.refreshStatusSnapshotCount).toBe(1);
+  });
+
+  it("keeps primary snapshot readiness without waiting on peer worktree refreshes", async () => {
+    const primary = new FakeRepository(temp.mkdirSync("primary-operation-refresh"));
+    const peer = new FakeRepository(temp.mkdirSync("background-peer-operation-refresh"));
+    peer.getCommonDirectory = () => primary.getPath();
+    repositories.push(primary, peer);
+    registry.setProjectRoots(
+      repositories.map((repository) => directoryFor(repository.getWorkingDirectory())),
+    );
+    const primaryRefreshStarted = deferred();
+    const primaryRefreshed = deferred();
+    const peerRefreshed = deferred();
+    const primaryRefs = spyOn(primary, "refreshRefsSnapshot").and.callFake(() => {
+      primaryRefreshStarted.resolve();
+      return primaryRefreshed.promise;
+    });
+    const peerRefs = spyOn(peer, "refreshRefsSnapshot").and.returnValue(peerRefreshed.promise);
+    const peerStatus = spyOn(peer, "refreshStatusSnapshot").and.returnValue(peerRefreshed.promise);
+    const stageFiles = jasmine.createSpy("stageFiles").and.resolveTo("staged");
+    registry.addOperationProvider({
+      createRepositoryOperations: () => ({
+        fetch: async () => "fetched",
+        stageFiles,
+        getOperationRefreshHint: (name) => (name === "fetch" ? "both" : "none"),
+      }),
+    });
+
+    const first = primary.getOperations().fetch("origin", "main");
+    try {
+      await primaryRefreshStarted.promise;
+      const second = peer.getOperations().stageFiles(["a.txt"]);
+      expect(stageFiles).not.toHaveBeenCalled();
+      expect(primaryRefs).toHaveBeenCalledOnceWith({ priority: "interactive" });
+      const backgroundOptions = { priority: "background", debounce: true };
+      expect(peerRefs).toHaveBeenCalledOnceWith(backgroundOptions);
+      expect(peerStatus).toHaveBeenCalledOnceWith(backgroundOptions);
+
+      primaryRefreshed.resolve();
+      expect(await first).toBe("fetched");
+      expect(await second).toBe("staged");
+    } finally {
+      primaryRefreshed.resolve();
+      peerRefreshed.resolve();
+    }
   });
 
   it("initializes and registers a repository through a workspace provider", async () => {

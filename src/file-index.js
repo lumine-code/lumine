@@ -627,8 +627,8 @@ module.exports = class FileIndex {
 
       const work = this.prepareAndAdmitCreatedPaths(entry, candidates, generation)
         .catch(() => {
-          // A crawl remains the authority when repository discovery or Git
-          // status fails; never turn unchecked paths into blind admissions.
+          // A crawl remains the authority when repository discovery or the
+          // ignore check fails; never admit unchecked paths blindly.
           if (entry.generation === generation) this.markDirty(entry);
         })
         .finally(() => {
@@ -751,7 +751,11 @@ module.exports = class FileIndex {
       },
     );
     for (const [filePath, repository] of resolved) {
-      if (!repository || typeof repository.isPathIgnored !== "function") continue;
+      if (
+        typeof repository?.checkIgnoredPaths !== "function" &&
+        typeof repository?.isPathIgnored !== "function"
+      )
+        continue;
       let paths = pathsByRepository.get(repository);
       if (!paths) {
         paths = [];
@@ -764,8 +768,12 @@ module.exports = class FileIndex {
       Array.from(pathsByRepository),
       CreatedAdmissionConcurrency,
       async ([repository, paths]) => {
-        // A previously loaded snapshot can predate this filesystem event.
-        // Refresh once per repository and batch, then use its synchronous index.
+        if (typeof repository.checkIgnoredPaths === "function") {
+          for (const filePath of await repository.checkIgnoredPaths(paths))
+            ignoredPaths.add(filePath);
+          return;
+        }
+        // Repository providers can implement the cached legacy predicate only.
         await repository.refreshStatusSnapshot?.({ includeIgnored: true });
         for (const filePath of paths) {
           if (await repository.isPathIgnored(filePath)) ignoredPaths.add(filePath);

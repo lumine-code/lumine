@@ -160,6 +160,7 @@ describe("git-host protocol", () => {
       [
         "blame",
         "branchesContaining",
+        "checkIgnoredPaths",
         "commit",
         "describe",
         "diff",
@@ -172,7 +173,9 @@ describe("git-host protocol", () => {
         "initialize",
         "clone",
         "readConfig",
+        "readHead",
         "readObjects",
+        "readRemotes",
         "snapshot",
         "submodulePaths",
         "writeRepositoryCommandOutput",

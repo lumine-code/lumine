@@ -29,6 +29,7 @@ const GitHostMessageEvents = Object.freeze({
 // behind the worker boundary, so renderers and packages share one stable facade.
 const GitHostOperations = Object.freeze({
   snapshot: true,
+  readHead: true,
   diff: true,
   history: true,
   commit: true,
@@ -39,6 +40,8 @@ const GitHostOperations = Object.freeze({
   readObjects: true,
   blame: true,
   readConfig: true,
+  checkIgnoredPaths: true,
+  readRemotes: true,
   lineDiff: true,
   operation: true,
   initialize: true,

@@ -166,6 +166,37 @@ module.exports = class GitRepositoryStatusProvider {
     );
   }
 
+  async checkIgnoredPaths(workingDirectory, paths, options = {}) {
+    if (!Array.isArray(paths)) throw new TypeError("Git ignore checks require an array of paths");
+    if (paths.length === 0) return [];
+    for (const filePath of paths) {
+      if (
+        typeof filePath !== "string" ||
+        !filePath ||
+        filePath.includes("\0") ||
+        path.isAbsolute(filePath) ||
+        path.posix.isAbsolute(filePath) ||
+        (process.platform === "win32" ? filePath.split(/[\\/]/) : filePath.split("/")).includes(
+          "..",
+        )
+      ) {
+        throw new TypeError("Git ignore checks require paths inside the working tree");
+      }
+    }
+    // `check-ignore` rejects Git's literal-pathspec flag. Prefix each input so
+    // a leading colon is a filename character rather than pathspec magic.
+    const input = paths.map((filePath) => `./${filePath}\0`).join("");
+    const output = await this.runner.run(
+      ["check-ignore", "--no-index", "--stdin", "-z"],
+      workingDirectory,
+      { ...options, allowedExitCodes: [0, 1], stdin: input },
+    );
+    return output
+      .split("\0")
+      .filter(Boolean)
+      .map((filePath) => filePath.slice(2));
+  }
+
   // The index mode of a path (`git ls-files --stage`); returns the first stage's
   // mode, or null when the path is not tracked. Callers fall back to the
   // working-tree mode for untracked paths.

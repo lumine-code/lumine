@@ -887,6 +887,28 @@ describe("FileIndex", () => {
       expect(index.has(ignored)).toBe(false);
     });
 
+    it("uses one batched ignore query without refreshing Git status", async () => {
+      const visible = touch("out", "visible.js");
+      const ignored = touch("out", "ignored.js");
+      const refreshStatusSnapshot = jasmine.createSpy("refresh status");
+      const checkIgnoredPaths = jasmine.createSpy("ignore paths").and.resolveTo([ignored]);
+      project.repository = { checkIgnoredPaths, refreshStatusSnapshot };
+
+      project.emitFileEvents([
+        { action: "created", path: visible },
+        { action: "created", path: ignored },
+      ]);
+      await waitForPendingAdmissions();
+
+      expect(checkIgnoredPaths.calls.count()).toBe(1);
+      expect(checkIgnoredPaths.calls.mostRecent().args[0].slice().sort()).toEqual(
+        [ignored, visible].sort(),
+      );
+      expect(refreshStatusSnapshot).not.toHaveBeenCalled();
+      expect(index.has(visible)).toBe(true);
+      expect(index.has(ignored)).toBe(false);
+    });
+
     it("defers to a recrawl when a non-VCS ignore file can affect the path", async () => {
       fs.writeFileSync(under(".ignore"), "generated.js\n");
       const generated = touch("generated.js");

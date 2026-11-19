@@ -755,60 +755,63 @@ module.exports = class RepositoryOperationManager {
     }
   }
 
-  async refreshRepositoryAfterOperation(repository, hint = "both", { peers = true } = {}) {
+  async refreshRepositoryAfterOperation(
+    repository,
+    hint = "both",
+    { peers = true, background = false } = {},
+  ) {
     if (hint === "none" || repository.isDestroyed?.()) return;
     if (peers && (hint === "refs" || hint === "both")) {
       const commonDirectory = repository.getCommonDirectory?.() || repository.getPath?.();
       if (commonDirectory) {
         const domain = normalizePath(commonDirectory);
-        const related = this.getRepositories().filter(
-          (other) =>
-            other !== repository &&
-            normalizePath(other.getCommonDirectory?.() || other.getPath?.()) === domain,
-        );
-        await Promise.all(
-          related.map((other) =>
-            this.refreshRepositoryAfterOperation(other, hint, { peers: false }),
-          ),
-        );
+        // The primary snapshots gate completion. Peer worktrees share the
+        // metadata but can coalesce their updates without holding the write turn.
+        for (const other of this.getRepositories()) {
+          if (other === repository) continue;
+          const directory = other.getCommonDirectory?.() || other.getPath?.();
+          if (!directory || normalizePath(directory) !== domain) continue;
+          this.refreshRepositoryAfterOperation(other, hint, {
+            peers: false,
+            background: true,
+          }).catch((error) => this.reportRefreshFailure(other, error));
+        }
       }
     }
-    let statusRefresh = null;
+
+    const options = background
+      ? { priority: "background", debounce: true }
+      : { priority: "interactive" };
+    let statusRefresh;
     if (
       (hint === "status" || hint === "both") &&
       repository.refreshStatusSnapshot &&
       repository.getStatusSnapshot?.().initialized
     ) {
-      // This refresh gates the operation's promise, so it rides the
-      // interactive lane along with the operation itself.
-      try {
-        statusRefresh = Promise.resolve(
-          repository.refreshStatusSnapshot({ priority: "interactive" }),
-        ).catch((error) => this.reportRefreshFailure(repository, error));
-      } catch (error) {
-        this.reportRefreshFailure(repository, error);
-      }
+      statusRefresh = this.refreshOperationSnapshot(repository, "refreshStatusSnapshot", options);
     }
 
-    // Preserve combined snapshot ordering while waiting for both requested
-    // domains. A completed operation exposes fresh initialized snapshots.
-    if (statusRefresh) await statusRefresh;
+    // Preserve primary status-before-refs readiness. Queue both background
+    // domains together so the peer's coordinator can combine the requests.
+    if (!background && statusRefresh) await statusRefresh;
 
-    // Unobserved snapshots stay lazy; initialized refs participate in readiness.
+    let refsRefresh;
     if (
       (hint === "refs" || hint === "both") &&
       repository.refreshRefsSnapshot &&
       repository.getRefsSnapshot?.().initialized
     ) {
-      let refsRefresh;
-      try {
-        refsRefresh = repository.refreshRefsSnapshot();
-      } catch (error) {
-        this.reportRefreshFailure(repository, error);
-      }
-      await Promise.resolve(refsRefresh).catch((error) =>
-        this.reportRefreshFailure(repository, error),
-      );
+      refsRefresh = this.refreshOperationSnapshot(repository, "refreshRefsSnapshot", options);
+    }
+    if (background && statusRefresh) await statusRefresh;
+    if (refsRefresh) await refsRefresh;
+  }
+
+  async refreshOperationSnapshot(repository, method, options) {
+    try {
+      await repository[method](options);
+    } catch (error) {
+      this.reportRefreshFailure(repository, error);
     }
   }
 

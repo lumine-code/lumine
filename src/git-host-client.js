@@ -26,6 +26,11 @@ module.exports = class GitHostClient {
     return this.request("snapshot", { descriptor, request, options: rest }, { signal });
   }
 
+  readHead(descriptor, options = {}) {
+    const { signal, rest } = splitSignal(options);
+    return this.request("readHead", { descriptor, options: rest }, { signal });
+  }
+
   getFileMode(descriptor, relativePosixPath, options = {}) {
     const { signal } = splitSignal(options);
     return this.request("fileMode", { descriptor, path: relativePosixPath }, { signal });
@@ -63,6 +68,14 @@ module.exports = class GitHostClient {
   getConfigValues(descriptor, keys, options = {}) {
     const { signal } = splitSignal(options);
     return this.request("readConfig", { descriptor, keys }, { signal });
+  }
+
+  checkIgnoredPaths(descriptor, paths, { signal } = {}) {
+    return this.request("checkIgnoredPaths", { descriptor, paths }, { signal });
+  }
+
+  readRemotes(descriptor, { signal } = {}) {
+    return this.request("readRemotes", { descriptor }, { signal });
   }
 
   getHistory(descriptor, params, options = {}) {

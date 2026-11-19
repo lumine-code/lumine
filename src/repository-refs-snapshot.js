@@ -370,5 +370,7 @@ function parseRefsSnapshot(
 
 module.exports = {
   EMPTY_REFS_SNAPSHOT,
+  parseHead,
+  parseRemotes,
   parseRefsSnapshot,
 };

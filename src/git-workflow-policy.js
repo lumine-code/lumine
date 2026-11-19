@@ -4,6 +4,13 @@ function refused(code, message) {
   return Object.assign(new Error(message), { code, outcome: "not-started", retriable: false });
 }
 
+async function readCurrentHead(repository, signal) {
+  const options = { priority: "interactive", signal };
+  if (typeof repository.readHead === "function") return repository.readHead(options);
+  const snapshot = await repository.refreshStatusSnapshot(options);
+  return snapshot?.head || repository.getStatusSnapshot?.().head;
+}
+
 module.exports = class GitWorkflowPolicy {
   constructor({ config, confirm }) {
     this.config = config;
@@ -49,8 +56,7 @@ module.exports = class GitWorkflowPolicy {
       (effectiveName === "push" && this.config?.get("git.protectPushes"));
     let checkedHead = null;
     if (protectedOperation || expectedHead) {
-      const snapshot = await repository.refreshStatusSnapshot({ priority: "interactive", signal });
-      const head = snapshot?.head || repository.getStatusSnapshot?.().head;
+      const head = await readCurrentHead(repository, signal);
       checkedHead = head;
       if (expectedHead && (head?.name !== expectedHead.name || head?.oid !== expectedHead.oid)) {
         throw refused(
@@ -74,10 +80,7 @@ module.exports = class GitWorkflowPolicy {
           "ERR_GIT_CONFIRMATION_UNAVAILABLE",
           "Force push requires a confirmation handler.",
         );
-      const before = checkedHead
-        ? null
-        : await repository.refreshStatusSnapshot({ priority: "interactive", signal });
-      const confirmedHead = checkedHead || before?.head || repository.getStatusSnapshot?.().head;
+      const confirmedHead = checkedHead || (await readCurrentHead(repository, signal));
       const choice = await this.confirm({
         message: "Confirm Force Push",
         detail: "Replace the remote branch with this repository's branch.",
@@ -88,11 +91,7 @@ module.exports = class GitWorkflowPolicy {
       // A confirmation can outlive a branch change. Recheck policy after the
       // dialog, without asking for the same confirmation a second time.
       if (protectedOperation || expectedHead || confirmedHead) {
-        const snapshot = await repository.refreshStatusSnapshot({
-          priority: "interactive",
-          signal,
-        });
-        const head = snapshot?.head || repository.getStatusSnapshot?.().head;
+        const head = await readCurrentHead(repository, signal);
         if (expectedHead && (head?.name !== expectedHead.name || head?.oid !== expectedHead.oid))
           throw refused(
             "ERR_GIT_CONTEXT_CHANGED",

@@ -21,6 +21,8 @@ Use `scope: "repository"` for commit, branch and remote actions. Do not fall bac
 
 `getForPath(path)` is a cache-only lookup. `resolveForPath(path)` can discover and register a repository. Discovery does not imply that a status or refs snapshot has loaded.
 
+`repository.readRemotes()` reads the effective fetch and push URLs without loading the refs snapshot. Use it when matching a remote URL to a local repository.
+
 ```js
 const subscription = lumine.repositories.observeForPath(
   () => editor.getPath(),
@@ -41,6 +43,10 @@ The observer owns discovery delivery, repository retention, routing changes and 
 ## Read changed file metadata
 
 Use `repository.getDiff({from, to, paths, format: "name-status"})` to get changed file paths, statuses and rename or copy similarity without building a patch. Pass `paths` when the caller needs only part of the comparison, such as a list of unmerged files. Files whose contents and modes already match the baseline are omitted even if the index still reports a worktree change.
+
+Use `repository.checkIgnoredPaths(paths, {signal})` to match live ignore rules against a batch of paths while leaving the status cache lazy. It follows the ignore rules used by project discovery, including for tracked filenames.
+
+`repository.onDidChangeStatusPaths(callback)` reports accepted status changes with worktree-relative keys. Use `repository.getStatusPathKey(path)` to map an absolute path or alias to the matching key. File and directory arrays identify changed status records and directory aggregates. Changes to an ignored directory can affect all its descendants. A reset replaces previous answers on initial load or when ignored-path coverage changes.
 
 ## Read line diffs
 

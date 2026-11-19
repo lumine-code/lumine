@@ -36,6 +36,11 @@ module.exports = function createGitHostOps(
         service.snapshot(descriptor, request, repositoryReadOptions(context, options)),
       ),
 
+    readHead: ({ descriptor, options = {} }, context) =>
+      invoke("readHead", (service) =>
+        service.readHead(descriptor, repositoryReadOptions(context, options)),
+      ),
+
     diff: ({ descriptor, request, maxBytes }, context) =>
       invoke("diff", (service) =>
         service.diff(descriptor, request, repositoryReadOptions(context, { maxBytes })),
@@ -79,6 +84,14 @@ module.exports = function createGitHostOps(
       invoke("readConfig", (service) =>
         service.readConfig(payload.descriptor, payload.keys, context),
       ),
+
+    checkIgnoredPaths: ({ descriptor, paths }, context) =>
+      invoke("checkIgnoredPaths", (service) =>
+        service.checkIgnoredPaths(descriptor, paths, repositoryReadOptions(context)),
+      ),
+
+    readRemotes: (payload, context) =>
+      invoke("readRemotes", (service) => service.readRemotes(payload.descriptor, context)),
 
     // Cache immutable baseline blobs, then compute line diffs without reopening
     // the repository for subsequent buffer edits. Mutable index expressions are

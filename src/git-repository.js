@@ -3,6 +3,7 @@ const { Emitter, Disposable } = require("@lumine-code/event-kit");
 const { discoverRepositoryDescriptorAsync } = require("./git-repository-descriptor");
 const GitHostClient = require("./git-host-client");
 const { EMPTY_STATUS_SNAPSHOT } = require("./repository-status-snapshot");
+const statusPathChanges = require("./repository-status-path-changes");
 const { EMPTY_REFS_SNAPSHOT } = require("./repository-refs-snapshot");
 const { relativize: relativizePath } = require("./repository-paths");
 const { assertGitRevision } = require("./git-revision");
@@ -219,7 +220,7 @@ module.exports = class GitRepository {
     this.statusEntriesByPath = new Map();
     this.directoryStatusAggregates = new Map();
     this.ignoredFileKeys = new Set();
-    this.ignoredDirKeys = [];
+    this.ignoredDirKeys = new Set();
     this.submodulePathKeys = new Set();
     this.statusSnapshotSubscriberCount = 0;
     this.statusSnapshotDebounceMs = options.statusSnapshotDebounceMs ?? 150;
@@ -400,9 +401,26 @@ module.exports = class GitRepository {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangeStatusSnapshot(callback) {
+    return this.observeStatusSnapshotEvent("did-change-status-snapshot", callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Observe accepted status changes by path. Subscribing declares background status interest.
+   *
+   * @param {Function} callback - Receives a frozen change containing `generation`, `reset`, `files`, `directories`, `ignoredFiles`, `ignoredDirectories`, and `headChanged`. Path arrays contain worktree-relative keys as returned by {@link #getStatusPathKey}. A reset replaces all previous answers. An ignored directory change can affect its entire subtree.
+   * @returns {Disposable} Disposes the subscription.
+   */
+  onDidChangeStatusPaths(callback) {
+    return this.observeStatusSnapshotEvent("did-change-status-paths", callback);
+  }
+
+  observeStatusSnapshotEvent(eventName, callback) {
     this.statusSnapshotSubscriberCount++;
     if (this.statusSnapshotSubscriberCount === 1) this.scheduleStatusSnapshotRefresh();
-    const subscription = this.emitter.on("did-change-status-snapshot", callback);
+    const subscription = this.emitter.on(eventName, callback);
     let disposed = false;
     return new Disposable(() => {
       if (disposed) return;
@@ -782,6 +800,28 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
+   * Read the effective fetch and push URLs of the repository's remotes via
+   * git-host without initializing or refreshing its refs snapshot.
+   *
+   * @param {Object} [options] - Read options.
+   * @param {AbortSignal} [options.signal] - Cancellation signal.
+   * @returns {Promise<Array<Object>>} Immutable entries with `name`, `fetchUrl`, and `pushUrl`.
+   */
+  async readRemotes({ signal } = {}) {
+    if (this.repositoryUnavailableError) throw this.repositoryUnavailableError;
+    if (this.isDestroyed()) throw repositoryDestroyedError();
+    const remotes = await this.repositoryHostRequest(
+      (client, descriptor, requestSignal) =>
+        client.readRemotes(descriptor, { signal: requestSignal }),
+      { signal },
+    );
+    return Object.freeze(remotes.map((remote) => Object.freeze(remote)));
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Get the fetch URL of the origin remote from the refs snapshot.
    *
    * @returns {String|null} origin url of the repository, read from the refs snapshot's remotes. Returns `null` until the snapshot has loaded or when the repository has no `origin` remote.
@@ -938,11 +978,85 @@ module.exports = class GitRepository {
   isPathIgnoredCached(filePath) {
     if (this.isDestroyed() || !this.statusSnapshot.initialized) return false;
 
-    const relativePath = this.relativize(String(filePath));
-    if (relativePath == null || relativePath === "") return false;
-    const key = statusPathKey(relativePath);
+    let key = this.getStatusPathKey(filePath);
+    if (!key) return false;
     if (this.ignoredFileKeys.has(key)) return true;
-    return this.ignoredDirKeys.some((dir) => key === dir || key.startsWith(`${dir}/`));
+    while (key) {
+      if (this.ignoredDirKeys.has(key)) return true;
+      const separator = key.lastIndexOf("/");
+      if (separator === -1) return false;
+      key = key.slice(0, separator);
+    }
+    return false;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Return the key used by status path notifications.
+   *
+   * @param {String} filePath - An absolute or worktree-relative path.
+   * @returns {String|null} A worktree-relative key, or `null` for a path outside the worktree.
+   */
+  getStatusPathKey(filePath) {
+    if (!this.workingDirectoryPath || typeof filePath !== "string") return null;
+    const relativePath = this.relativize(filePath);
+    if (relativePath == null || path.isAbsolute(relativePath)) return null;
+    const key = statusPathKey(relativePath).replace(/\/$/, "");
+    if (key === ".") return "";
+    return key === ".." || key.startsWith("../") ? null : key;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Check current worktree ignore rules for a batch of paths without loading a status snapshot.
+   * Tracked paths follow the same ignore rules as other paths in a project crawl.
+   *
+   * @param {Array<String>} filePaths - Absolute or worktree-relative paths.
+   * @param {Object} [options] - Read options.
+   * @param {AbortSignal} [options.signal] - Cancellation signal.
+   * @returns {Promise<Array<String>>} The ignored paths in the input spelling and order.
+   */
+  async checkIgnoredPaths(filePaths, { signal } = {}) {
+    if (!Array.isArray(filePaths))
+      throw new TypeError("Git ignore checks require an array of paths");
+    if (filePaths.length === 0 || !this.workingDirectoryPath) return [];
+    const paths = filePaths.map((filePath) => {
+      if (!this.getStatusPathKey(filePath)) {
+        throw new TypeError("Git ignore checks require paths inside the working tree");
+      }
+      return this.posixRelativePath(filePath);
+    });
+    const ignored = new Set(
+      await this.repositoryHostRequest(
+        (client, descriptor, requestSignal) =>
+          client.checkIgnoredPaths(descriptor, paths, { signal: requestSignal }),
+        { signal },
+      ),
+    );
+    return filePaths.filter((_filePath, index) => ignored.has(paths[index]));
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Read the current Git HEAD without refreshing repository snapshots.
+   * @param {Object} [options] - Read options.
+   * @param {AbortSignal} [options.signal] - Cancellation signal.
+   * @param {"background"|"interactive"} [options.priority] - Git runner priority.
+   * @returns {Promise<Object>} The frozen current HEAD with ref, name, OID, detached and unborn state.
+   */
+  async readHead({ signal, priority } = {}) {
+    const head = await this.repositoryHostRequest(
+      (client, descriptor, requestSignal) =>
+        client.readHead(descriptor, { signal: requestSignal, priority }),
+      { signal },
+    );
+    return Object.freeze(head);
   }
 
   /**
@@ -1379,7 +1493,7 @@ module.exports = class GitRepository {
     const statusEntriesByPath = new Map();
     const directoryStatusAggregates = new Map();
     const ignoredFileKeys = new Set();
-    const ignoredDirKeys = [];
+    const ignoredDirKeys = new Set();
     const checkpoint = createSnapshotRendererCheckpoint(this, signal);
     const submodulePaths = snapshot.submodulePaths || [];
     const submodulePathKeys = new Set();
@@ -1396,7 +1510,7 @@ module.exports = class GitRepository {
       statusEntriesByPath.set(entryKey, entry);
 
       if (entry.ignored) {
-        if (entry.path.endsWith("/")) ignoredDirKeys.push(statusPathKey(entry.path.slice(0, -1)));
+        if (entry.path.endsWith("/")) ignoredDirKeys.add(statusPathKey(entry.path.slice(0, -1)));
         else ignoredFileKeys.add(entryKey);
       } else {
         const conflicted = entry.conflicted;
@@ -1437,6 +1551,21 @@ module.exports = class GitRepository {
       if (pendingYield && !(await pendingYield)) return this.statusSnapshot;
     }
 
+    const changes = this.emitter.listenerCountForEventName("did-change-status-paths")
+      ? await statusPathChanges(
+          this,
+          { statusEntriesByPath, directoryStatusAggregates, ignoredFileKeys, ignoredDirKeys },
+          {
+            generation: snapshot.generation,
+            reset:
+              !this.statusSnapshot.initialized ||
+              snapshot.includesIgnored !== this.statusSnapshot.includesIgnored,
+            headChanged: !cachedHeadsEqual(this.statusSnapshot.head, snapshot.head),
+            pathKey: statusPathKey,
+            checkpoint,
+          },
+        )
+      : null;
     Object.freeze(snapshot.files);
     Object.freeze(submodulePaths);
     deepFreeze(snapshot);
@@ -1457,6 +1586,9 @@ module.exports = class GitRepository {
         completeCleanup(
           [
             () => this.emitter.emit("did-change-status-snapshot", snapshot),
+            () => {
+              if (changes) this.emitter.emit("did-change-status-paths", changes);
+            },
             () => this.emitCachedStateChange("status", snapshot),
           ],
           "Unable to notify repository status observers",

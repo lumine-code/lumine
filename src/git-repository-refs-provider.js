@@ -122,6 +122,21 @@ module.exports = class GitRepositoryRefsProvider {
     this.runner = runner || new GitRunner({ execute });
   }
 
+  getRemotes(workingDirectory, options = {}) {
+    return this.runner.run(["remote", "-v"], workingDirectory, options);
+  }
+
+  async readHead(workingDirectory, options = {}) {
+    const read = (args) =>
+      this.runner.run(args, workingDirectory, { ...options, allowedExitCodes: [0, 1] });
+    // Exit 1 from symbolic-ref means detached; exit 1 from rev-parse means unborn.
+    const [symbolicHead, headOid] = await Promise.all([
+      read(["symbolic-ref", "--quiet", "HEAD"]),
+      read(["rev-parse", "--verify", "--quiet", "HEAD"]),
+    ]);
+    return { symbolicHead, headOid };
+  }
+
   async getRefs(workingDirectory, options = {}) {
     const forEachRefPromise = this.runner.run(
       [
@@ -134,29 +149,13 @@ module.exports = class GitRepositoryRefsProvider {
       workingDirectory,
       options,
     );
-    const remotesPromise = this.runner.run(["remote", "-v"], workingDirectory, options);
+    const remotesPromise = this.getRemotes(workingDirectory, options);
     const worktreesPromise = this.runner.run(
       ["worktree", "list", "--porcelain", "-z"],
       workingDirectory,
       options,
     );
-    const symbolicHeadPromise = this.runner.run(
-      // Exit 1 means a detached HEAD; exit 128 an unborn branch elsewhere.
-      ["symbolic-ref", "--quiet", "HEAD"],
-      workingDirectory,
-      {
-        ...options,
-        allowedExitCodes: [0, 1],
-      },
-    );
-    const headOidPromise = this.runner.run(
-      ["rev-parse", "--verify", "--quiet", "HEAD"],
-      workingDirectory,
-      {
-        ...options,
-        allowedExitCodes: [0, 1],
-      },
-    );
+    const headPromise = this.readHead(workingDirectory, options);
     const configurationPromise = this.runner.run(
       ["config", "--null", "--list"],
       workingDirectory,
@@ -223,14 +222,13 @@ module.exports = class GitRepositoryRefsProvider {
       },
     );
 
-    const [forEachRef, tagObjects, commitMetadata, worktrees, symbolicHead, headOid, routingRefs] =
+    const [forEachRef, tagObjects, commitMetadata, worktrees, head, routingRefs] =
       await Promise.all([
         forEachRefPromise,
         tagObjectsPromise,
         commitMetadataPromise,
         worktreesPromise,
-        symbolicHeadPromise,
-        headOidPromise,
+        headPromise,
         routingRefsPromise,
       ]);
     const { remotes, upstreamRefs, pushRefs } = routingRefs;
@@ -243,8 +241,7 @@ module.exports = class GitRepositoryRefsProvider {
       pushRefs,
       remotes,
       worktrees,
-      symbolicHead,
-      headOid,
+      ...head,
     };
   }
 
