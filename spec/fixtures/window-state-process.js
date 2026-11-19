@@ -256,6 +256,17 @@ app
       // X11 restores the backing maximized mode after leaving fullscreen.
       if (process.platform === "linux" && snapshot?.maximized)
         await modeEvent(window, "maximize");
+      if (process.platform === "darwin" && snapshot?.maximized) {
+        // Cocoa can finish leaving the Space before restoring the backing zoom.
+        await change(
+          window,
+          "resize",
+          () => {},
+          () => window.isMaximized(),
+          "restore the backing maximized mode",
+        );
+        await new Promise(setImmediate);
+      }
       trace("after-maximize-barrier");
       await change(
         window,
@@ -270,6 +281,7 @@ app
         () => {},
         () => matchesBounds(window, bounds.final),
       );
+      assert.equal(window.isMaximized(), false);
       assert.deepEqual(window.getNormalBounds(), bounds.final);
     } else if (stage === "verify-normal") {
       assert.deepEqual(start, { bounds: bounds.final, maximized: false });
