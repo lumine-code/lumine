@@ -1,6 +1,7 @@
 const TextEditor = require("../src/text-editor");
 const Range = require("../src/range");
 const { setTimeout, clearTimeout } = require("node:timers");
+const { QueryBudgetExceeded } = require("../src/tree-sitter-query-budget");
 
 describe("Pending fold cancellation", () => {
   let editor, mode;
@@ -13,6 +14,52 @@ describe("Pending fold cancellation", () => {
     mode.asynchronousSyntax = true;
   });
   afterEach(() => editor.destroy());
+
+  it("recovers an inline fold once after a transient query timeout", async () => {
+    mode.asynchronousSyntax = false;
+    const query = (mode.getFoldableRangeContainingPoint = jasmine
+      .createSpy("fold query")
+      .and.callFake(() => {
+        if (query.calls.count() === 1) throw new QueryBudgetExceeded("timeout");
+        return first();
+      }));
+    const pending = editor.foldBufferRow(0);
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(editor.isFoldedAtBufferRow(0)).toBe(false);
+    await pending;
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(editor.isFoldedAtBufferRow(0)).toBe(true);
+  });
+
+  it("cancels deferred inline fold recovery when the buffer changes", async () => {
+    mode.asynchronousSyntax = false;
+    const query = (mode.getFoldableRangeContainingPoint = jasmine
+      .createSpy("fold query")
+      .and.throwError(new QueryBudgetExceeded("timeout")));
+    const pending = editor.foldBufferRow(0);
+    editor.getBuffer().append("changed");
+    await pending;
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(editor.isFoldedAtBufferRow(0)).toBe(false);
+    expect(editor.pendingFoldControllers.size).toBe(0);
+  });
+
+  it("preserves typed failures for a persistent timeout and structural limit", async () => {
+    mode.asynchronousSyntax = false;
+    const timeout = new QueryBudgetExceeded("timeout");
+    const query = (mode.getFoldableRangeContainingPoint = jasmine
+      .createSpy("fold query")
+      .and.throwError(timeout));
+    await expectAsync(editor.foldBufferRow(0)).toBeRejectedWith(timeout);
+    expect(query).toHaveBeenCalledTimes(2);
+
+    const limit = new QueryBudgetExceeded("match-limit");
+    query.calls.reset();
+    query.and.throwError(limit);
+    expect(() => editor.foldBufferRow(0)).toThrow(limit);
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(editor.isFoldedAtBufferRow(0)).toBe(false);
+  });
 
   it("treats a second gutter toggle as cancellation of its pending fold", async () => {
     let release;

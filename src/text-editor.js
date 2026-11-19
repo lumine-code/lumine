@@ -15,6 +15,7 @@ const { leadingIndentation } = require("./text-source-helpers");
 const NullGrammar = require("./null-grammar");
 const ScopeDescriptor = require("./scope-descriptor");
 const { selectorMatchesAnyScope } = require("./selectors");
+const { QueryBudgetExceeded } = require("./tree-sitter-query-budget");
 const {
   setTimeout: scheduleBackgroundWork,
   clearTimeout: cancelBackgroundWork,
@@ -7982,7 +7983,17 @@ module.exports = class TextEditor {
       tabLength === this.getTabLength() &&
       !mode.publicationPending;
     const perform = (result) => {
-      if (isCurrent() && !result?.parseError) return operation(mode, isCurrent, signal);
+      if (!isCurrent() || result?.parseError) return;
+      try {
+        return operation(mode, isCurrent, signal);
+      } catch (error) {
+        if (!(error instanceof QueryBudgetExceeded) || error.reason !== "timeout") throw error;
+        // An inline query can lose a slice to a scheduler pause. Give the
+        // current command one more exact attempt after yielding to the event loop.
+        return new Promise((resolve) => setImmediate(resolve)).then(() => {
+          if (isCurrent()) return operation(mode, isCurrent, signal);
+        });
+      }
     };
     try {
       const result =
