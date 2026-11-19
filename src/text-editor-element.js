@@ -314,6 +314,7 @@ class TextEditorElement extends HTMLElement {
   /**
    * @public
    * @status extended
+   *
    * Return the element that receives keyboard input for this editor.
    * Use it to associate an accessible popup with the focused control.
    * @returns {HTMLInputElement}

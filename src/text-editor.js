@@ -1465,6 +1465,7 @@ module.exports = class TextEditor {
   /**
    * @public
    * @status experimental
+   *
    * Observe an editor input after its text and automatic indentation are applied.
    * Programmatic buffer and editor mutations do not emit this event.
    * @param {Function} callback - Receives the input kind, optional text, buffer
@@ -1478,6 +1479,7 @@ module.exports = class TextEditor {
   /**
    * @public
    * @status experimental
+   *
    * Whether the editor is publishing text on behalf of a user input.
    * @returns {Boolean}
    */
@@ -1488,6 +1490,7 @@ module.exports = class TextEditor {
   /**
    * @public
    * @status experimental
+   *
    * Queue a user input from an editor surface and report its committed edits.
    * @param {Object} input - A `kind` of `insert`, `delete`, `paste` or
    *   `composition`, with optional `text` from the input event.
@@ -9007,6 +9010,7 @@ module.exports = class TextEditor {
   /**
    * @public
    * @status experimental
+   *
    * Whether the editor has input or indentation waiting to finish.
    * @returns {Boolean}
    */
