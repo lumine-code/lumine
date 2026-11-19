@@ -3287,16 +3287,23 @@ module.exports = class TextEditorComponent {
     // paste command that did not arrive as a keystroke reads the clipboard
     // directly. Metadata copied in another window is unavailable here.
     const { skipPasteProviders, ...editorOptions } = options;
-    const handledByProvider =
-      !skipPasteProviders &&
-      this.handlePasteProviders({
-        clipboard: this.props.model.constructor.clipboard,
-        options: editorOptions,
+    const model = this.props.model;
+    return model.dispatchTextInput({ kind: "paste" }, () => {
+      const publish = require("./text-editor-input-queue").capturePublication(model);
+      return model.transact(model.getUndoGroupingInterval(), () => {
+        const handledByProvider =
+          !skipPasteProviders &&
+          this.handlePasteProviders({
+            clipboard: model.constructor.clipboard,
+            options: editorOptions,
+          });
+        const pasteDefault = (handled) =>
+          handled ? true : publish(() => model.pasteText(editorOptions));
+        return isPromise(handledByProvider)
+          ? handledByProvider.then(pasteDefault)
+          : pasteDefault(handledByProvider);
       });
-    const pasteDefault = (handled) => (handled ? true : this.props.model.pasteText(editorOptions));
-    return isPromise(handledByProvider)
-      ? handledByProvider.then(pasteDefault)
-      : pasteDefault(handledByProvider);
+    });
   }
 
   handlePasteProviders({ clipboard, clipboardData = null, options = {} }) {
@@ -3389,7 +3396,12 @@ module.exports = class TextEditorComponent {
         });
       event.preventDefault();
       const pasteDefault = (handled) => {
-        if (!handled) this.props.model.pasteText({ ...editorOptions, clipboard });
+        if (!handled) {
+          const model = this.props.model;
+          return model.dispatchTextInput({ kind: "paste" }, () =>
+            model.pasteText({ ...editorOptions, clipboard }),
+          );
+        }
       };
       if (isPromise(handledByProvider)) handledByProvider.then(pasteDefault);
       else pasteDefault(handledByProvider);
@@ -3402,6 +3414,7 @@ module.exports = class TextEditorComponent {
   }
 
   didTextInput(event) {
+    const kind = this.compositionCheckpoint ? "composition" : "insert";
     if (this.compositionCheckpoint) {
       this.props.model.revertToCheckpoint(this.compositionCheckpoint);
       this.compositionCheckpoint = null;
@@ -3432,9 +3445,11 @@ module.exports = class TextEditorComponent {
 
       // In overtype mode, expand empty selections over the following character
       // so the typed text overwrites it instead of being inserted before it.
-      require("./text-editor-input-queue")(this.props.model, () => {
-        this.props.model.applyOvertype();
-        return this.props.model.insertText(event.data, { groupUndo: true });
+      const model = this.props.model;
+      const text = event.data;
+      model.dispatchTextInput({ kind, text }, () => {
+        model.applyOvertype();
+        return model.insertText(text, { groupUndo: true });
       });
     }
   }
@@ -3566,8 +3581,10 @@ module.exports = class TextEditorComponent {
         lumine.config.get("editor.selectionClipboard")
       ) {
         const didRead = model.constructor.clipboard.readSelectionText();
-        if (isPromise(didRead)) didRead.then((text) => model.insertText(text)).catch(() => {});
-        else model.insertText(didRead);
+        const paste = (text) =>
+          model.dispatchTextInput({ kind: "paste" }, () => model.insertText(text));
+        if (isPromise(didRead)) didRead.then(paste).catch(() => {});
+        else paste(didRead);
       }
       return;
     }

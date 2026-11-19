@@ -95,7 +95,7 @@ module.exports = function stageMutation(editor, callback, records, mode) {
     if (!previous || !edited) rowOptions.set(row, { ...options, edited });
   }
   return {
-    ranges: mergeRanges([...rowOptions.keys()].map((row) => [row, row])),
+    ranges: mergeRanges([...rowOptions.keys()].sort((a, b) => a - b).map((row) => [row, row])),
     rowOptions,
     get result() {
       return resultMarker ? resultMarker.getBufferRange() : result;

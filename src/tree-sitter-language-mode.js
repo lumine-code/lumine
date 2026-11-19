@@ -2545,6 +2545,31 @@ class TreeSitterLanguageMode {
     yield* this.indentResolver.scanSuggestedIndentation(ranges, tabLength, options);
   }
 
+  async *scanDraftIndentation(buffer, ranges, tabLength, options) {
+    const registry = this.grammarRegistry;
+    const policy = registry?.rootLanguageRangesByBuffer.get(this.buffer)?.descriptor;
+    const rootRanges = policy && registry.setRootLanguageRanges(buffer, policy);
+    const mode = new TreeSitterLanguageMode({
+      buffer,
+      grammar: this.grammar,
+      config: this.config,
+      grammars: registry,
+      queryBudget: this.queryBudget,
+      indentationOnly: true,
+    });
+    const cancel = () => mode.destroy();
+    options.signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      options.signal?.throwIfAborted();
+      mode.requestHighlighting(this, []);
+      yield* mode.scanSuggestedIndentation(ranges, tabLength, options);
+    } finally {
+      options.signal?.removeEventListener("abort", cancel);
+      mode.destroy();
+      rootRanges?.dispose();
+    }
+  }
+
   suggestedIndentForPastedRanges(ranges, tabLength) {
     this.ensureQueriesForLayersSync("indentsQuery");
     const results = new Map(),

@@ -384,6 +384,35 @@ describe("Atomic input indentation", () => {
     expect(editor.getText()).toBe("class Record:\n    field");
   });
 
+  it("emits the settled input with revisions after prepared indentation is published", async () => {
+    await start("class Record:");
+    editor.moveToEndOfLine();
+    const events = [];
+    editor.onDidSettleTextInput((input) => events.push({ input, source: editor.getText() }));
+    const buffer = editor.getBuffer();
+    const beforeRevision = buffer.getTextRevision();
+    const gate = hold();
+    const first = editor.dispatchTextInput({ kind: "insert", text: "\n" }, () =>
+      editor.insertNewline(),
+    );
+    await gate.ready;
+    expect(events).toEqual([]);
+    gate.release();
+    await first;
+    expect(events.length).toBe(1);
+    expect(events[0].input).toEqual(
+      jasmine.objectContaining({
+        kind: "insert",
+        text: "\n",
+        beforeRevision,
+        afterRevision: buffer.getTextRevision(),
+      }),
+    );
+    expect(events[0].source).toBe("class Record:\n    ");
+    await editor.insertText("field");
+    expect(events.length).toBe(1);
+  });
+
   it("cancels a waiting completion immediately when newer input is accepted", async () => {
     await start("class Record:");
     editor.moveToEndOfLine();

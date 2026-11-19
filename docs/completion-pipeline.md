@@ -26,7 +26,11 @@ Match records also carry `exact`, `prefix`, `caseSensitivePrefix` and `firstChar
 
 The built-in word provider already returned ranked candidates and highlight indices before this change; it was not being ranked through native fuzzy matching a second time. Its improvements here are compact occurrence summaries, absolute coordinates in nonzero search windows, direct matching of configuration suggestions without an auxiliary buffer, and owned buffer-subscription cleanup. Locality bonuses and provider-priority blocks are retained.
 
-Provider requests receive an AbortSignal. Replacing or cancelling a request aborts it; obsolete provider results are discarded before filtering and presentation. Buffer scanning cooperatively checks cancellation between chunks and scoring work. Providers can pass the signal to their own cancellable operations.
+Provider requests receive an AbortSignal. Replacing or cancelling a request aborts it. Each published completion retains the document revision, cursor context and provider registration that produced it. Buffer scanning cooperatively checks cancellation between chunks and scoring work. Providers can pass the signal to their own cancellable operations.
+
+Autocomplete starts automatic requests from `TextEditor.onDidSettleTextInput`, which reports interactive inserts, deletions, paste and composition after their owned edits settle. Programmatic mutations and history changes invalidate older requests through the buffer revision. They do not themselves accept a completion or open the list.
+
+Confirmation validates the complete edit plan in buffer coordinates before writing. With syntax-dependent indentation, `transactWithAutoIndentation` prepares the plan on a private draft and publishes the text and selections together. The primary replacement, additional changes and any reindentation share one undo step. An independent edit or loss of the completion session cancels unpublished work.
 
 ## Incremental word index
 

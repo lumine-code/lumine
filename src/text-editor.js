@@ -1465,6 +1465,42 @@ module.exports = class TextEditor {
   /**
    * @public
    * @status experimental
+   * Observe an editor input after its text and automatic indentation are applied.
+   * Programmatic buffer and editor mutations do not emit this event.
+   * @param {Function} callback - Receives the input kind, optional text, buffer
+   *   revisions before and after, and committed changes in application order.
+   * @returns {Disposable} Dispose to unsubscribe.
+   */
+  onDidSettleTextInput(callback) {
+    return this.emitter.on("did-settle-text-input", callback);
+  }
+
+  /**
+   * @public
+   * @status experimental
+   * Whether the editor is publishing text on behalf of a user input.
+   * @returns {Boolean}
+   */
+  isApplyingTextInput() {
+    return require("./text-editor-input-queue").isApplyingTextInput(this);
+  }
+
+  /**
+   * @public
+   * @status experimental
+   * Queue a user input from an editor surface and report its committed edits.
+   * @param {Object} input - A `kind` of `insert`, `delete`, `paste` or
+   *   `composition`, with optional `text` from the input event.
+   * @param {Function} operation - An editor operation, possibly asynchronous.
+   * @returns {*} The operation's result, or a promise for it.
+   */
+  dispatchTextInput(input, operation) {
+    return require("./text-editor-input-queue")(this, operation, input);
+  }
+
+  /**
+   * @public
+   * @status experimental
    *
    * Contribute synchronous edits to an insertion before its final indentation
    * and publication. Edit only the supplied editor: worker-backed input uses a
@@ -3937,15 +3973,23 @@ module.exports = class TextEditor {
    * @param {AbortSignal} [options.signal] - Cancels preparation.
    * @param {Boolean} [options.bypassReadOnly=false] - Allows changing a read-only editor.
    * @param {Boolean} [options.groupUndo=false] - Groups publication with recent edits.
+   * @param {Function} [options.isCurrent] - Synchronous owner check before publication.
+   * @param {Function} [options.withCommit] - Synchronous wrapper that must invoke the commit callback exactly once.
+   * @param {Boolean} [options.prepareDraftIndentation=false] - Prepare against a private draft even when syntax runs in the renderer.
    * @returns {*|Promise} The synchronous result, or a promise for prepared publication.
    */
   transactWithAutoIndentation(callback, options = {}) {
     if (!this.ensureWritable("transactWithAutoIndentation", options)) return;
+    if (options.signal?.aborted || options.isCurrent?.() === false) return false;
     const mode = this.buffer.getLanguageMode();
-    if (typeof mode.scanPreparedIndentation !== "function")
-      return this.transact(options.groupUndo ? this.getUndoGroupingInterval() : 0, () =>
-        callback(this),
-      );
+    if (
+      typeof mode.scanPreparedIndentation !== "function" &&
+      !(options.prepareDraftIndentation && typeof mode.scanDraftIndentation === "function")
+    ) {
+      const commit = () =>
+        this.transact(options.groupUndo ? this.getUndoGroupingInterval() : 0, () => callback(this));
+      return options.withCommit ? options.withCommit(commit) : commit();
+    }
     return this.trackIndentation(
       require("./text-editor-prepared-indent").mutate(this, callback, options),
       mode,
@@ -7661,11 +7705,11 @@ module.exports = class TextEditor {
     };
 
     const clipboardData = clipboard.readWithMetadata();
-    return isPromise(clipboardData)
-      ? clipboardData.then((data) => {
-          if (isCurrent()) return paste(data);
-        })
-      : paste(clipboardData);
+    if (!isPromise(clipboardData)) return paste(clipboardData);
+    const publish = require("./text-editor-input-queue").capturePublication(this);
+    return clipboardData.then((data) => {
+      if (isCurrent()) return publish(() => paste(data));
+    });
   }
 
   // Each paste owns its range, not the entire transaction's extent. Deferred
@@ -8957,6 +9001,18 @@ module.exports = class TextEditor {
       this.autoIndentAtTransactionEndPromise ||
       this.pendingIndentationPromises?.size ||
       require("./text-editor-prepared-indent").isPending(this),
+    );
+  }
+
+  /**
+   * @public
+   * @status experimental
+   * Whether the editor has input or indentation waiting to finish.
+   * @returns {Boolean}
+   */
+  hasPendingTextInput() {
+    return Boolean(
+      this.hasPendingIndentation() || require("./text-editor-input-queue").pendingFor(this),
     );
   }
 

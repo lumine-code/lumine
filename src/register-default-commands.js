@@ -1201,6 +1201,7 @@ const rewrapCommandListener = function (listener, wrap) {
 var stopEventPropagation = function (notificationManager, commandListeners) {
   const newCommandListeners = {};
   for (let commandName in commandListeners) {
+    const newline = /^editor:newline(?:-above|-below)?$/.test(commandName);
     const scrollbarNavigation =
       /^(?:core:(?:move-|select-|page-)|editor:(?:move-|select-|add-selection-))/.test(
         commandName,
@@ -1212,10 +1213,13 @@ var stopEventPropagation = function (notificationManager, commandListeners) {
           event.stopPropagation();
           if (scrollbarNavigation) this.getComponent?.()?.revealScrollbars();
           return require("./settle-editor-command")(
-            () =>
-              require("./text-editor-input-queue")(this.getModel(), () =>
-                didDispatch.call(this.getModel(), event),
-              ),
+            () => {
+              const model = this.getModel();
+              const operation = () => didDispatch.call(model, event);
+              return newline
+                ? model.dispatchTextInput({ kind: "insert", text: "\n" }, operation)
+                : require("./text-editor-input-queue")(model, operation);
+            },
             notificationManager,
             commandName,
           );
@@ -1228,6 +1232,9 @@ var stopEventPropagation = function (notificationManager, commandListeners) {
 var stopEventPropagationAndGroupUndo = function (config, notificationManager, commandListeners) {
   const newCommandListeners = {};
   for (let commandName in commandListeners) {
+    const paste =
+      commandName === "core:paste" || commandName === "editor:paste-without-reformatting";
+    const remove = /^(?:core:(?:backspace|delete)$|editor:delete-)/.test(commandName);
     newCommandListeners[commandName] = rewrapCommandListener(
       commandListeners[commandName],
       (didDispatch) =>
@@ -1235,12 +1242,16 @@ var stopEventPropagationAndGroupUndo = function (config, notificationManager, co
           event.stopPropagation();
           const model = this.getModel();
           return require("./settle-editor-command")(
-            () =>
-              require("./text-editor-input-queue")(model, () =>
+            () => {
+              if (paste) return didDispatch.call(model, event);
+              const operation = () =>
                 model.transact(model.getUndoGroupingInterval(), () =>
                   didDispatch.call(model, event),
-                ),
-              ),
+                );
+              return remove
+                ? model.dispatchTextInput({ kind: "delete" }, operation)
+                : require("./text-editor-input-queue")(model, operation);
+            },
             notificationManager,
             commandName,
           );

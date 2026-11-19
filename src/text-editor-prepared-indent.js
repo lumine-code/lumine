@@ -162,6 +162,7 @@ async function prepare(editor, data, options, queue) {
   const isCurrent = () =>
     current() &&
     !signal.aborted &&
+    options.isCurrent?.() !== false &&
     buffer.getLanguageMode() === mode &&
     mode.getSyntaxRequestEpoch?.() === epoch &&
     editor.getTabLength() === tabLength &&
@@ -391,6 +392,7 @@ async function prepare(editor, data, options, queue) {
       // Input planning has one complete, bounded answer. Large mutations,
       // moves and pastes keep their cooperative range stream. Both answers
       // pass through the same validation and private-buffer application.
+      const scanOptions = { ...indentationOptions, signal, isCurrent };
       draft.getLanguageMode().scanSuggestedIndentation = inputIndentation
         ? async function* () {
             const result = await mode.prepareInputIndentation({
@@ -407,11 +409,9 @@ async function prepare(editor, data, options, queue) {
             yield result.levels;
           }
         : () =>
-            mode.scanPreparedIndentation(changes, ranges, tabLength, {
-              ...indentationOptions,
-              signal,
-              isCurrent,
-            });
+            typeof mode.scanPreparedIndentation === "function"
+              ? mode.scanPreparedIndentation(changes, ranges, tabLength, scanOptions)
+              : mode.scanDraftIndentation(draft, ranges, tabLength, scanOptions);
       await autoIndentRanges(staged, ranges, {
         ...options,
         signal,
@@ -482,7 +482,7 @@ async function prepare(editor, data, options, queue) {
         withPublication(callback) {
           setPublishing(true);
           try {
-            return callback();
+            return options.withCommit ? options.withCommit(callback) : callback();
           } finally {
             setPublishing(false);
           }

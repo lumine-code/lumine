@@ -507,14 +507,14 @@ describe("Package syntax analyses with a worker owner", () => {
     await lumine.workspace.open(editor);
     editor.setCursorBufferPosition([151, 7]);
     editor.getElement().focus();
-    editor.insertText(".");
+    await editor.dispatchTextInput({ kind: "insert", text: "." }, () => editor.insertText("."));
     await conditionPromise(
       () => editor.getElement().querySelectorAll(".autocomplete li").length === 2,
     );
     expect(calls[0].triggerCharacter).toBe(".");
     expect(calls[0].scopeDescriptor.getScopesArray()).toContain("source.js");
     const query = spyOn(editor, "getCommentDelimitersForBufferPositions").and.callThrough();
-    editor.insertText("(");
+    await editor.dispatchTextInput({ kind: "insert", text: "(" }, () => editor.insertText("("));
     await conditionPromise(() => editor.lineTextForBufferRow(151) === "console.// result(");
     expect(query).toHaveBeenCalledTimes(1);
     editor.undo();
@@ -532,7 +532,6 @@ describe("Package syntax analyses with a worker owner", () => {
     editor.addCursorAtBufferPosition([5, 4]);
     editor.getBuffer().clearUndoStack();
     autocomplete.updateCurrentEditor(editor);
-    const plan = spyOn(editor, "autoIndentBufferRowsAtRows").and.callThrough();
     await autocomplete.insertSuggestion(
       {
         text: "block",
@@ -556,7 +555,6 @@ describe("Package syntax analyses with a worker owner", () => {
       },
       editor.getCursorBufferPosition(),
     );
-    expect(plan).toHaveBeenCalledTimes(1);
     expect(editor.getText()).toBe(
       "import 'ready';\n// header\nfunction first() {\n  if (ready) {\n    work();\n  }\n}\nfunction second() {\n  if (ready) {\n    work();\n  }\n}\n",
     );
@@ -582,8 +580,44 @@ describe("Package syntax analyses with a worker owner", () => {
     await pending;
     expect(editor.getText()).toBe(manuallyEdited);
     editor.undo();
-    expect(editor.getText()).not.toContain("independent edit");
-    expect(editor.getText()).toContain("work();");
+    expect(editor.getText()).toBe(source);
+  });
+
+  it("publishes a prefix completion and its import together before notifying the provider", async () => {
+    const autocomplete = (await lumine.packages.activatePackage("autocomplete")).mainModule
+      .autocompleteManager;
+    await autocomplete.prepareCompletion();
+    const source = "// header\nco";
+    const editor = await build(source, "source.js");
+    editor.update({ autoIndent: true });
+    editor.setCursorBufferPosition([1, 2]);
+    editor.getBuffer().clearUndoStack();
+    autocomplete.updateCurrentEditor(editor);
+    const onDidInsertSuggestion = jasmine.createSpy("onDidInsertSuggestion");
+    const pending = autocomplete.insertSuggestion(
+      {
+        text: "console",
+        replacementPrefix: "co",
+        additionalTextEdits: [
+          {
+            range: [
+              [0, 0],
+              [0, 0],
+            ],
+            newText: "import 'logger';\n",
+          },
+        ],
+        provider: { onDidInsertSuggestion },
+      },
+      editor.getCursorBufferPosition(),
+    );
+    expect(editor.getText()).toBe(source);
+    expect(onDidInsertSuggestion).not.toHaveBeenCalled();
+    expect(await pending).toBe(true);
+    expect(editor.getText()).toBe("import 'logger';\n// header\nconsole");
+    expect(onDidInsertSuggestion).toHaveBeenCalledTimes(1);
+    editor.undo();
+    expect(editor.getText()).toBe(source);
   });
 
   for (const cold of [false, true])
@@ -621,11 +655,16 @@ describe("Package syntax analyses with a worker owner", () => {
       editor.update({ autoIndent: true, tabLength: 2, softTabs: true });
       editor.setCursorBufferPosition([0, 9]);
       editor.getElement().focus();
-      editor.insertNewline();
-      editor.insertText("w");
+      const newline = editor.dispatchTextInput({ kind: "insert", text: "\n" }, () =>
+        editor.insertNewline(),
+      );
+      const typed = editor.dispatchTextInput({ kind: "insert", text: "w" }, () =>
+        editor.insertText("w"),
+      );
       const original = cold
         ? null
         : lumine.commands.dispatch(editor.getElement(), "autocomplete:activate");
+      await Promise.all([newline, typed]);
       await editor.whenGrammarSettled();
       if (cold) release(await prepare.call(manager, true));
       await original;

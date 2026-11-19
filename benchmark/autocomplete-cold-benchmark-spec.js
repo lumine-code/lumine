@@ -82,7 +82,7 @@ describe("Cold completion with the active package fleet", () => {
       const preparedBeforeInput = Boolean(manager.completionPreparation?.value);
       const cpuStart = process.cpuUsage();
       const start = performance.now();
-      editor.insertText("p");
+      editor.dispatchTextInput({ kind: "insert", text: "p" }, () => editor.insertText("p"));
       const firstMs = performance.now() - start;
       await waitFor(() => {
         const popup = editor.getElement().querySelector("autocomplete-suggestion-list");
@@ -102,7 +102,8 @@ describe("Cold completion with the active package fleet", () => {
       for (let i = 0; i < 120; i++) {
         await sleep(Math.max(0, burstStart + i * 16.667 - performance.now()));
         const at = performance.now();
-        editor.insertText(i % 12 === 11 ? " " : "a");
+        const text = i % 12 === 11 ? " " : "a";
+        editor.dispatchTextInput({ kind: "insert", text }, () => editor.insertText(text));
         events.push({ at, duration: performance.now() - at, delay: at - burstStart - i * 16.667 });
       }
       await editor.whenGrammarSettled();
