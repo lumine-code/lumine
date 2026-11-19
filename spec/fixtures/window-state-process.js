@@ -325,7 +325,7 @@ app
         else resolve();
       });
     });
-    if (result.actual.fullScreen) {
+    if (process.platform === "darwin" && result.actual.fullScreen) {
       // Release the fullscreen Space before the next fixture process opens its
       // window. The saved fullscreen intent remains frozen during teardown.
       await new Promise(setImmediate);
