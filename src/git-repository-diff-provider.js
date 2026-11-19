@@ -75,15 +75,16 @@ async function temporaryEmptyTree(runner, workingDirectory, options) {
   }
 }
 
-// Maps endpoint pairs onto git diff invocations and returns the raw patch.
+// Maps endpoint pairs onto git diff invocations.
 module.exports = class GitRepositoryDiffProvider {
   constructor({ runner, execute } = {}) {
     this.runner = runner || new GitRunner({ execute });
   }
 
-  async getDiffPatch(workingDirectory, request, options = {}) {
+  async getDiffOutput(workingDirectory, request, options = {}) {
     const from = validateEndpoint(request.from);
     const to = validateEndpoint(request.to);
+    const nameStatus = request.format === "name-status";
 
     const args = [
       "-c",
@@ -93,14 +94,14 @@ module.exports = class GitRepositoryDiffProvider {
       "-c",
       "diff.autoRefreshIndex=false",
       "diff",
-      "--patch",
+      ...(nameStatus ? ["--raw", "--numstat", "-z"] : ["--patch"]),
       "--no-ext-diff",
       "--no-textconv",
       "--no-color",
       ...(request.detectRenames === false ? ["--no-renames"] : ["--find-renames", "--find-copies"]),
-      "--src-prefix=a/",
-      "--dst-prefix=b/",
-      `--unified=${request.context ?? 3}`,
+      ...(nameStatus
+        ? []
+        : ["--src-prefix=a/", "--dst-prefix=b/", `--unified=${request.context ?? 3}`]),
     ];
     if (request.ignoreWhitespace) args.push("--ignore-all-space");
     if (request.diffFilter) args.push(`--diff-filter=${request.diffFilter}`);

@@ -429,6 +429,7 @@ process.on("disconnect", () => {
     state.requestStream = null;
   }
   inflight.clear();
+  ops[Symbol.dispose]();
   void Promise.allSettled([...activeExecutions.values()]).then(() => process.exit(0));
 });
 

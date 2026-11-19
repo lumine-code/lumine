@@ -5,7 +5,11 @@ const GitRepositoryStatusProvider = require("./git-repository-status-provider");
 const GitRepositoryRefsProvider = require("./git-repository-refs-provider");
 const GitRepositoryDiffProvider = require("./git-repository-diff-provider");
 const GitRepositoryHistoryProvider = require("./git-repository-history-provider");
-const { applyFileEndpointPaths, parseDiffPatch } = require("./repository-diff");
+const {
+  applyFileEndpointPaths,
+  parseDiffFileStatuses,
+  parseDiffPatch,
+} = require("./repository-diff");
 const {
   parseBlamePorcelain,
   parseCommitRecords,
@@ -13,7 +17,7 @@ const {
 } = require("./repository-history");
 const { parseRefsSnapshot } = require("./repository-refs-snapshot");
 const { parseStatusSnapshot } = require("./repository-status-snapshot");
-const { computeLineDiffHunks } = require("./line-diff");
+const GitLineDiffWorker = require("./git-line-diff-worker-client");
 const { assertGitRevision } = require("./git-revision");
 const RepositoryResourceQueue = require("./repository-resource-queue");
 const {
@@ -211,6 +215,11 @@ module.exports = class SystemGitService {
     this.diffProvider = new GitRepositoryDiffProvider({ runner });
     this.historyProvider = new GitRepositoryHistoryProvider({ runner });
     this.submodulePathsByWorkingDirectory = new Map();
+    this.lineDiffWorker = new GitLineDiffWorker();
+  }
+
+  dispose() {
+    this.lineDiffWorker.dispose();
   }
 
   async validatedRepositoryOptions(descriptor, operation, options) {
@@ -358,20 +367,22 @@ module.exports = class SystemGitService {
     }
     const { signal, maxBytes } = requestOptions;
     const format = request.format || "structured";
-    const rawPatch = await this.diffProvider.getDiffPatch(
-      workingDirectoryFor(descriptor),
-      request,
-      {
-        signal,
-        maxBuffer: maxBytes,
-        repositoryDescriptor: requestOptions.repositoryDescriptor,
-      },
-    );
+    const output = await this.diffProvider.getDiffOutput(workingDirectoryFor(descriptor), request, {
+      signal,
+      maxBuffer: maxBytes,
+      repositoryDescriptor: requestOptions.repositoryDescriptor,
+    });
+    if (format === "name-status") {
+      return assertDiffWithinLimit(
+        { schemaVersion: 1, files: parseDiffFileStatuses(output, request) },
+        maxBytes,
+      );
+    }
     const result = {
       schemaVersion: 1,
       files:
-        format === "patch" ? [] : applyFileEndpointPaths(parseDiffPatch(rawPatch).files, request),
-      ...(format === "structured" ? {} : { rawPatch }),
+        format === "patch" ? [] : applyFileEndpointPaths(parseDiffPatch(output).files, request),
+      ...(format === "structured" ? {} : { rawPatch: output }),
     };
     return assertDiffWithinLimit(result, maxBytes);
   }
@@ -573,10 +584,8 @@ module.exports = class SystemGitService {
     return values;
   }
 
-  lineDiff(oldBuffer, newBuffer, options = {}) {
-    const oldText = Buffer.isBuffer(oldBuffer) ? oldBuffer.toString("utf8") : String(oldBuffer);
-    const newText = Buffer.isBuffer(newBuffer) ? newBuffer.toString("utf8") : String(newBuffer);
-    return Promise.resolve(computeLineDiffHunks(oldText, newText, options));
+  lineDiff(oldSource, newSource, options) {
+    return this.lineDiffWorker.request(oldSource, newSource, options);
   }
 
   async exec({ workingDirectory, args, options = {}, raw }, { signal } = {}) {

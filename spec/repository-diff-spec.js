@@ -3,7 +3,7 @@ const path = require("path");
 
 const temp = require("@lumine-code/fs-temp").track();
 
-const { parseDiffPatch } = require("../src/repository-diff");
+const { parseDiffFileStatuses, parseDiffPatch } = require("../src/repository-diff");
 const GitRepositoryDiffProvider = require("../src/git-repository-diff-provider");
 const GitRepositoryOperationProvider = require("../src/git-repository-operation-provider");
 const CoreGitRepository = require("../src/git-repository");
@@ -23,6 +23,32 @@ async function runFixtureGit(provider, args, workingDirectory, options) {
 }
 
 describe("repository diff", () => {
+  it("ignores stat-only changes while keeping literal paths, binary changes and renames", () => {
+    const output = [
+      ":100644 100644 1111111 0000000 M",
+      "unchanged",
+      ":100644 100755 2222222 0000000 M",
+      "script",
+      ":100644 100644 3333333 0000000 M",
+      "binary\tfile",
+      ":100644 100644 4444444 4444444 R100",
+      "old\npath",
+      "new\npath",
+      "0\t0\tscript",
+      "-\t-\tbinary\tfile",
+      "0\t0\t",
+      "old\npath",
+      "new\npath",
+      "",
+    ].join("\0");
+
+    expect(parseDiffFileStatuses(output)).toEqual([
+      { path: "script", originalPath: null, status: "modified", similarity: null },
+      { path: "binary\tfile", originalPath: null, status: "modified", similarity: null },
+      { path: "new\npath", originalPath: "old\npath", status: "renamed", similarity: 100 },
+    ]);
+  });
+
   describe("parseDiffPatch", () => {
     it("parses a modified file with hunk headings and classified lines", () => {
       const patch = [
@@ -247,23 +273,23 @@ describe("repository diff", () => {
     });
 
     it("maps endpoint pairs onto git diff invocations", async () => {
-      await provider.getDiffPatch("/repo", { from: { type: "index" }, to: { type: "worktree" } });
-      await provider.getDiffPatch("/repo", {
+      await provider.getDiffOutput("/repo", { from: { type: "index" }, to: { type: "worktree" } });
+      await provider.getDiffOutput("/repo", {
         from: { type: "commit", revision: "HEAD" },
         to: { type: "index" },
         context: 1,
       });
-      await provider.getDiffPatch("/repo", {
+      await provider.getDiffOutput("/repo", {
         from: { type: "commit", revision: "abc" },
         to: { type: "commit", revision: "def" },
         paths: ["src"],
         ignoreWhitespace: true,
       });
-      await provider.getDiffPatch("/repo", {
+      await provider.getDiffOutput("/repo", {
         from: { type: "empty" },
         to: { type: "file", path: "untracked.txt" },
       });
-      await provider.getDiffPatch("/repo", {
+      await provider.getDiffOutput("/repo", {
         from: { type: "empty" },
         to: { type: "index" },
       });
@@ -299,7 +325,7 @@ describe("repository diff", () => {
     });
 
     it("disables rename detection when detectRenames is false", async () => {
-      await provider.getDiffPatch("/repo", {
+      await provider.getDiffOutput("/repo", {
         from: { type: "index" },
         to: { type: "worktree" },
         detectRenames: false,
@@ -310,7 +336,7 @@ describe("repository diff", () => {
     });
 
     it("passes a diff filter through when requested", async () => {
-      await provider.getDiffPatch("/repo", {
+      await provider.getDiffOutput("/repo", {
         from: { type: "index" },
         to: { type: "worktree" },
         diffFilter: "u",
@@ -319,25 +345,25 @@ describe("repository diff", () => {
     });
 
     it("supports reverse and identical endpoints and rejects invalid pairs", async () => {
-      await provider.getDiffPatch("/repo", {
+      await provider.getDiffOutput("/repo", {
         from: { type: "worktree" },
         to: { type: "index" },
       });
       expect(calls[0].args).toContain("--reverse");
       expect(
-        await provider.getDiffPatch("/repo", {
+        await provider.getDiffOutput("/repo", {
           from: { type: "empty" },
           to: { type: "empty" },
         }),
       ).toBe("");
       await expectAsyncTypeError(() =>
-        provider.getDiffPatch("/repo", {
+        provider.getDiffOutput("/repo", {
           from: { type: "file", path: "file.txt" },
           to: { type: "index" },
         }),
       );
       await expectAsyncTypeError(() =>
-        provider.getDiffPatch("/repo", { from: { type: "commit" }, to: { type: "worktree" } }),
+        provider.getDiffOutput("/repo", { from: { type: "commit" }, to: { type: "worktree" } }),
       );
       expect(calls.length).toBe(1);
 
@@ -384,7 +410,7 @@ describe("repository diff", () => {
       expect(fs.existsSync(repositoryObject)).toBe(false);
 
       const realProvider = new GitRepositoryDiffProvider();
-      const patch = await realProvider.getDiffPatch(workingDirectory, {
+      const patch = await realProvider.getDiffOutput(workingDirectory, {
         from: { type: "empty" },
         to: { type: "index" },
       });
@@ -423,7 +449,7 @@ describe("repository diff", () => {
       const indexBefore = fs.readFileSync(indexPath);
 
       const realProvider = new GitRepositoryDiffProvider();
-      const patch = await realProvider.getDiffPatch(workingDirectory, {
+      const patch = await realProvider.getDiffOutput(workingDirectory, {
         from: { type: "index" },
         to: { type: "worktree" },
       });
@@ -439,7 +465,7 @@ describe("repository diff", () => {
       spyOn(fs.promises, "rm").and.rejectWith(new Error("temporary directory is locked"));
 
       expect(
-        await provider.getDiffPatch("/repo", {
+        await provider.getDiffOutput("/repo", {
           from: { type: "empty" },
           to: { type: "index" },
         }),
@@ -481,6 +507,49 @@ describe("repository diff", () => {
 
     afterEach(() => {
       if (repo && !repo.isDestroyed()) repo.destroy();
+    });
+
+    it("reads only names and statuses for literal paths with large changes", async () => {
+      const filePath = "literal[1].txt";
+      fs.renameSync(path.join(workingDirectory, "file.txt"), path.join(workingDirectory, filePath));
+      await operations.stageFiles(["file.txt", filePath]);
+      const changedText = "large changed line\n".repeat(100);
+      fs.writeFileSync(path.join(workingDirectory, filePath), changedText);
+      fs.writeFileSync(path.join(workingDirectory, "file1.txt"), changedText);
+      await operations.stageFiles(["file1.txt"]);
+      fs.appendFileSync(path.join(workingDirectory, "file1.txt"), "more\n");
+
+      const result = await repo.getDiff({
+        paths: [filePath],
+        format: "name-status",
+        maxBytes: 512,
+      });
+
+      expect(result.files).toEqual([
+        { path: filePath, originalPath: null, status: "modified", similarity: null },
+      ]);
+      expect(result.rawPatch).toBeUndefined();
+    });
+
+    it("reports statuses for file endpoints at the supplied path", async () => {
+      const file = { type: "file", path: "./file.txt" };
+      const other = { type: "file", path: "./untracked.txt" };
+      const empty = { type: "empty" };
+      const options = { format: "name-status" };
+
+      const changed = await repo.getDiff({ from: file, to: other, ...options });
+      const added = await repo.getDiff({ from: empty, to: other, ...options });
+      const deleted = await repo.getDiff({ from: file, to: empty, ...options });
+
+      expect(changed.files).toEqual([
+        { path: other.path, originalPath: null, status: "modified", similarity: null },
+      ]);
+      expect(added.files).toEqual([
+        { path: other.path, originalPath: null, status: "added", similarity: null },
+      ]);
+      expect(deleted.files).toEqual([
+        { path: file.path, originalPath: null, status: "deleted", similarity: null },
+      ]);
     });
 
     it("diffs the supported endpoint pairs of a real repository", async () => {

@@ -912,6 +912,7 @@ class GitHost {
     this.readyPromise = null;
     this.resolveReady = null;
     this.rejectReady = null;
+    this.inProcessOps?.[Symbol.dispose]();
     this.inProcessOps = null;
     this.fatalError = null;
   }

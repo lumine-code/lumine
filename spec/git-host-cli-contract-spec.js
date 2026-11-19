@@ -35,6 +35,8 @@ describe("git-host system Git contract", () => {
     ops = createGitHostOps(new GitRunner({ trustAllRepositories: true }));
   });
 
+  afterEach(() => ops?.[Symbol.dispose]());
+
   it("runs the complete repository facade through system Git", async () => {
     const snapshot = await ops.snapshot(
       {

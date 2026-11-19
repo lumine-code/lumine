@@ -44,6 +44,7 @@ function normalizeGitOperationError(error, { operation = null } = {}) {
 
   if (
     originalCode === "ERR_GIT_DIFF_TOO_LARGE" ||
+    originalCode === "ERR_GIT_LINE_DIFF_TOO_LARGE" ||
     originalCode === "ERR_GIT_CREATE_BLOB" ||
     originalCode === "ERR_GIT_REPOSITORY_UNAVAILABLE" ||
     originalCode.startsWith("ERR_GIT_HOST_")

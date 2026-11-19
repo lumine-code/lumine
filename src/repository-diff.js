@@ -1,3 +1,5 @@
+const { parseNameStatusTokens } = require("./repository-history");
+
 const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: (.*))?$/;
 
 // Git C-quotes paths containing double quotes or control characters (we run
@@ -209,4 +211,41 @@ function parseDiffPatch(patchText) {
   return Object.freeze({ files: Object.freeze(files) });
 }
 
-module.exports = { applyFileEndpointPaths, parseDiffPatch };
+function parseDiffFileStatuses(output, { from, to } = {}) {
+  const tokens = output.split("\0");
+  const statusTokens = [];
+  const fileEndpoint = to?.type === "file" ? to : from?.type === "file" ? from : null;
+  let index = 0;
+  // --raw lists stat-dirty paths even when their contents and modes match.
+  // --numstat omits these paths and keeps the paths of actual changes.
+  while (tokens[index]?.startsWith(":")) {
+    const header = tokens[index++];
+    const status = header.slice(header.lastIndexOf(" ") + 1);
+    statusTokens.push(status, tokens[index++]);
+    if (status.startsWith("R") || status.startsWith("C")) statusTokens.push(tokens[index++]);
+  }
+
+  const changedPaths = new Set();
+  for (; index < tokens.length && tokens[index]; index++) {
+    const record = /^([0-9]+|-)\t([0-9]+|-)\t([\s\S]*)$/.exec(tokens[index]);
+    if (!record) throw new Error(`Invalid Git numstat record: ${tokens[index]}`);
+    // Renames, copies and no-index comparisons place both paths after the NUL.
+    if (record[3]) {
+      changedPaths.add(record[3]);
+    } else {
+      // A no-index modification's raw record can use the source path.
+      if (fileEndpoint) changedPaths.add(tokens[index + 1]);
+      index += 2;
+      changedPaths.add(tokens[index]);
+    }
+  }
+  const files = parseNameStatusTokens(statusTokens.join("\0")).filter(
+    (file) => file.status !== "modified" || changedPaths.has(file.path),
+  );
+  if (fileEndpoint && files.length === 1) {
+    return [Object.freeze({ ...files[0], path: fileEndpoint.path })];
+  }
+  return files;
+}
+
+module.exports = { applyFileEndpointPaths, parseDiffFileStatuses, parseDiffPatch };

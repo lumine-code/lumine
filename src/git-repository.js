@@ -1688,7 +1688,7 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * Compute a structured diff between two endpoints.
+   * Compare two endpoints.
    *
    * @param {Object} [options] - Diff options.
    * @param {Object} [options.from] - The starting endpoint.
@@ -1699,8 +1699,9 @@ module.exports = class GitRepository {
    * @param {Boolean} [options.ignoreWhitespace=false] - Ignore all whitespace.
    * @param {Boolean} [options.detectRenames=true] - Detect renames.
    * @param {String} [options.diffFilter] - A Git diff-filter value.
-   * @param {"structured"|"patch"|"both"} [options.format="structured"] -
-   *   Select structured files, raw patch text, or both.
+   * @param {"structured"|"patch"|"both"|"name-status"} [options.format="structured"] -
+   *   Select structured files, raw patch text, both, or file metadata only.
+   *   Name-status files contain `path`, `originalPath`, `status`, and `similarity`.
    * @param {Number} [options.maxBytes=10485760] - Output limit. Exceeding it
    *   rejects with `ERR_GIT_DIFF_TOO_LARGE`.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
@@ -1724,7 +1725,7 @@ module.exports = class GitRepository {
     if (from?.type === "commit") assertGitRevision(from.revision);
     if (to?.type === "commit") assertGitRevision(to.revision);
 
-    if (!new Set(["structured", "patch", "both"]).has(format)) {
+    if (!new Set(["structured", "patch", "both", "name-status"]).has(format)) {
       throw new TypeError(`Unsupported diff format: ${format}`);
     }
 
@@ -1743,7 +1744,8 @@ module.exports = class GitRepository {
       error.operation = "diff";
       throw error;
     }
-    if (format !== "structured" && typeof result.rawPatch !== "string") {
+    const includesPatch = format === "patch" || format === "both";
+    if (includesPatch && typeof result.rawPatch !== "string") {
       const error = new Error("Git host omitted the requested raw diff patch");
       error.code = "ERR_GIT_DIFF";
       error.operation = "diff";
@@ -1752,7 +1754,7 @@ module.exports = class GitRepository {
     return Object.freeze({
       schemaVersion: 1,
       files: Object.freeze(format === "patch" ? [] : result.files),
-      ...(format === "structured" ? {} : { rawPatch: result.rawPatch }),
+      ...(includesPatch ? { rawPatch: result.rawPatch } : {}),
     });
   }
 
@@ -2060,7 +2062,8 @@ module.exports = class GitRepository {
    * Computes gutter line diffs off the renderer thread via the git-host worker,
    * fetching and caching the selected baseline blob before comparing it with
    * the buffer. A path absent from that baseline is compared as empty text
-   * unless `skipMissingBaseline` is enabled.
+   * unless `skipMissingBaseline` is enabled. A comparison that exceeds its
+   * input or computation budget rejects with `ERR_GIT_LINE_DIFF_TOO_LARGE`.
    *
    * @param {String} filePath - The `String` path relative to the repository.
    * @param {String} text - The `String` buffer contents to compare.
