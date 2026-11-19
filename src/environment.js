@@ -1277,6 +1277,13 @@ class Environment {
       try {
         StartupTime.addMarker("window:environment:start-editor-window:activate-packages");
         const activation = this.packages.activate();
+        const shellReady = this.packages.getInitialShellReadiness() ?? activation;
+        if (shellReady !== activation) {
+          void activation.catch((error) =>
+            console.error("Initial package resources failed", error),
+          );
+        }
+        StartupTime.addMarker("window:environment:start-editor-window:activate-packages:end");
         const loadSettings = this.#getLoadSettings();
         const initialDockContext = {
           hasProject: (loadSettings.initialProjectRoots?.length ?? 0) > 0,
@@ -1284,12 +1291,10 @@ class Environment {
           hasPaneItemTransfer: Boolean(loadSettings.paneItemTransfer),
         };
         this.workspace.prepareDefaultDockItems(initialDockContext);
-        await activation;
-        StartupTime.addMarker("window:environment:start-editor-window:activate-packages:end");
 
         const startTime = Date.now();
         StartupTime.addMarker("window:environment:start-editor-window:deserialize-state");
-        await this.deserialize(state);
+        await Promise.all([shellReady, this.deserialize(state)]);
         this.deserializeTimings.lumine = Date.now() - startTime;
         // Saved project paths can omit roots requested for this launch. Restore
         // that intent before revealing dock contents, rather than waiting for
@@ -1301,7 +1306,11 @@ class Environment {
       }
 
       this.keymaps.loadUserKeymap();
-      if (!this.window.isSafeMode()) this.requireUserInitScript();
+      if (!this.window.isSafeMode() && fs.isFileSync(this.getUserInitScriptPath())) {
+        const startup = this.packages.getPendingInitialActivation();
+        if (startup) await startup;
+        this.requireUserInitScript();
+      }
 
       this.menu.update();
 
@@ -1309,6 +1318,8 @@ class Environment {
       const initialTransfer = this.#getLoadSettings().paneItemTransfer;
       if (initialTransfer) {
         try {
+          const startup = this.packages.getPendingInitialActivation();
+          if (startup) await startup;
           await this.paneItemTransfers.acceptInitialTransfer(initialTransfer);
         } catch (error) {
           this.notifications.addWarning("Unable to restore the transferred pane item", {
@@ -1912,6 +1923,11 @@ class Environment {
 
     startTime = Date.now();
     if (state.workspace) {
+      // Pane deserializers may synchronously construct editors outside the
+      // restored project buffers and still need the same grammar registry.
+      const startup = this.packages.getPendingInitialActivation();
+      if (startup) await startup;
+      assertCurrent();
       const prepared = await this.workspace.prepareEditorWindowRestore(
         state.workspace,
         options,

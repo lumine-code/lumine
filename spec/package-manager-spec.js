@@ -247,7 +247,7 @@ describe("PackageManager", () => {
       expect(lumine.packages.hasLoadedInitialPackages()).toBe(true);
     });
 
-    it("reuses its package index for lookups made while packages load", () => {
+    it("reuses its package index for lookups made while packages load", async () => {
       const scan = spyOn(lumine.packages, "scanAvailablePackages").and.callThrough();
       lumine.packages.loadAvailablePackage.and.callFake(() => {
         expect(lumine.packages.getAvailablePackage("status-bar")).toBeDefined();
@@ -257,7 +257,8 @@ describe("PackageManager", () => {
       lumine.packages.loadPackages();
 
       expect(scan.calls.count()).toBe(1);
-      expect(lumine.packages.availablePackagesByNameDuringLoad).toBeNull();
+      await Promise.resolve();
+      expect(lumine.packages.availablePackageIndex).toBeNull();
     });
   });
 
@@ -2499,6 +2500,69 @@ describe("PackageManager", () => {
 
       expect(lumine.packages.loadPackage("duplicated-package").path).toBe(winnerPath);
       await lumine.packages.unloadPackage("duplicated-package");
+    });
+
+    it("shares discovery during a lookup batch and only invalidates the edited manifest", () => {
+      const edited = writePackage("package-identity-edited", { version: "1.0.0" });
+      writePackage("package-identity-stable", { version: "1.0.0" });
+      const scan = spyOn(lumine.packages, "scanAvailablePackages").and.callThrough();
+      const index = lumine.packages.getAvailablePackageIndex();
+      const stable = lumine.packages.getAvailablePackage("package-identity-stable");
+      expect(lumine.packages.getAvailablePackages()).toContain(stable);
+      expect(index.get("package-identity-stable")).toBe(stable);
+      expect(scan).toHaveBeenCalledTimes(1);
+
+      fs.writeFileSync(path.join(edited, "package.json"), JSON.stringify({ version: "2.0.0" }));
+      lumine.packages.refreshPackageIndex(edited);
+      expect(lumine.packages.getAvailablePackage("package-identity-edited").metadata.version).toBe(
+        "2.0.0",
+      );
+      expect(lumine.packages.getAvailablePackage("package-identity-stable").metadata).toBe(
+        stable.metadata,
+      );
+      expect(index.get("package-identity-edited").metadata.version).toBe("1.0.0");
+      expect(scan).toHaveBeenCalledTimes(2);
+    });
+
+    it("picks up external directory changes after the current lookup batch", async () => {
+      const name = "package-identity-external";
+      expect(lumine.packages.getAvailablePackage(name)).toBeUndefined();
+      const external = path.join(packagesDirPath, name);
+      fs.makeTreeSync(external);
+      fs.writeFileSync(path.join(external, "package.json"), JSON.stringify({ name }));
+      await Promise.resolve();
+      expect(lumine.packages.getAvailablePackage(name).path).toBe(external);
+    });
+
+    it("retries background discovery when a package copy changes during the read", async () => {
+      const oldPath = writePackage("package-identity-old", { name: "indexed-copy" });
+      const staleEntries = fs.readdirSync(packagesDirPath, { withFileTypes: true });
+      const reading = Promise.withResolvers();
+      const release = Promise.withResolvers();
+      const read = fs.promises.readdir.bind(fs.promises);
+      let reads = 0;
+      spyOn(fs.promises, "readdir").and.callFake((directory, options) => {
+        if (directory === packagesDirPath && ++reads === 1) {
+          reading.resolve();
+          return release.promise;
+        }
+        return read(directory, options);
+      });
+      const loading = lumine.packages.loadAvailablePackageIndex();
+      try {
+        await reading.promise;
+        const newPath = path.join(packagesDirPath, "package-identity-new");
+        fs.renameSync(oldPath, newPath);
+        lumine.packages.refreshPackageIndex(oldPath);
+        release.resolve(staleEntries);
+        const index = await loading;
+        expect(index.get("indexed-copy").path).toBe(newPath);
+        expect(index.copies.some((pack) => pack.path === oldPath)).toBe(false);
+        expect(reads).toBe(2);
+      } finally {
+        release.resolve(staleEntries);
+        await loading;
+      }
     });
 
     it("prefers a package directory that comes earlier in the search path", () => {

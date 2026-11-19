@@ -3388,6 +3388,13 @@ module.exports = class Workspace extends Model {
           ? []
           : [pathOpener.opener]
         : this.getOpeners();
+      // A package opener may synchronously construct editors or select a
+      // grammar. The plain text path can overlap its own read with discovery
+      // because Project gates its publication instead.
+      if (openers.length > 0) {
+        const startup = this.packageManager.getPendingInitialActivation();
+        if (startup) await startup;
+      }
       for (const opener of openers) {
         if (openRequest && !this.#itemOpenRequests.isCurrent(openRequest)) return;
         if (reuseRequest?.controller.signal.aborted) return;

@@ -142,6 +142,40 @@ describe("Project", () => {
       expect(deserializedProject.getBuffers().length).toBe(0);
     });
 
+    it("reads restored text before grammar discovery and waits to publish its language mode", async () => {
+      await lumine.workspace.open("a");
+      const state = lumine.project.serialize({ isUnloading: false });
+      deserializedProject = buildProject({
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        grammarRegistry: lumine.grammars,
+      });
+      const grammar = Promise.withResolvers();
+      spyOn(lumine.packages, "getPendingInitialActivation").and.returnValue(grammar.promise);
+      const read = Promise.withResolvers();
+      const deserialize = TextBuffer.deserialize.bind(TextBuffer);
+      spyOn(TextBuffer, "deserialize").and.callFake(async (...args) => {
+        const buffer = await deserialize(...args);
+        read.resolve(buffer);
+        return buffer;
+      });
+      const maintain = spyOn(lumine.grammars, "maintainLanguageMode").and.callThrough();
+
+      const restoration = deserializedProject.deserialize(state);
+      try {
+        const buffer = await read.promise;
+        expect(deserializedProject.getBuffers()).toEqual([]);
+        expect(maintain).not.toHaveBeenCalledWith(buffer);
+        grammar.resolve();
+        await restoration;
+        expect(deserializedProject.getBuffers()).toEqual([buffer]);
+        expect(maintain).toHaveBeenCalledWith(buffer);
+      } finally {
+        grammar.resolve();
+        await restoration;
+      }
+    });
+
     it("does not deserialize buffers when their path is now a directory", async () => {
       const pathToOpen = path.join(temp.mkdirSync("lumine-spec-project"), "file.txt");
 

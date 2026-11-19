@@ -39,6 +39,7 @@ module.exports = class Project extends Model {
     this.fileWatchClient = fileWatchClient;
     this.applicationDelegate = applicationDelegate;
     this.grammarRegistry = grammarRegistry;
+    this.packageManager = packageManager;
     this.config = config;
     // Built on first request; see {@link #fileIndexOrBuild}.
     this.fileIndex = null;
@@ -249,6 +250,10 @@ module.exports = class Project extends Model {
         bufferPromises.push(handleBufferState(bufferState));
       }
       const buffers = await Promise.all(bufferPromises);
+      // Disk reads can run during startup resource discovery. Choose the
+      // language once, after every installed grammar and setting can compete.
+      const startup = ownedBuffers.size > 0 && this.packageManager.getPendingInitialActivation();
+      if (startup) await startup;
       checkCurrent();
       this.retiredBufferIDs = retiredBufferIDs;
       this.retiredBufferPaths = retiredBufferPaths;
@@ -1349,6 +1354,9 @@ module.exports = class Project extends Model {
     };
 
     if (absoluteFilePath == null) {
+      const startup = this.packageManager.getPendingInitialActivation();
+      if (startup) await startup;
+      if (!isCurrent()) throw cancellationError();
       return publishBuffer(new TextBuffer({ fileWatchClient: this.fileWatchClient }));
     }
     if (loads[absoluteFilePath] != null) return loads[absoluteFilePath];
@@ -1371,8 +1379,17 @@ module.exports = class Project extends Model {
     try {
       Promise.resolve(
         TextBuffer.load(absoluteFilePath, { fileWatchClient: this.fileWatchClient }),
-      ).then((buffer) => {
+      ).then(async (buffer) => {
         try {
+          const startup = this.packageManager.getPendingInitialActivation();
+          if (startup) {
+            try {
+              await startup;
+            } catch (error) {
+              buffer.destroy();
+              throw error;
+            }
+          }
           const published = publishBuffer(buffer);
           clearSlot();
           resolveLoad(published);

@@ -2516,6 +2516,24 @@ describe("Environment", () => {
       expect(env.project.getPaths()).toEqual([]);
     });
 
+    it("finishes a window with no documents while grammar discovery is pending", async () => {
+      const env = buildEnvironment({ initialProjectRoots: [] });
+      const grammar = Promise.withResolvers();
+      spyOn(env.packages, "activate").and.returnValue(grammar.promise);
+      const shell = Promise.withResolvers();
+      spyOn(env.packages, "getInitialShellReadiness").and.returnValue(shell.promise);
+      const opened = spyOn(env.workspace, "openDefaultDockItems").and.resolveTo();
+      const start = env.startEditorWindow();
+      try {
+        expect(opened).not.toHaveBeenCalled();
+        shell.resolve();
+        await start;
+        expect(opened).toHaveBeenCalledTimes(1);
+      } finally {
+        grammar.resolve();
+      }
+    });
+
     it("holds the initial dock restore open through activation and deserialization", async () => {
       const workspaceState = { paneContainers: {} };
       const env = buildEnvironment({

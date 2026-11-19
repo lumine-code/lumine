@@ -94,7 +94,8 @@ module.exports = class PackageManager {
     this.packageDirPaths = [];
     this.packageManifestCache = new Map();
     this.packageRootEntriesCache = new Map();
-    this.availablePackagesByNameDuringLoad = null;
+    this.availablePackageIndex = null;
+    this.packageIndexRevision = 0;
     this.packagesCache = packageJSON.lumineMetadata?.packages ?? {};
     this.bundledPackageNames = null;
     this.initialPackagesLoaded = false;
@@ -102,6 +103,7 @@ module.exports = class PackageManager {
     this.initialPackagesInitialized = false;
     this.initialPackagesActivated = false;
     this.initialPackagesActivationTime = null;
+    this.initialShellReady = null;
     this.loadedPackages = {};
     this.activePackages = {};
     this.packageLifecycles = new Map();
@@ -156,9 +158,7 @@ module.exports = class PackageManager {
     await awaitLifecycleCleanup(failures, () => this.unloadPackages({ serialize: false }));
     captureLifecycleError(failures, () => this.unobserveDisabledPackages());
     captureLifecycleError(failures, () => this.unobservePackagesWithKeymapsDisabled());
-    this.packageManifestCache.clear();
-    this.packageRootEntriesCache.clear();
-    this.availablePackagesByNameDuringLoad = null;
+    this.refreshPackageIndex();
     this.loadedPackages = {};
     this.activePackages = {};
     this.packageLifecycles.clear();
@@ -167,6 +167,7 @@ module.exports = class PackageManager {
     this.initialPackagesInitialized = false;
     this.initialPackagesActivated = false;
     this.initialPackagesActivationTime = null;
+    this.initialShellReady = null;
     this.documentStates = {};
     this.themePackRegistrationsByPackageName.clear();
     this.virtualThemeNamesByPackageName.clear();
@@ -230,6 +231,16 @@ module.exports = class PackageManager {
     } else {
       return Promise.resolve();
     }
+  }
+
+  /** @private Themes and settings needed to restore and present the window. */
+  getInitialShellReadiness() {
+    return this.initialShellReady;
+  }
+
+  /** @private A pending initial resource load that document publication must await. */
+  getPendingInitialActivation() {
+    return this.activatePromise;
   }
 
   /**
@@ -686,10 +697,8 @@ module.exports = class PackageManager {
    * @returns {Array<Object>} Available package descriptors that own their names, sorted by name.
    */
   getAvailablePackages(options) {
-    const packages = this.scanAvailablePackages();
-    const visible =
-      options != null && options.includeShadowed ? packages : packages.filter((p) => p.isWinner);
-    return visible.sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+    const index = this.getAvailablePackageIndex();
+    return (options?.includeShadowed ? index.copies : index.winners).slice();
   }
 
   /**
@@ -702,24 +711,122 @@ module.exports = class PackageManager {
    * @returns {Object|undefined} package descriptor or undefined.
    */
   getAvailablePackage(name) {
-    if (this.availablePackagesByNameDuringLoad != null) {
-      return this.availablePackagesByNameDuringLoad.get(name);
+    return this.getAvailablePackageIndex().get(name);
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Take an inventory snapshot for a batch of related package lookups. Both
+   * lists are read-only and sorted by name. `get(name)` returns the winner.
+   * Repeated lookups in the same synchronous batch share one directory scan.
+   * File changes outside the package manager can be seen on the next batch.
+   *
+   * @returns {Object} The current package inventory snapshot.
+   */
+  getAvailablePackageIndex() {
+    const current = this.availablePackageIndex;
+    if (current && _.isEqual(current.directories, this.packageDirPaths)) return current.index;
+
+    const index = this.buildAvailablePackageIndex(this.scanAvailablePackages());
+    const batch = { index, directories: this.packageDirPaths.slice() };
+    this.availablePackageIndex = batch;
+    // Avoid a watcher or a stale cache for external links. The settings UI can
+    // render its full page without repeating filesystem queries for each card.
+    queueMicrotask(() => {
+      if (this.availablePackageIndex === batch) this.availablePackageIndex = null;
+    });
+    return index;
+  }
+
+  buildAvailablePackageIndex(copies) {
+    copies.sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+    const winners = copies.filter((pack) => pack.isWinner);
+    const byName = new Map(winners.map((pack) => [pack.name, pack]));
+    return Object.freeze({
+      copies: Object.freeze(copies),
+      winners: Object.freeze(winners),
+      get: (name) => byName.get(name),
+    });
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Discover packages without synchronously enumerating installed directories.
+   * An installation changed during discovery invalidates that attempt.
+   *
+   * @returns {Promise<Object>} A package inventory with the same shape as getAvailablePackageIndex().
+   */
+  async loadAvailablePackageIndex() {
+    const current = this.availablePackageIndex;
+    if (current && _.isEqual(current.directories, this.packageDirPaths)) return current.index;
+
+    for (;;) {
+      const revision = this.packageIndexRevision;
+      const directories = this.packageDirPaths.slice();
+      const directoryCandidates = await Promise.all(
+        directories.map(async (directory) => {
+          let entries;
+          try {
+            entries = await fs.promises.readdir(directory, { withFileTypes: true });
+          } catch (error) {
+            if (error.code === "ENOENT" || error.code === "ENOTDIR") return [];
+            throw error;
+          }
+          const names = await Promise.all(
+            entries.map(async (entry) => {
+              if (entry.name.startsWith(".")) return null;
+              if (entry.isDirectory()) return entry.name;
+              if (!entry.isSymbolicLink()) return null;
+              const target = await fs.promises
+                .stat(path.join(directory, entry.name))
+                .catch(() => null);
+              return target?.isDirectory() ? entry.name : null;
+            }),
+          );
+          return this.getPackageDirectoryCandidates(directory, names.filter(Boolean));
+        }),
+      );
+      const candidates = directoryCandidates.flat().concat(this.getBundledPackageCandidates());
+      const copies = [];
+      let sliceStart = performance.now();
+      for (const [packagePath, options] of candidates) {
+        copies.push(this.describePackagePath(packagePath, options));
+        if (performance.now() - sliceStart >= 4) {
+          await new Promise((resolve) => setImmediate(resolve));
+          if (revision !== this.packageIndexRevision) break;
+          sliceStart = performance.now();
+        }
+      }
+      if (revision === this.packageIndexRevision && _.isEqual(directories, this.packageDirPaths)) {
+        return this.buildAvailablePackageIndex(this.selectAvailablePackageCopies(copies));
+      }
     }
-    return this.scanAvailablePackages().find((pack) => pack.isWinner && pack.name === name);
   }
 
   /**
    * @public
    * @status public
    *
-   * Forget everything read from package manifests.
+   * Invalidate the current inventory and forget resources for a changed copy.
    *
-   * The directory scan itself always runs fresh, so this only has to be called
-   * when a manifest changes on disk — after an install, update, or uninstall.
+   * @param {String} [packagePath] - The changed package directory. Omit when
+   *   the changed paths are unknown and every manifest must be read again.
    */
-  refreshPackageIndex() {
-    this.packageManifestCache.clear();
-    this.packageRootEntriesCache.clear();
+  refreshPackageIndex(packagePath) {
+    this.availablePackageIndex = null;
+    this.packageIndexRevision++;
+    if (packagePath) {
+      const resolved = path.resolve(packagePath);
+      this.packageManifestCache.delete(resolved);
+      this.packageRootEntriesCache.delete(resolved);
+    } else {
+      this.packageManifestCache.clear();
+      this.packageRootEntriesCache.clear();
+    }
   }
 
   // Index the names in an external package's root once. Resource loading can
@@ -750,19 +857,55 @@ module.exports = class PackageManager {
   // returned as a shadowed descriptor: it never loads, but it is real, it is on
   // disk, and the UI lists it.
   scanAvailablePackages() {
+    const candidates = [];
+    for (const packageDirPath of this.packageDirPaths) {
+      if (!fs.isDirectorySync(packageDirPath)) continue;
+
+      // A symlink needs stat to know whether it points at a directory.
+      const dirnames = fs
+        .readdirSync(packageDirPath, { withFileTypes: true })
+        .filter(
+          (dirent) =>
+            !dirent.name.startsWith(".") &&
+            (dirent.isDirectory() ||
+              (dirent.isSymbolicLink() &&
+                fs.isDirectorySync(path.join(packageDirPath, dirent.name)))),
+        )
+        .map((dirent) => dirent.name);
+      candidates.push(...this.getPackageDirectoryCandidates(packageDirPath, dirnames));
+    }
+    candidates.push(...this.getBundledPackageCandidates());
+    return this.selectAvailablePackageCopies(
+      candidates.map(([packagePath, options]) => this.describePackagePath(packagePath, options)),
+    );
+  }
+
+  getPackageDirectoryCandidates(directory, names) {
+    const tier = this.getPackageDirTier(directory);
+    return names
+      .sort((a, b) => a.localeCompare(b) || (a < b ? -1 : a > b ? 1 : 0))
+      .map((name) => [path.join(directory, name), { isBundled: false, tier }]);
+  }
+
+  getBundledPackageCandidates() {
+    return Array.from(this.getBundledPackageNames(), (packageName) => {
+      const packagePath = path.join(this.resourcePath, "node_modules", packageName);
+      return [packagePath, { isBundled: this.isBundledPackagePath(packagePath), tier: "bundled" }];
+    });
+  }
+
+  selectAvailablePackageCopies(copies) {
     const packages = [];
     const winnersByName = new Map();
     const bundledNames = new Set();
 
-    const add = (packagePath, options) => {
-      const pack = this.describePackagePath(packagePath, options);
-
+    for (const pack of copies) {
       // A bundled package vendored into packages/ is delivered through
       // node_modules/ as well, by the `file:` pin that installs it. Those are
       // two deliveries of one bundled package, not two copies to choose
       // between, so only the first is listed.
       if (pack.tier === "bundled") {
-        if (bundledNames.has(pack.name)) return;
+        if (bundledNames.has(pack.name)) continue;
         bundledNames.add(pack.name);
       }
 
@@ -781,39 +924,6 @@ module.exports = class PackageManager {
       }
 
       packages.push(pack);
-    };
-
-    for (const packageDirPath of this.packageDirPaths) {
-      if (!fs.isDirectorySync(packageDirPath)) continue;
-
-      const tier = this.getPackageDirTier(packageDirPath);
-      // dirent is faster than stat, but a symlink needs stat to know whether it
-      // points at a directory.
-      const dirnames = fs
-        .readdirSync(packageDirPath, { withFileTypes: true })
-        .filter(
-          (dirent) =>
-            !dirent.name.startsWith(".") &&
-            (dirent.isDirectory() ||
-              (dirent.isSymbolicLink() &&
-                fs.isDirectorySync(path.join(packageDirPath, dirent.name)))),
-        )
-        .map((dirent) => dirent.name)
-        .sort((a, b) => a.localeCompare(b) || (a < b ? -1 : a > b ? 1 : 0));
-
-      for (const dirname of dirnames) {
-        add(path.join(packageDirPath, dirname), { isBundled: false, tier });
-      }
-    }
-
-    for (const packageName of this.getBundledPackageNames()) {
-      // Bundled packages delivered through node_modules — every dependency
-      // whose own manifest declares an engines.lumine range. Derive isBundled
-      // from the path so that, in dev mode running from source, they are
-      // treated as non-bundled like the packages/ entries instead of being
-      // singled out under "Bundled Packages".
-      const packagePath = path.join(this.resourcePath, "node_modules", packageName);
-      add(packagePath, { isBundled: this.isBundledPackagePath(packagePath), tier: "bundled" });
     }
 
     return packages;
@@ -986,18 +1096,11 @@ module.exports = class PackageManager {
 
     const disabledPackageNames = new Set(this.config.get("core.disabledPackages"));
     const availablePackages = this.getAvailablePackages();
-    this.availablePackagesByNameDuringLoad = new Map(
-      availablePackages.map((pack) => [pack.name, pack]),
-    );
-    try {
-      this.config.transact(() => {
-        for (const pack of availablePackages) {
-          this.loadAvailablePackage(pack, disabledPackageNames);
-        }
-      });
-    } finally {
-      this.availablePackagesByNameDuringLoad = null;
-    }
+    this.config.transact(() => {
+      for (const pack of availablePackages) {
+        this.loadAvailablePackage(pack, disabledPackageNames);
+      }
+    });
     this.rebuildServiceProviders();
     this.initialPackagesLoaded = true;
     // Bootstrap before announcing the load when the real window requests the
@@ -1089,11 +1192,12 @@ module.exports = class PackageManager {
   // * `options` (optional) `Object`
   //   * `lifecycleState` State to restore when the old copy was already
   //     unloaded by an atomic file swap.
+  //   * `packagePath` The physical directory changed by that swap.
   //
   // Returns a `Promise` that resolves with the loaded {@link Package}, or null when
   // no copy of the name is left on disk.
   async reconcilePackage(name, options = {}) {
-    this.refreshPackageIndex();
+    this.refreshPackageIndex(options.packagePath);
 
     const availablePackage = this.getAvailablePackage(name);
     const loadedPackage = this.getLoadedPackage(name);
@@ -1530,22 +1634,34 @@ module.exports = class PackageManager {
 
   // Activate all the packages that should be activated.
   activate() {
+    if (this.activatePromise) return this.activatePromise;
     const activationStartTime = window.performance.now();
     this.initialPackagesActivationTime = null;
-    let promises = [];
+    const shellReadiness = [];
+    const packagesReadiness = [];
     for (let [activator, types] of this.packageActivators) {
       const packages = this.getLoadedPackagesForTypes(types);
-      promises = promises.concat(activator.activatePackages(packages));
+      if (activator === this) {
+        packagesReadiness.push(...[].concat(this.activatePackages(packages, shellReadiness)));
+      } else {
+        shellReadiness.push(...[].concat(activator.activatePackages(packages)));
+      }
     }
-    this.activatePromise = Promise.all(promises).then(async () => {
-      this.initialPackagesActivationTime = Math.round(
-        window.performance.now() - activationStartTime,
-      );
-      this.initialPackagesActivated = true;
-      this.emitter.emit("did-activate-initial-packages");
-      this.activatePromise = null;
-    });
-    return this.activatePromise;
+    this.initialShellReady = Promise.all(shellReadiness);
+    const activation = Promise.all([this.initialShellReady, ...packagesReadiness])
+      .then(() => {
+        if (this.activatePromise !== activation) return;
+        this.initialPackagesActivationTime = Math.round(
+          window.performance.now() - activationStartTime,
+        );
+        this.initialPackagesActivated = true;
+        this.emitter.emit("did-activate-initial-packages");
+      })
+      .finally(() => {
+        if (this.activatePromise === activation) this.activatePromise = null;
+      });
+    this.activatePromise = activation;
+    return activation;
   }
 
   registerURIHandlerForPackage(packageName, handler) {
@@ -1592,32 +1708,35 @@ module.exports = class PackageManager {
     this.packageActivators.push([activator, types]);
   }
 
-  activatePackages(packages) {
-    const transaction = this.config.transactAsync(() =>
-      Promise.allSettled(
-        packages
-          .filter((pack) => !pack.loadError && !this.isPackageDisabled(pack.name))
-          .map((pack) => {
-            let readiness;
-            try {
-              readiness = this.startPackage(pack.name);
-            } catch (error) {
-              readiness = Promise.reject(error);
-            }
-            return Promise.resolve(readiness).catch((error) => {
-              const failure = this.recordPackageStartupError(pack, error);
-              if (!pack.mainActivated) pack.activationError = failure;
-              throw failure;
-            });
-          }),
-      ),
+  activatePackages(packages, shellReadiness) {
+    const enabled = packages.filter(
+      (pack) => !pack.loadError && !this.isPackageDisabled(pack.name),
     );
+    const pending = [];
+    // Keep changes to default settings batched. Grammar discovery has a
+    // separate completion boundary and need not keep the config batch open.
+    const settings = this.config.transactAsync(() => {
+      for (const pack of enabled) {
+        let readiness;
+        try {
+          readiness = this.startPackage(pack.name);
+        } catch (error) {
+          readiness = Promise.reject(error);
+        }
+        pending.push(
+          Promise.resolve(readiness).catch((error) => {
+            const failure = this.recordPackageStartupError(pack, error);
+            if (!pack.mainActivated) pack.activationError = failure;
+            throw failure;
+          }),
+        );
+      }
+      return Promise.allSettled(enabled.map((pack) => pack.settingsPromise));
+    });
+    shellReadiness?.push(settings);
     this.observeDisabledPackages();
     this.observePackagesWithKeymapsDisabled();
-    // Package activators return an array because PackageManager#activate
-    // concatenates several activators' work. Returning the transaction itself
-    // ensures did-activate-initial-packages cannot beat Config#endTransaction.
-    return [transaction];
+    return [settings, Promise.allSettled(pending)];
   }
 
   /**
