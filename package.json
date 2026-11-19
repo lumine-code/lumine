@@ -56,7 +56,7 @@
     "dompurify": "^3.4.18",
     "encoding-selector": "github:lumine-code/encoding-selector#11ba8077c7871e1b8f8a7c8d4ad1e4a26784f576",
     "focus-trap": "8.2.5",
-    "git-chunk": "github:lumine-code/git-chunk#98f7fc6e43ea9a98c2cb7ea9730dbace02b6c681",
+    "git-chunk": "github:lumine-code/git-chunk#b30a5b00321ce56b962af2b1b3128ac626de676b",
     "go-to-line": "github:lumine-code/go-to-line#3d75869a37c929046fb266b5cf8c5940d4f271a0",
     "grammar-selector": "github:lumine-code/grammar-selector#0a0c55b90c73e44063150228912330b03537fa3e",
     "iconv-lite": "^0.7.3",
