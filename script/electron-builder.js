@@ -370,9 +370,15 @@ async function main() {
   let pack = await FS.readFile("package.json", "utf-8");
   let options = whatToBuild();
   let parsedPackageJson = JSON.parse(pack);
-  options.extraMetadata = generateMetadata(parsedPackageJson);
 
   try {
+    const installedElectronVersion = require("electron/package.json").version;
+    if (installedElectronVersion !== parsedPackageJson.electronVersion) {
+      throw new Error(
+        `Expected Electron ${parsedPackageJson.electronVersion}, found ${installedElectronVersion} in node_modules. Reinstall the pinned Electron package before packaging.`,
+      );
+    }
+    options.extraMetadata = generateMetadata(parsedPackageJson);
     let result = await builder.build({ config: options });
     if (!existsSync("binaries")) {
       await FS.mkdir("binaries");
