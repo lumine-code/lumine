@@ -5,6 +5,7 @@ const {
 
 const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "\r": "&#13;" };
 const escapeHTML = (text) => text.replace(/[&<>"\r]/g, (character) => HTML_ESCAPES[character]);
+const CURSOR_ANCHOR_STYLE = { display: "inline-block", width: "0px", height: "0px" };
 const scopeMarkup = new Map();
 const elementOwners = new WeakMap();
 const { buildPlan, visit } = require("./line-content-plan");
@@ -120,6 +121,7 @@ module.exports = class LineComponent {
 
   appendContents() {
     this.contentPlan = null;
+    this.cursorAnchors?.clear();
     const { screenLine, textDecorations } = this.props;
     this.unpooledContents =
       this.canRenderHTMLDecorations(textDecorations) &&
@@ -150,12 +152,13 @@ module.exports = class LineComponent {
   canRenderHTMLDecorations(decorations) {
     if (!decorations) return true;
     let previous = -1;
-    for (const { column, style, className } of decorations) {
+    for (const { column, style, className, cursorAnchor } of decorations) {
       // Keep arbitrary inline styles on the DOM path. Duplicate or malformed
       // boundaries can produce empty Text nodes that HTML parsing would drop.
       // HTML also replaces NUL in attributes, unlike a direct className write.
       if (
         style ||
+        cursorAnchor ||
         (className && String(className).includes("\0")) ||
         !Number.isSafeInteger(column) ||
         column < 0 ||
@@ -267,11 +270,13 @@ module.exports = class LineComponent {
     let column = 0;
     let activeClassName = null;
     let activeStyle = null;
+    let anchorAtStart = false;
     let nextDecoration = textDecorations ? textDecorations[decorationIndex] : null;
     if (nextDecoration && nextDecoration.column === 0) {
       column = nextDecoration.column;
       activeClassName = nextDecoration.className;
       activeStyle = nextDecoration.style;
+      anchorAtStart = nextDecoration.cursorAnchor === "start";
       nextDecoration = textDecorations[++decorationIndex];
     }
 
@@ -288,16 +293,31 @@ module.exports = class LineComponent {
           const nextTokenColumn = column + tag;
           while (nextDecoration && nextDecoration.column <= nextTokenColumn) {
             const text = lineText.substring(column, nextDecoration.column);
-            this.appendTextNode(openScopeNode, text, activeClassName, activeStyle);
+            this.appendTextNode(
+              openScopeNode,
+              text,
+              activeClassName,
+              activeStyle,
+              anchorAtStart ? column : undefined,
+              nextDecoration.cursorAnchor === "end" ? nextDecoration.column : undefined,
+            );
             column = nextDecoration.column;
             activeClassName = nextDecoration.className;
             activeStyle = nextDecoration.style;
+            anchorAtStart = nextDecoration.cursorAnchor === "start";
             nextDecoration = textDecorations[++decorationIndex];
           }
 
           if (column < nextTokenColumn) {
             const text = lineText.substring(column, nextTokenColumn);
-            this.appendTextNode(openScopeNode, text, activeClassName, activeStyle);
+            this.appendTextNode(
+              openScopeNode,
+              text,
+              activeClassName,
+              activeStyle,
+              anchorAtStart ? column : undefined,
+            );
+            anchorAtStart = false;
             column = nextTokenColumn;
           }
         }
@@ -320,9 +340,10 @@ module.exports = class LineComponent {
     }
   }
 
-  appendTextNode(openScopeNode, text, activeClassName, activeStyle) {
+  appendTextNode(openScopeNode, text, activeClassName, activeStyle, startAnchor, endAnchor) {
     const { nodePool } = this.props;
 
+    if (startAnchor !== undefined) this.appendCursorAnchor(openScopeNode, startAnchor);
     if (activeClassName || activeStyle) {
       const decorationNode = nodePool.getElement("SPAN", activeClassName, activeStyle);
       openScopeNode.appendChild(decorationNode);
@@ -332,6 +353,15 @@ module.exports = class LineComponent {
     const textNode = nodePool.getTextNode(text);
     openScopeNode.appendChild(textNode);
     this.textNodes.push(textNode);
+    if (endAnchor !== undefined) this.appendCursorAnchor(openScopeNode, endAnchor);
+  }
+
+  appendCursorAnchor(parent, column) {
+    // Empty spans participate in layout without joining the real text nodes.
+    // A start anchor precedes ::before; an end anchor sits inside ::after's span.
+    const anchor = this.props.nodePool.getElement("SPAN", null, CURSOR_ANCHOR_STYLE);
+    parent.appendChild(anchor);
+    (this.cursorAnchors ??= new Map()).set(column, anchor);
   }
 
   buildClassName() {

@@ -11,6 +11,7 @@ describe("Cursor hit testing across generated decoration content", () => {
     style = document.createElement("style");
     style.textContent = `
       .spec-generated-label::before { content: "TYPE HINT"; display:inline-block; padding:0 8px; }
+      .spec-appended-label::after { content: "TYPE HINT"; display:inline-block; padding:0 8px; }
       .spec-padded-text { margin-left:0.375px; padding-right:28px; }
     `;
     document.head.appendChild(style);
@@ -20,6 +21,49 @@ describe("Cursor hit testing across generated decoration content", () => {
     element.remove();
     style.remove();
   });
+
+  for (const cursorAnchor of ["start", "end"]) {
+    it(`anchors the caret and native input before generated text at a ${cursorAnchor} boundary`, () => {
+      editor.setCursorBufferPosition([0, 5]);
+      component.updateSync();
+      const caret = () => element.querySelector(".cursor").getBoundingClientRect();
+      const input = () => element.querySelector(".hidden-input").getBoundingClientRect();
+      const original = caret();
+      const marker = editor.markBufferRange(
+        cursorAnchor === "start"
+          ? [
+              [0, 5],
+              [0, 6],
+            ]
+          : [
+              [0, 4],
+              [0, 5],
+            ],
+      );
+      const properties = {
+        type: "text",
+        class: cursorAnchor === "start" ? "spec-generated-label" : "spec-appended-label",
+      };
+      const decoration = editor.decorateMarker(marker, { ...properties, cursorAnchor });
+      component.updateSync();
+
+      expect(caret().left).toBeCloseTo(original.left, 1);
+      expect(input().left).toBeCloseTo(original.left, 1);
+      expect(caret().width).toBeCloseTo(original.width, 1);
+      expect(editor.getCursorBufferPosition()).toEqual([0, 5]);
+
+      // Retiring the anchor keeps the label and returns both to glyph geometry.
+      decoration.setProperties(properties);
+      component.updateSync();
+      expect(caret().left).toBeGreaterThan(original.left + 20);
+      expect(input().left).toBeCloseTo(caret().left, 1);
+
+      marker.destroy();
+      component.updateSync();
+      expect(caret().left).toBeCloseTo(original.left, 1);
+      expect(input().left).toBeCloseTo(original.left, 1);
+    });
+  }
 
   for (const offscreen of [false, true]) {
     it(`maps every pixel of a generated label to its source boundary (${offscreen ? "offscreen" : "onscreen"})`, () => {

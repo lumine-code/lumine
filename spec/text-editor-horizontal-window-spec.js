@@ -97,4 +97,42 @@ describe("TextEditor horizontal windows", () => {
     });
     expect(component.screenPositionForPixelPosition(logical).toArray()).toEqual(screen.toArray());
   });
+
+  it("keeps the caret and native input anchored in a scrolled text window", () => {
+    const column = 200_000;
+    const { element, component } = attach(`${"a".repeat(column)}suffix${"b".repeat(100)}`);
+    const style = document.createElement("style");
+    style.textContent =
+      '.spec-inline-preview::before { content: "preview"; display: inline-block; }';
+    document.head.appendChild(style);
+    try {
+      editor.setCursorBufferPosition([0, column]);
+      component.updateSync();
+      const screen = editor.screenPositionForBufferPosition([0, column]);
+      const oldLeft = element.querySelector(".cursor").getBoundingClientRect().left;
+      const oldGlyph = component.pixelPositionForScreenPosition(screen).left;
+      expect(component.renderedScreenLineForRow(0).startScreenColumn).toBeGreaterThan(0);
+
+      editor.decorateMarker(
+        editor.markBufferRange([
+          [0, column],
+          [0, column + 1],
+        ]),
+        {
+          type: "text",
+          class: "spec-inline-preview",
+          cursorAnchor: "start",
+        },
+      );
+      component.updateSync();
+      expect(component.pixelPositionForScreenPosition(screen).left).toBeGreaterThan(oldGlyph);
+      expect(element.querySelector(".cursor").getBoundingClientRect().left).toBeCloseTo(oldLeft, 1);
+      expect(element.querySelector(".hidden-input").getBoundingClientRect().left).toBeCloseTo(
+        oldLeft,
+        1,
+      );
+    } finally {
+      style.remove();
+    }
+  });
 });

@@ -1971,6 +1971,7 @@ module.exports = class TextEditorComponent {
     this.decorationsToMeasure.cursors.clear();
     this.textDecorationsByMarker.clear();
     this.textDecorationBoundaries.length = 0;
+    this.textDecorationCursorAnchors?.clear();
 
     const decorationsByMarker =
       this.props.model.decorationManager.decorationPropertiesByMarkerForScreenRowRange(
@@ -2362,6 +2363,17 @@ module.exports = class TextEditorComponent {
   addTextDecorationToRender(decoration, screenRange, marker) {
     if (screenRange.isEmpty()) return;
 
+    const { cursorAnchor } = decoration;
+    if (cursorAnchor === "start" || cursorAnchor === "end") {
+      const { row, column } = screenRange[cursorAnchor];
+      const anchorsByRow = (this.textDecorationCursorAnchors ??= new Map());
+      let anchors = anchorsByRow.get(row);
+      if (!anchors) anchorsByRow.set(row, (anchors = new Map()));
+      // An anchor inside the preceding span comes before generated content
+      // attached to either side of the boundary.
+      if (cursorAnchor === "end" || !anchors.has(column)) anchors.set(column, cursorAnchor);
+    }
+
     let decorationsForMarker = this.textDecorationsByMarker.get(marker);
     if (!decorationsForMarker) {
       decorationsForMarker = [];
@@ -2492,14 +2504,18 @@ module.exports = class TextEditorComponent {
       decorationStarts = [];
       this.decorationsToRender.text[row - renderedStartRow] = decorationStarts;
     }
+    let cursorAnchor = this.textDecorationCursorAnchors?.get(row)?.get(column);
     const line = this.renderedScreenLineForRow(row);
     if (line?.startScreenColumn != null) {
       column -= line.startScreenColumn;
       if (column > line.lineText.length) return;
+      if (column < 0 || (column === 0 && cursorAnchor === "end")) cursorAnchor = undefined;
       column = Math.max(0, column);
       if (decorationStarts.at(-1)?.column === column) decorationStarts.pop();
     }
-    decorationStarts.push({ column, className, style });
+    const start = { column, className, style };
+    if (cursorAnchor) start.cursorAnchor = cursorAnchor;
+    decorationStarts.push(start);
   }
 
   updateAbsolutePositionedDecorations() {
@@ -2604,7 +2620,7 @@ module.exports = class TextEditorComponent {
 
       const cursorPosition = {
         pixelTop,
-        pixelLeft,
+        pixelLeft: this.pixelLeftForCursorAnchor(windowLine, column) ?? pixelLeft,
         pixelWidth,
         className,
         style,
@@ -2612,6 +2628,22 @@ module.exports = class TextEditorComponent {
       this.decorationsToRender.cursors.push(cursorPosition);
       if (cursor.isLastCursor) this.hiddenInputPosition = cursorPosition;
     });
+  }
+
+  pixelLeftForCursorAnchor(screenLine, column) {
+    if (!this.textDecorationCursorAnchors?.size || !screenLine) return;
+    const line = this.lineComponentsByScreenLineId.get(screenLine.id);
+    const anchor = line?.cursorAnchors?.get(column - (screenLine.startScreenColumn || 0));
+    if (!anchor) return;
+
+    // Glyph measurements still describe the real text shifted by the
+    // decoration. Only the caret and its native input share this boundary.
+    return roundToPhysicalPixelBoundary(
+      anchor.getBoundingClientRect().left -
+        line.element.getBoundingClientRect().left +
+        (this.renderOriginLeft || 0),
+      this.window.devicePixelRatio,
+    );
   }
 
   // Places one overlay, and returns the box it took — or null when it takes

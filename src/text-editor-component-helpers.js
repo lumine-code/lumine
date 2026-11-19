@@ -11,6 +11,7 @@ function textDecorationsEqual(oldDecorations, newDecorations) {
     for (let j = 0; j < oldDecorations.length; j++) {
       if (oldDecorations[j].column !== newDecorations[j].column) return false;
       if (oldDecorations[j].className !== newDecorations[j].className) return false;
+      if (oldDecorations[j].cursorAnchor !== newDecorations[j].cursorAnchor) return false;
       if (!objectsEqual(oldDecorations[j].style, newDecorations[j].style)) return false;
     }
   }
