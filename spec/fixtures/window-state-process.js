@@ -325,6 +325,19 @@ app
         else resolve();
       });
     });
+    if (result.actual.fullScreen) {
+      // Release the fullscreen Space before the next fixture process opens its
+      // window. The saved fullscreen intent remains frozen during teardown.
+      await new Promise(setImmediate);
+      await change(
+        window,
+        "leave-full-screen",
+        () => window.setFullScreen(false),
+        () => !window.isFullScreen(),
+        "leave fullscreen before fixture exit",
+      );
+      assert.deepEqual(store.read(name), result.saved);
+    }
     // Let the native mode callback unwind after the snapshot has been saved.
     // Destroying the minimized fixture guarantees its closed event and allows
     // the test application to quit through window-all-closed.
