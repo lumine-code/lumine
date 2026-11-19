@@ -49,7 +49,7 @@ describe("Cursor hit testing across generated decoration content", () => {
 
       expect(caret().left).toBeCloseTo(original.left, 1);
       expect(input().left).toBeCloseTo(original.left, 1);
-      expect(caret().width).toBeCloseTo(original.width, 1);
+      const anchoredWidth = caret().width;
       expect(editor.getCursorBufferPosition()).toEqual([0, 5]);
 
       // Retiring the anchor keeps the label and returns both to glyph geometry.
@@ -57,6 +57,8 @@ describe("Cursor hit testing across generated decoration content", () => {
       component.updateSync();
       expect(caret().left).toBeGreaterThan(original.left + 20);
       expect(input().left).toBeCloseTo(caret().left, 1);
+      // Compare widths with the same glyph positions and pixel rounding.
+      expect(caret().width).toBe(anchoredWidth);
 
       marker.destroy();
       component.updateSync();
