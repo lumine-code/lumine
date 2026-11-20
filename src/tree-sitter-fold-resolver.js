@@ -18,6 +18,7 @@ const {
 // more than the row does once the query machinery is warm.
 const FOLD_WINDOW_ROWS_BEHIND = 100;
 const FOLD_WINDOW_ROWS_AHEAD = 300;
+const FOLD_INDEX_BLOCK = 128;
 
 // Acts like `comparePoints`, but treats starting and ending boundaries
 // differently, making it so that ending boundaries are visited before starting
@@ -37,6 +38,25 @@ function compareBoundaries(a, b) {
     return 0;
   }
   return a.boundary === "end" ? -1 : 1;
+}
+
+function firstStartingAtOrAfter(entries, row) {
+  let low = 0;
+  let high = entries.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (entries[middle].start.row < row) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function lastBlockContainingPoint(levels, level, block, limit, point) {
+  const end = levels[level][block];
+  if (block * 2 ** level > limit || !end || end.isLessThan(point)) return -1;
+  if (level === 0) return block;
+  const right = lastBlockContainingPoint(levels, level - 1, 2 * block + 1, limit, point);
+  return right < 0 ? lastBlockContainingPoint(levels, level - 1, 2 * block, limit, point) : right;
 }
 
 // Responsible for deciding the ranges of folds on a given language layer.
@@ -72,6 +92,13 @@ function compareBoundaries(a, b) {
 //   fold without applying your own heuristic.
 //
 class FoldResolver {
+  static needsRangeCollection(error) {
+    return (
+      error instanceof QueryBudgetExceeded &&
+      (error.reason === "fold-scan-needed" || error.reason === "range-limit")
+    );
+  }
+
   constructor(buffer, layer) {
     this.buffer = buffer;
     this.layer = layer;
@@ -79,6 +106,8 @@ class FoldResolver {
     this.boundaries = null;
     this.boundariesRange = null;
     this.boundariesTree = null;
+    this.boundariesEpoch = null;
+    this.preparedRanges = null;
     this.dividedFoldEndsByStartNodeId = new Map();
     this.failedPrefills = new Set();
     this.failedPrefillsTree = null;
@@ -96,11 +125,16 @@ class FoldResolver {
 
   // Retrieve the first valid fold range for this row in this language layer —
   // that is, the first fold range that spans more than one row.
-  getFoldRangeForRow(row) {
-    return this.resolveWithinBudget(() => this.computeFoldRangeForRow(row));
+  getFoldRangeForRow(row, { localOnly = false } = {}) {
+    const prepared = this.currentPreparedRanges();
+    if (prepared) {
+      const range = prepared[firstStartingAtOrAfter(prepared, row)];
+      return range?.start.row === row ? range : null;
+    }
+    return this.resolveWithinBudget(() => this.computeFoldRangeForRow(row, localOnly));
   }
 
-  computeFoldRangeForRow(row) {
+  computeFoldRangeForRow(row, localOnly) {
     if (!this.layer.tree || !this.layer.queries.foldsQuery) {
       return null;
     }
@@ -130,7 +164,7 @@ class FoldResolver {
           return range;
         }
       } else if (name === "fold.start") {
-        let range = this.resolveRangeForDividedFold(capture);
+        let range = this.resolveRangeForDividedFold(capture, localOnly);
         if (this.isValidFold(range)) {
           return range;
         }
@@ -205,13 +239,19 @@ class FoldResolver {
     this.boundaries = null;
     this.boundariesRange = null;
     this.boundariesTree = null;
+    this.boundariesEpoch = null;
+    this.preparedRanges = null;
     this.dividedFoldEndsByStartNodeId.clear();
     this.failedPrefills.clear();
     this.failedPrefillsTree = null;
   }
 
   canReuseBoundaries(start, end) {
-    if (!this.boundariesRange || this.boundariesTree !== this.layer.tree) {
+    if (
+      !this.boundariesRange ||
+      this.boundariesTree !== this.layer.tree ||
+      this.boundariesEpoch !== this.layer.languageMode?.getSyntaxRequestEpoch?.()
+    ) {
       return false;
     }
     return this.boundariesRange.containsRange(new Range(start, end));
@@ -357,6 +397,7 @@ class FoldResolver {
     // The widened range, so the neighbors this pass read for can reuse it.
     this.boundariesRange = new Range(queryStart, queryEnd);
     this.boundariesTree = this.layer.tree;
+    this.boundariesEpoch = this.layer.languageMode?.getSyntaxRequestEpoch?.();
 
     return boundaries.ge(start);
   }
@@ -381,7 +422,7 @@ class FoldResolver {
 
   // Given a `@fold.start` capture, queries the rest of the layer's extent to
   // find a matching `@fold.end`.
-  resolveRangeForDividedFold(capture) {
+  resolveRangeForDividedFold(capture, localOnly = false) {
     let { name } = capture;
     if (name !== "fold.start") {
       return null;
@@ -394,7 +435,10 @@ class FoldResolver {
       // here repeats a document-wide query before every indentation request
       // sharing this worker can run. Only an unresolved end needs that scan.
       const extent = this.layer.getExtent();
-      this.getOrCreateBoundariesIterator(this.layer.tree.rootNode, extent.start, extent.end);
+      if (!this.canReuseBoundaries(extent.start, extent.end)) {
+        if (localOnly) throw new QueryBudgetExceeded("fold-scan-needed");
+        this.getOrCreateBoundariesIterator(this.layer.tree.rootNode, extent.start, extent.end);
+      }
       matchedEndCapture = this.dividedFoldEndsByStartNodeId.get(capture.node.id);
     }
 
@@ -408,6 +452,48 @@ class FoldResolver {
       this.resolvePositionForDividedFold(capture),
       this.resolvePositionForDividedFold(matchedEndCapture),
     );
+  }
+
+  currentPreparedRanges() {
+    const prepared = this.preparedRanges;
+    if (
+      prepared?.tree &&
+      prepared.tree === this.layer.tree &&
+      prepared.query === this.layer.queries.foldsQuery &&
+      prepared.epoch === this.layer.languageMode.getSyntaxRequestEpoch()
+    )
+      return prepared.ranges;
+    return null;
+  }
+
+  beginRangeCollection() {
+    return new FoldRangeCollector(this);
+  }
+
+  storePreparedRanges({ dependencies, ...result }) {
+    for (const dependency of dependencies) this.layer.foldNodesToInvalidateOnChange.add(dependency);
+    this.preparedRanges = result;
+  }
+
+  preparedRangeContainingPoint(point) {
+    const ranges = this.currentPreparedRanges();
+    if (!ranges?.length) return null;
+    const limit = firstStartingAtOrAfter(ranges, point.row) - 1;
+    if (limit < 0) return null;
+    const finalBlock = Math.floor(limit / FOLD_INDEX_BLOCK);
+    for (let i = limit; i >= finalBlock * FOLD_INDEX_BLOCK; i--) {
+      if (ranges[i].containsPoint(point)) return ranges[i];
+    }
+    // Skip earlier blocks by their furthest end. A document-wide fold must
+    // not make a lookup near EOF walk every smaller intervening fold.
+    const { maxEnds } = this.preparedRanges;
+    const block = lastBlockContainingPoint(maxEnds, maxEnds.length - 1, 0, finalBlock - 1, point);
+    if (block >= 0) {
+      for (let i = (block + 1) * FOLD_INDEX_BLOCK - 1; i >= block * FOLD_INDEX_BLOCK; i--) {
+        if (ranges[i].containsPoint(point)) return ranges[i];
+      }
+    }
+    return null;
   }
 
   keyForDividedFold(capture) {
@@ -523,6 +609,112 @@ class FoldResolver {
       console.warn(error.message);
       return new Range(start, node.range.end);
     }
+  }
+}
+
+// Captures arrive in source order. Keep one boundary of each kind at a given
+// position, then close before opening as in the local boundary tree. A divided
+// fold can span any number of capture windows and can only claim its row once
+// its closing boundary is known to produce a valid range.
+class FoldRangeCollector {
+  constructor(resolver) {
+    this.resolver = resolver;
+    this.extentStart = resolver.layer.getExtent().start;
+    this.tree = resolver.layer.tree;
+    this.query = resolver.layer.queries.foldsQuery;
+    this.epoch = resolver.layer.languageMode.getSyntaxRequestEpoch();
+    this.position = null;
+    this.start = null;
+    this.end = null;
+    this.rows = [];
+    this.open = [];
+    this.dependencies = [];
+  }
+
+  add(capture) {
+    const { layer } = this.resolver;
+    if (layer.scopeResolver.shouldInvalidateFoldOnChange(capture)) {
+      const { startPosition, endPosition } = capture.node;
+      this.dependencies.push({ startPosition, endPosition });
+    }
+    if (!["fold", "fold.start", "fold.end"].includes(capture.name)) return;
+    const position = capture.node.startPosition;
+    if (this.position && comparePoints(this.position, position) !== 0) this.flush();
+    this.position = position;
+    if (capture.name === "fold.end") this.end ??= capture;
+    else this.start ??= capture;
+  }
+
+  flush() {
+    const { resolver, position, start, end } = this;
+    if (end && this.open.length > 0) {
+      const opening = this.open.pop();
+      if (opening.entry) {
+        const range = new Range(opening.start, resolver.resolvePositionForDividedFold(end));
+        this.record(opening.entry, opening.column, range);
+      }
+    }
+    if (start) {
+      let entry;
+      if (comparePoints(position, this.extentStart) >= 0) {
+        entry = this.rows.at(-1);
+        if (entry?.row !== position.row) {
+          entry = { row: position.row, column: Infinity, range: null };
+          this.rows.push(entry);
+        }
+      }
+      if (start.name === "fold.start") {
+        this.open.push({
+          entry,
+          column: position.column,
+          start: new Point(position.row, Infinity),
+        });
+      } else if (entry) {
+        this.record(entry, position.column, resolver.resolveRangeForSimpleFold(start));
+      }
+    }
+    this.start = null;
+    this.end = null;
+  }
+
+  record(entry, column, range) {
+    if (column < entry.column && this.resolver.isValidFold(range)) {
+      entry.column = column;
+      entry.range = range;
+    }
+  }
+
+  *finish() {
+    this.flush();
+    const ranges = [];
+    const maxEnds = [[]];
+    for (let i = 0; i < this.rows.length; i++) {
+      const { range } = this.rows[i];
+      if (range) {
+        const block = Math.floor(ranges.length / FOLD_INDEX_BLOCK);
+        maxEnds[0][block] = Point.max(maxEnds[0][block] ?? Point.ZERO, range.end);
+        ranges.push(range);
+      }
+      if (i % 256 === 255) yield;
+    }
+    let ends = maxEnds[0];
+    while (ends.length > 1) {
+      const next = [];
+      for (let i = 0; i < ends.length; i += 2) {
+        next.push(Point.max(ends[i], ends[i + 1] ?? Point.ZERO));
+        if (i % 512 === 510) yield;
+      }
+      maxEnds.push(next);
+      ends = next;
+    }
+    return {
+      tree: this.tree,
+      query: this.query,
+      epoch: this.epoch,
+      ranges,
+      maxEnds,
+      dependencies: this.dependencies,
+    };
   }
 }
 

@@ -6779,7 +6779,7 @@ module.exports = class TextEditor {
           this,
           mergeRanges(selections.map((selection) => selection.getBufferRowRange())),
           options,
-          selections,
+          { selections },
         ),
         this.buffer.getLanguageMode(),
       );
@@ -8101,12 +8101,7 @@ module.exports = class TextEditor {
         languageMode.getFoldableRanges &&
         languageMode.getFoldableRanges(this.getTabLength(), { signal });
       return resolveSyntaxResult(foldableRanges, (foldableRanges) => {
-        if (!isCurrent()) return;
-        this.displayLayer.destroyAllFolds();
-        for (let range of foldableRanges || []) {
-          if (!isCurrent()) break;
-          this.displayLayer.foldBufferRange(range);
-        }
+        if (isCurrent()) this.displayLayer.replaceFoldRanges(foldableRanges ?? [], isCurrent);
       });
     });
   }
@@ -8139,12 +8134,7 @@ module.exports = class TextEditor {
         languageMode.getFoldableRangesAtIndentLevel &&
         languageMode.getFoldableRangesAtIndentLevel(level, this.getTabLength(), { signal });
       return resolveSyntaxResult(foldableRanges, (foldableRanges) => {
-        if (!isCurrent()) return;
-        this.displayLayer.destroyAllFolds();
-        for (let range of foldableRanges || []) {
-          if (!isCurrent()) break;
-          this.displayLayer.foldBufferRange(range);
-        }
+        if (isCurrent()) this.displayLayer.replaceFoldRanges(foldableRanges ?? [], isCurrent);
       });
     });
   }

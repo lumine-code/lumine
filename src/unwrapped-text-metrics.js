@@ -6,7 +6,6 @@ const EMPTY = Object.freeze({
   width: 0,
   firstTab: -1,
   firstNonWhitespace: Infinity,
-  lastNonWhitespace: -1,
   firstUnit: NaN,
   lastUnit: NaN,
 });
@@ -36,8 +35,7 @@ class UnwrappedTextMetrics {
           tabs++;
         }
         width += text.length - previous;
-        const first = text.search(/[^ \t]/),
-          last = /[^ \t](?=[ \t]*$)/.exec(text);
+        const first = text.search(/[^ \t]/);
         node = {
           text,
           length: text.length,
@@ -45,7 +43,6 @@ class UnwrappedTextMetrics {
           width,
           firstTab,
           firstNonWhitespace: first < 0 ? Infinity : first,
-          lastNonWhitespace: last ? last.index : -1,
           firstUnit: text.charCodeAt(0),
           lastUnit: text.charCodeAt(text.length - 1),
         };
@@ -62,10 +59,6 @@ class UnwrappedTextMetrics {
           firstNonWhitespace: Number.isFinite(left.firstNonWhitespace)
             ? left.firstNonWhitespace
             : left.length + right.firstNonWhitespace,
-          lastNonWhitespace:
-            right.lastNonWhitespace >= 0
-              ? left.length + right.lastNonWhitespace
-              : left.lastNonWhitespace,
           firstUnit: left.firstUnit,
           lastUnit: right.lastUnit,
         };

@@ -136,7 +136,12 @@ async function equalPrefix(source, start, length, text, check) {
   return true;
 }
 
-async function autoIndentRanges(editor, ranges, options = {}, selections = null) {
+async function autoIndentRanges(
+  editor,
+  ranges,
+  options = {},
+  { selections = null, boundedDraft = false } = {},
+) {
   if (!ranges.length) return;
   const buffer = editor.getBuffer(),
     mode = buffer.getLanguageMode();
@@ -226,6 +231,17 @@ async function autoIndentRanges(editor, ranges, options = {}, selections = null)
       if (changes.length) yield changes;
     }
     if (rangeIndex !== ranges.length) throw new RangeError("Incomplete indentation stream");
+  }
+  if (boundedDraft) {
+    // Interactive input has one bounded reply and a private draft. Validate
+    // the full plan before editing it, using the in-memory batch operation.
+    const changes = [];
+    for await (const batch of edits()) changes.push(...batch);
+    check();
+    const changed = editor.withAutomaticIndentation(() =>
+      buffer.setTextInIndependentRanges(changes, { expectedRevision }),
+    );
+    return { changed, revision: buffer.getTextRevision() };
   }
   let committedRevision;
   const changed = await buffer.applyTextEdits(edits(), {

@@ -624,9 +624,19 @@ describe("Atomic input indentation", () => {
     const text = "class Record:\n" + "    value = 1\n".repeat(10000);
     await start(text);
     editor.setCursorBufferPosition([0, Infinity]);
+    const streaming = spyOn(
+      require("../src/text-buffer").prototype,
+      "applyTextEdits",
+    ).and.callThrough();
     const changes = [];
-    editor.getBuffer().onDidApplyChanges((batch) => changes.push(...batch.changes));
+    const published = [];
+    editor.getBuffer().onDidApplyChanges((batch) => {
+      changes.push(...batch.changes);
+      published.push(editor.lineTextForBufferRow(1));
+    });
     await editor.insertNewline();
+    expect(streaming).not.toHaveBeenCalled();
+    expect(published).toEqual(["    "]);
     expect(changes.every((c) => c.oldRange.end.row <= 1 && c.newRange.end.row <= 1)).toBe(true);
     expect(changes.reduce((n, c) => n + c.newTextSource.length, 0)).toBe(5);
     editor.undo();

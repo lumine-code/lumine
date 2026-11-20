@@ -187,6 +187,32 @@ function comparePointAndRangeBundles(bundleA, bundleB) {
   return 0;
 }
 
+function* foldsAtLevel(folds, goalLevel) {
+  let boundaries = createTree(comparePointAndRangeBundles);
+  let processed = 0;
+  for (const fold of folds) {
+    boundaries = boundaries.insert([fold.start, fold], { start: fold });
+    boundaries = boundaries.insert([fold.end, fold], { end: fold });
+    if (++processed % 256 === 0) yield;
+  }
+
+  const result = [];
+  let level = 0;
+  const iterator = boundaries.begin;
+  while (iterator.key) {
+    const { start, end } = iterator.value;
+    if (start) {
+      if (level === goalLevel) result.push(start);
+      level++;
+    } else if (end) {
+      level--;
+    }
+    iterator.next();
+    if (++processed % 256 === 0) yield;
+  }
+  return result;
+}
+
 function isBetweenPoints(point, a, b) {
   let comp = comparePoints(a, b);
   let lesser = comp > 0 ? b : a;
@@ -2118,49 +2144,130 @@ class TreeSitterLanguageMode {
   // their enclosing fold, but it doesn't require it.
   //
   getFoldableRangesAtIndentLevel(goalLevel) {
-    if (!this.tokenized || this.publicationPending) {
-      return [];
+    const work = foldsAtLevel(this.getFoldableRanges(), goalLevel);
+    let step = work.next();
+    while (!step.done) step = work.next();
+    return step.value;
+  }
+
+  async prepareWorkerFoldRanges(layers, { signal, yieldTurn }) {
+    const pending = new Set(layers.filter((layer) => !layer.foldResolver.currentPreparedRanges()));
+    if (!pending.size) return;
+    const complete = [];
+    let collector;
+    let deadline = performance.now() + 4;
+    const yieldWhenNeeded = (force) => {
+      if (force || performance.now() >= deadline) {
+        return yieldTurn().then(() => {
+          deadline = performance.now() + 4;
+        });
+      }
+    };
+    const scan = require("./tree-sitter-capture-stream")(
+      this,
+      "foldsQuery",
+      { signal },
+      {
+        yieldTurn: yieldWhenNeeded,
+        queryBudget: this.queryBudget,
+        splitOnDensity: true,
+        includeLayer: (layer) => pending.has(layer),
+      },
+    );
+    for await (const { captures, layer, last } of scan) {
+      collector ??= layer.foldResolver.beginRangeCollection();
+      for (const capture of captures) collector.add(capture);
+      const turn = yieldWhenNeeded();
+      if (turn) await turn;
+      if (!last) continue;
+
+      const work = collector.finish();
+      let step = work.next();
+      while (!step.done) {
+        const turn = yieldWhenNeeded();
+        if (turn) await turn;
+        step = work.next();
+      }
+      complete.push([collector.resolver, step.value]);
+      collector = null;
     }
-    this.ensureQueriesForLayersSync("foldsQuery");
+    for (const [resolver, result] of complete) resolver.storePreparedRanges(result);
+  }
 
-    // The key for this red-black tree needs to be a combination of a point and
-    // a range. We do this because we want to order primarily by buffer
-    // position; but secondarily we need to consider whether the point is the
-    // start or the end of a range so that we can ensure that we visit the
-    // points in the order that properly expresses containment.
-    let rangeTree = createTree(comparePointAndRangeBundles);
-
-    // No easy way around this. The way to pull it off is to get _all_ folds in
-    // the document on all language layers, then place their boundaries into a
-    // red-black tree so we can iterate through them later in the proper order
-    // while keeping track of nesting level.
-    let layers = this.getAllLanguageLayers();
-    for (let layer of layers) {
-      let folds = layer.foldResolver.getAllFoldRanges();
-      for (let fold of folds) {
-        rangeTree = rangeTree.insert([fold.start, fold], { start: fold });
-        rangeTree = rangeTree.insert([fold.end, fold], { end: fold });
+  async getWorkerFoldableRanges(options) {
+    if (!this.tokenized || this.publicationPending) return [];
+    const layers = this.getAllLanguageLayers();
+    await this.prepareWorkerFoldRanges(layers, options);
+    const ranges = [];
+    let deadline = performance.now() + 4;
+    for (const layer of layers) {
+      const entries = layer.foldResolver.currentPreparedRanges() ?? [];
+      for (const range of entries) {
+        ranges.push(range);
+        if (ranges.length % 256 === 0 && performance.now() >= deadline) {
+          await options.yieldTurn();
+          deadline = performance.now() + 4;
+        }
       }
     }
+    return ranges;
+  }
 
-    let foldsAtGoalLevel = [];
-    let currentLevel = 0;
-    let iterator = rangeTree.begin;
-
-    // Whatever `currentLevel` is at when we reach a given `@fold.start` marker
-    // is the depth of that marker.
-    while (iterator.key) {
-      let { start, end } = iterator.value;
-      if (start) {
-        if (currentLevel === goalLevel) foldsAtGoalLevel.push(start);
-        currentLevel++;
-      } else if (end) {
-        currentLevel--;
+  async getWorkerFoldableRangesAtIndentLevel(goalLevel, options) {
+    const ranges = await this.getWorkerFoldableRanges(options);
+    const work = foldsAtLevel(ranges, goalLevel);
+    let deadline = performance.now() + 4;
+    let step = work.next();
+    while (!step.done) {
+      if (performance.now() >= deadline) {
+        await options.yieldTurn();
+        deadline = performance.now() + 4;
       }
-      iterator.next();
+      step = work.next();
+    }
+    return step.value;
+  }
+
+  async getWorkerFoldRangeForRow(row, options) {
+    try {
+      return this.getFoldRangeForRow(row, 4, { localOnly: true });
+    } catch (error) {
+      if (
+        !FoldResolver.needsRangeCollection(error) &&
+        !(error instanceof QueryBudgetExceeded && error.reason === "timeout")
+      )
+        throw error;
+    }
+    const point = new Point(row, this.buffer.lineLengthForRow(row));
+    await this.prepareWorkerFoldRanges(this.languageLayersAtPoint(point), options);
+    return this.getFoldRangeForRow(row, 4, { localOnly: true });
+  }
+
+  async getWorkerFoldableRangeContainingPoint(point, options) {
+    if (this.publicationPending) return null;
+    point = this.buffer.clipPosition(point);
+    if (point.column >= this.buffer.lineLengthForRow(point.row)) {
+      const local = await this.getWorkerFoldRangeForRow(point.row, options);
+      if (local) return local;
     }
 
-    return foldsAtGoalLevel;
+    const layers = this.getAllLanguageLayers();
+    await this.prepareWorkerFoldRanges(layers, options);
+    let best = null;
+    let bestDepth = -1;
+    for (const { depth, foldResolver } of layers) {
+      const range = foldResolver.preparedRangeContainingPoint(point);
+      if (
+        range &&
+        (!best ||
+          range.start.row > best.start.row ||
+          (range.start.row === best.start.row && depth > bestDepth))
+      ) {
+        best = range;
+        bestDepth = depth;
+      }
+    }
+    return best;
   }
 
   // Adjusts a buffer position by a fixed number of characters.
@@ -2263,11 +2370,11 @@ class TreeSitterLanguageMode {
     return !!range;
   }
 
-  getFoldRangeForRow(row) {
-    return this.getFoldRangeForRowInternal(row, true);
+  getFoldRangeForRow(row, _tabLength, options) {
+    return this.getFoldRangeForRowInternal(row, true, options);
   }
 
-  getFoldRangeForRowInternal(row, demandQuery) {
+  getFoldRangeForRowInternal(row, demandQuery, options) {
     if (!this.tokenized || this.publicationPending) {
       return null;
     }
@@ -2282,7 +2389,7 @@ class TreeSitterLanguageMode {
     // Prefer deeper layers over shallower ones.
     for (let layer of layers) {
       let { depth } = layer;
-      let candidateFold = layer.foldResolver?.getFoldRangeForRow(row);
+      let candidateFold = layer.foldResolver?.getFoldRangeForRow(row, options);
       if (!candidateFold) {
         continue;
       }

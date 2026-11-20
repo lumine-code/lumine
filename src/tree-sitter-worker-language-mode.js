@@ -119,6 +119,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       )
         return;
       const changedRows = new Set();
+      const visible = event.deferred ? [...this.requests].filter(primaryRequest) : null;
       for (const [row, fold] of event.folds) {
         const start = new Point(row, 0),
           end = this.buffer.clipPosition([row + 1, 0]);
@@ -126,7 +127,11 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
         const changed = Boolean(this.folds.get(row)) !== Boolean(fold);
         if (fold) this.folds.set(row, Range.fromObject(fold));
         else this.folds.delete(row);
-        if (changed) changedRows.add(row);
+        if (
+          changed &&
+          (!visible || visible.some((request) => requestIntersects(request, { start, end })))
+        )
+          changedRows.add(row);
       }
       if (changedRows.size) this.emitter.emit("did-change-foldability", changedRows);
       return;

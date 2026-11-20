@@ -8,6 +8,7 @@ const INVISIBLE_CHARACTER = 1 << 4;
 const LINE_ENDING = 1 << 6;
 const FOLD = 1 << 7;
 const SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE = 1 << 0;
+const TEXT_READ_UNITS = 4096;
 
 let nextScreenLineId = 1;
 
@@ -79,7 +80,7 @@ module.exports = class ScreenLineBuilder {
         this.emitDecorationBoundaries(iterator);
         if (character !== " " && character !== "\t") leading = false;
         if ((character === " " || character === "\t") && trailingColumn == null) {
-          trailingColumn = layer.trailingWhitespaceStartForBufferRow(row);
+          trailingColumn = layer.findTrailingWhitespaceStartColumn(row);
         }
         let flags = 0;
         if (character === " " || character === "\t") {
@@ -128,12 +129,12 @@ module.exports = class ScreenLineBuilder {
   buildScreenLines(startScreenRow, endScreenRow, highlightingOwner = this.displayLayer) {
     this.requestedStartScreenRow = startScreenRow;
     this.requestedEndScreenRow = endScreenRow;
-    this.bufferLine = null;
     this.bufferLineRow = null;
     this.displayLayer.populateSpatialIndexIfNeeded(
       this.displayLayer.buffer.getLineCount(),
       endScreenRow,
     );
+    const source = this.displayLayer.buffer.getTextSnapshot();
 
     // A screen-row boundary is a complete checkpoint in the spatial index and
     // `screenLineStartFlags`. Start there directly instead of replaying a
@@ -242,12 +243,11 @@ module.exports = class ScreenLineBuilder {
 
       this.currentBuiltInClassNameFlags = 0;
       if (this.bufferPosition.row > this.displayLayer.buffer.getLastRow()) break;
-      this.loadBufferLine();
+      this.loadBufferLine(source);
       this.inLeadingWhitespace =
         (this.displayLayer.screenLineStartFlags.get(this.screenRow) &
           SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE) !==
         0;
-      this.inTrailingWhitespace = false;
 
       if (
         decorationIteratorNeedsSeek ||
@@ -287,6 +287,7 @@ module.exports = class ScreenLineBuilder {
             reachedEndOfUncachedRange = this.screenRow === uncachedScreenLineRange.endScreenRow;
           } else {
             this.emitFold(nextHunk, decorationIterator, decorationIteratorEndBufferRow);
+            this.loadBufferLine(source);
           }
 
           hunkIndex++;
@@ -296,11 +297,14 @@ module.exports = class ScreenLineBuilder {
           }
         }
 
-        var nextCharacter = this.bufferLine[this.bufferPosition.column];
-        if (this.bufferPosition.column >= this.trailingWhitespaceStartColumn) {
-          this.inTrailingWhitespace = true;
-          this.inLeadingWhitespace = false;
-        } else if (nextCharacter !== " " && nextCharacter !== "\t") {
+        const column = this.bufferPosition.column;
+        let nextCharacter;
+        if (column < this.bufferLineLength) {
+          if (column >= this.bufferChunkEnd) this.loadBufferChunk(source, column);
+          nextCharacter = this.bufferChunk[column - this.bufferChunkStart];
+        }
+        this.inTrailingWhitespace = column >= this.trailingWhitespaceStartColumn;
+        if (this.inTrailingWhitespace || (nextCharacter !== " " && nextCharacter !== "\t")) {
           this.inLeadingWhitespace = false;
         }
 
@@ -325,17 +329,20 @@ module.exports = class ScreenLineBuilder {
           this.emitOpenTag(this.getBuiltInScopeId(this.currentBuiltInClassNameFlags));
         }
 
-        // Emit ordinary text in runs bounded by anything that needs
-        // character-level handling. This keeps the common case to one substring
-        // and one append per syntax segment or soft-wrapped screen line.
-        if (
-          this.currentBuiltInClassNameFlags === 0 &&
-          !this.inLeadingWhitespace &&
-          !this.inTrailingWhitespace &&
-          nextCharacter !== "\t"
-        ) {
+        // Keep ordinary text and trailing spaces in runs, stopping at a tab,
+        // scope boundary, fold, wrap, or the end of the current source chunk.
+        const trailingSpaces = this.inTrailingWhitespace && nextCharacter === " ";
+        if (this.currentBuiltInClassNameFlags === 0 || trailingSpaces) {
           const endColumn = this.findNextTextBoundary(nextHunk, decorationIterator);
-          this.emitText(this.bufferLine.slice(this.bufferPosition.column, endColumn));
+          const invisibleSpace = trailingSpaces && this.displayLayer.invisibles.space;
+          this.emitText(
+            invisibleSpace
+              ? invisibleSpace.repeat(endColumn - column)
+              : this.bufferChunk.slice(
+                  column - this.bufferChunkStart,
+                  endColumn - this.bufferChunkStart,
+                ),
+          );
           this.bufferPosition.column = endColumn;
           continue;
         }
@@ -345,7 +352,7 @@ module.exports = class ScreenLineBuilder {
         if (nextCharacter === "\t") {
           this.emitHardTab();
         } else if (
-          (this.inLeadingWhitespace || this.inTrailingWhitespace) &&
+          this.inLeadingWhitespace &&
           nextCharacter === " " &&
           this.displayLayer.invisibles.space
         ) {
@@ -360,30 +367,35 @@ module.exports = class ScreenLineBuilder {
     return this.screenLines;
   }
 
-  loadBufferLine() {
+  loadBufferLine(source) {
     const bufferRow = this.bufferPosition.row;
     if (this.bufferLineRow !== bufferRow) {
       this.bufferLineRow = bufferRow;
-      this.bufferLine = this.displayLayer.buffer.lineForRow(bufferRow);
-      this.bufferLineLength = this.bufferLine.length;
-      this.trailingWhitespaceStartColumn = this.findTrailingWhitespaceStartColumn();
-      this.nextTabColumn = this.bufferLine.indexOf("\t", this.bufferPosition.column);
+      this.bufferLineStart = source.lineStart(bufferRow);
+      this.bufferLineLength = this.displayLayer.buffer.lineLengthForRow(bufferRow);
+      this.trailingWhitespaceStartColumn =
+        this.bufferLineLength -
+        source.trailingHorizontalWhitespace(
+          this.bufferLineStart,
+          this.bufferLineStart + this.bufferLineLength,
+        );
+      this.bufferChunkEnd = 0;
     }
   }
 
-  findTrailingWhitespaceStartColumn() {
-    let column = this.bufferLineLength;
-    while (column > 0) {
-      const character = this.bufferLine[column - 1];
-      if (character !== " " && character !== "\t") break;
-      column--;
-    }
-    return column;
+  loadBufferChunk(source, column) {
+    this.bufferChunkStart = column;
+    this.bufferChunkEnd = Math.min(this.bufferLineLength, column + TEXT_READ_UNITS);
+    this.bufferChunk = source.slice(
+      this.bufferLineStart + this.bufferChunkStart,
+      this.bufferLineStart + this.bufferChunkEnd,
+    );
+    this.nextTabColumn = -1;
   }
 
   findNextTextBoundary(nextHunk, decorationIterator) {
     const { row, column } = this.bufferPosition;
-    let endColumn = this.bufferLineLength;
+    let endColumn = this.bufferChunkEnd;
 
     if (nextHunk && nextHunk.oldStart.row === row && nextHunk.oldStart.column > column) {
       endColumn = Math.min(endColumn, nextHunk.oldStart.column);
@@ -394,10 +406,11 @@ module.exports = class ScreenLineBuilder {
       endColumn = Math.min(endColumn, decorationPosition.column);
     }
 
-    if (this.nextTabColumn >= 0 && this.nextTabColumn < column) {
-      this.nextTabColumn = this.bufferLine.indexOf("\t", column);
+    if (this.nextTabColumn < column) {
+      const tabIndex = this.bufferChunk.indexOf("\t", column - this.bufferChunkStart);
+      this.nextTabColumn = tabIndex < 0 ? Infinity : this.bufferChunkStart + tabIndex;
     }
-    if (this.nextTabColumn >= 0) endColumn = Math.min(endColumn, this.nextTabColumn);
+    endColumn = Math.min(endColumn, this.nextTabColumn);
     if (this.trailingWhitespaceStartColumn > column) {
       endColumn = Math.min(endColumn, this.trailingWhitespaceStartColumn);
     }
@@ -526,8 +539,6 @@ module.exports = class ScreenLineBuilder {
     this.bufferPosition.column = nextHunk.oldEnd.column;
 
     this.scopeIdsToReopen = decorationIterator.seek(this.bufferPosition, endBufferRow);
-
-    this.loadBufferLine();
   }
 
   emitSoftWrap(nextHunk) {

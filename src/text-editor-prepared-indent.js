@@ -412,12 +412,17 @@ async function prepare(editor, data, options, queue) {
             typeof mode.scanPreparedIndentation === "function"
               ? mode.scanPreparedIndentation(changes, ranges, tabLength, scanOptions)
               : mode.scanDraftIndentation(draft, ranges, tabLength, scanOptions);
-      await autoIndentRanges(staged, ranges, {
-        ...options,
-        signal,
-        isPastedText: !data.move && !mutation,
-        rowOptions: mutation?.rowOptions,
-      });
+      await autoIndentRanges(
+        staged,
+        ranges,
+        {
+          ...options,
+          signal,
+          isPastedText: !data.move && !mutation,
+          rowOptions: mutation?.rowOptions,
+        },
+        { boundedDraft: inputIndentation },
+      );
     }
     check();
     staged.suppressSelectionMerging = false;

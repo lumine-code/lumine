@@ -49,7 +49,17 @@ function bufferFor(text) {
   };
 }
 
-function piece(buffer, start = 0, end = buffer.text.length) {
+function trailingHorizontalWhitespace(text, start, end) {
+  let index = end;
+  while (index > start) {
+    const unit = text.charCodeAt(index - 1);
+    if (unit !== 32 && unit !== 9) break;
+    index--;
+  }
+  return end - index;
+}
+
+function piece(buffer, start = 0, end = buffer.text.length, trailingWhitespace) {
   if (start === end) return null;
   const first = upperBound(buffer.starts, start);
   const last = upperBound(buffer.starts, end);
@@ -75,6 +85,7 @@ function piece(buffer, start = 0, end = buffer.text.length) {
     head,
     tail,
     maxLineSpan,
+    trailingWhitespace: trailingWhitespace ?? trailingHorizontalWhitespace(buffer.text, start, end),
     height: 1,
     pieces: 1,
     firstUnit: buffer.text.charCodeAt(start),
@@ -97,6 +108,9 @@ function branch(left, right) {
     tail: right.breaks ? right.tail : left.tail + right.length,
     head: left.breaks ? left.head : left.length + right.head,
     maxLineSpan: Math.max(left.maxLineSpan, right.maxLineSpan, left.tail + right.head),
+    trailingWhitespace:
+      right.trailingWhitespace +
+      (right.trailingWhitespace === right.length ? left.trailingWhitespace : 0),
     height: 1 + Math.max(left.height, right.height),
     pieces: left.pieces + right.pieces,
     firstUnit: left.firstUnit,
@@ -178,7 +192,13 @@ function join(left, right) {
   if (!right) return left;
   if (left.buffer && right.buffer) {
     if (left.buffer === right.buffer && left.end === right.start)
-      return piece(left.buffer, left.start, right.end);
+      return piece(
+        left.buffer,
+        left.start,
+        right.end,
+        right.trailingWhitespace +
+          (right.trailingWhitespace === right.length ? left.trailingWhitespace : 0),
+      );
     if (left.length + right.length <= MERGE_UNITS)
       return piece(
         bufferFor(
@@ -198,8 +218,13 @@ function split(node, index) {
   if (index === node.length) return [node, null];
   if (node.buffer)
     return [
-      piece(node.buffer, node.start, node.start + index),
-      piece(node.buffer, node.start + index, node.end),
+      piece(node.buffer, node.start, node.start + index, countTrailingWhitespace(node, 0, index)),
+      piece(
+        node.buffer,
+        node.start + index,
+        node.end,
+        Math.min(node.length - index, node.trailingWhitespace),
+      ),
     ];
   if (index < node.left.length) {
     const [before, after] = split(node.left, index);
@@ -207,6 +232,20 @@ function split(node, index) {
   }
   const [before, after] = split(node.right, index - node.left.length);
   return [join(node.left, before), after];
+}
+
+function countTrailingWhitespace(node, start, end) {
+  // Descend to the right boundary and use complete subtree summaries to skip
+  // the preceding space/tab run. Only an incomplete leaf may need a scan.
+  const tailStart = node.length - node.trailingWhitespace;
+  if (end >= tailStart) return end - Math.max(start, tailStart);
+  if (node.buffer)
+    return trailingHorizontalWhitespace(node.buffer.text, node.start + start, node.start + end);
+  const middle = node.left.length;
+  if (end <= middle) return countTrailingWhitespace(node.left, start, end);
+  if (start >= middle) return countTrailingWhitespace(node.right, start - middle, end - middle);
+  const right = countTrailingWhitespace(node.right, 0, end - middle);
+  return right === end - middle ? right + countTrailingWhitespace(node.left, start, middle) : right;
 }
 
 function build(nodes, start = 0, end = nodes.length) {
@@ -246,7 +285,14 @@ function collectNodes(node, start, end, result) {
     return;
   }
   if (node.buffer) {
-    result.push(piece(node.buffer, node.start + start, node.start + end));
+    result.push(
+      piece(
+        node.buffer,
+        node.start + start,
+        node.start + end,
+        countTrailingWhitespace(node, start, end),
+      ),
+    );
     return;
   }
   if (start < node.left.length)
@@ -569,6 +615,13 @@ class PieceTree {
     return node.buffer.text.slice(node.start + start, node.start + end);
   }
 
+  trailingHorizontalWhitespace(start, end) {
+    integer(start, "Start", this.length);
+    integer(end, "End", this.length);
+    if (end < start) throw new RangeError("End precedes start");
+    return start === end ? 0 : countTrailingWhitespace(this.#root, start, end);
+  }
+
   *chunks() {
     yield* parts(this.#root, 0, this.length);
   }
@@ -754,6 +807,7 @@ class PieceTree {
           "head",
           "tail",
           "maxLineSpan",
+          "trailingWhitespace",
           "height",
           "pieces",
         ])

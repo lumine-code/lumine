@@ -98,7 +98,8 @@ test("changed paths reuse pixel summaries and locate windows without traversing 
   pixels.width(before, 0, NaN);
   assert.ok(units < 131072);
   units = 0;
-  const after = metrics.measure(source.replace(source.length - 1, source.length, "Q"));
+  const changed = source.replace(source.length - 1, source.length, "Q");
+  const after = metrics.measure(changed);
   const end = metrics.advance(after, 0);
   pixels.width(after, 0, NaN);
   assert.ok(units < 131072);
@@ -106,7 +107,8 @@ test("changed paths reuse pixel summaries and locate windows without traversing 
   assert.ok(runs.length <= 2);
   assert.equal(runs.at(-1).endColumn, end);
   assert.equal(after.firstNonWhitespace, 0);
-  assert.equal(after.lastNonWhitespace, source.length - 1);
+  assert.equal(source.trailingHorizontalWhitespace(0, source.length), 1);
+  assert.equal(changed.trailingHorizontalWhitespace(0, changed.length), 0);
 });
 
 test("ordinary distinct backing leaves also reuse unchanged pixel summaries after edits", () => {

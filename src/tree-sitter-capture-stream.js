@@ -15,7 +15,10 @@ function cancelled() {
 
 async function wait(promise, signal) {
   if (!signal) return promise;
-  if (signal.aborted) throw cancelled();
+  if (signal.aborted) {
+    Promise.resolve(promise).catch(() => {});
+    throw cancelled();
+  }
   let abort;
   try {
     return await Promise.race([
@@ -33,7 +36,12 @@ async function wait(promise, signal) {
 // Exact captures arrive in bounded batches, grouped by a stable layer index
 // within this scan. Consumers must finish iteration before publishing a result:
 // cancellation or a changed revision invalidates even previously yielded data.
-async function* scanQueryCaptures(mode, queryType, { signal, batchSize = 256 } = {}) {
+async function* scanQueryCaptures(
+  mode,
+  queryType,
+  { signal, batchSize = 256 } = {},
+  { includeLayer, yieldTurn, queryBudget, splitOnDensity = false } = {},
+) {
   if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 4096)
     throw new RangeError("Capture batch size must be an integer between 1 and 4096");
   const revision = mode.buffer.getTextRevision();
@@ -48,7 +56,11 @@ async function* scanQueryCaptures(mode, queryType, { signal, batchSize = 256 } =
     assertLive();
     if (transaction.parseError) throw cancelled();
     layers = mode.getAllLanguageLayers();
-    await wait(Promise.all(layers.map((layer) => layer?.ensureQuery?.(queryType))), signal);
+    const requestedLayers = includeLayer ? layers.filter(includeLayer) : layers;
+    await wait(
+      Promise.all(requestedLayers.map((layer) => layer?.ensureQuery?.(queryType))),
+      signal,
+    );
     assertLive();
     const currentLayers = mode.getAllLanguageLayers();
     if (
@@ -77,10 +89,13 @@ async function* scanQueryCaptures(mode, queryType, { signal, batchSize = 256 } =
     query: layer?.queries?.[queryType],
     injectionPointVersion: layer?.injectionPointVersion,
   }));
-  const isCurrent = () =>
+  const isCurrentRevision = () =>
+    !mode.destroyed &&
+    !signal?.aborted &&
     mode.buffer.getTextRevision() === revision &&
-    mode.getSyntaxRequestEpoch?.() === epoch &&
-    mode.queryCaptureSnapshotIsCurrent(snapshots, queryType, signal);
+    mode.getSyntaxRequestEpoch?.() === epoch;
+  const isCurrent = () =>
+    isCurrentRevision() && mode.queryCaptureSnapshotIsCurrent(snapshots, queryType, signal);
   const assertCurrent = () => {
     if (!isCurrent()) throw cancelled();
   };
@@ -91,12 +106,17 @@ async function* scanQueryCaptures(mode, queryType, { signal, batchSize = 256 } =
       throw new QueryBudgetExceeded(result.reason);
     }
   };
-  const yieldTask = () => wait(mode._yieldForQueryCaptureScan(), signal);
+  const yieldTask = (force = false) => {
+    const turn = yieldTurn ? yieldTurn(force) : mode._yieldForQueryCaptureScan();
+    return turn && wait(turn, signal);
+  };
   const source = mode.document?.capture().text ?? mode.buffer.getTextSnapshot();
   for (let layerId = 0; layerId < snapshots.length; layerId++) {
     const { layer, tree, query } = snapshots[layerId];
     if (!query || !tree) continue;
     assertCurrent();
+    if (includeLayer && !includeLayer(layer)) continue;
+    const layerData = includeLayer ? { layer } : null;
     const extent = layer.getExtent();
     const endIndex = mode.buffer.characterIndexForPosition(extent.end);
     let startIndex = mode.buffer.characterIndexForPosition(extent.start);
@@ -109,7 +129,9 @@ async function* scanQueryCaptures(mode, queryType, { signal, batchSize = 256 } =
     );
     let queryWindowUnits = chunkUnits;
     const resolver = new ScopeResolver(layer, layer.scopeResolver.idForScope);
-    const budget = { signal, isCancelled: () => !isCurrent() };
+    // Validate topology at the synchronous slice boundaries. Native progress
+    // and predicates should not walk the embedded layers for each capture.
+    const budget = { ...queryBudget, signal, isCancelled: () => !isCurrentRevision() };
     try {
       while (startIndex < endIndex) {
         assertCurrent();
@@ -135,10 +157,14 @@ async function* scanQueryCaptures(mode, queryType, { signal, batchSize = 256 } =
             { startPosition: start, endPosition: end },
             budget,
           );
-          if (queried.complete || queried.reason !== "timeout") break;
+          const splittable =
+            queried.reason === "timeout" ||
+            (splitOnDensity &&
+              ["match-limit", "result-limit", "capture-limit"].includes(queried.reason));
+          if (queried.complete || !splittable) break;
           // No resolver state or published captures exist for this attempt.
-          // Preserve its time budget by scheduling strictly smaller windows;
-          // an indivisible character and all other limits still fail closed.
+          // Retry with a strictly smaller window. If an indivisible character
+          // exceeds the budget, the exact scan still fails.
           const half = Math.floor((window.endIndex - startIndex) / 2);
           const smaller = boundedQueryRange(
             source,
@@ -149,7 +175,7 @@ async function* scanQueryCaptures(mode, queryType, { signal, batchSize = 256 } =
           if (smaller.empty || smaller.endIndex >= window.endIndex) break;
           window = smaller;
           queryWindowUnits = window.endIndex - startIndex;
-          await yieldTask();
+          await yieldTask(true);
           assertCurrent();
         }
         requireComplete(queried);
@@ -176,13 +202,14 @@ async function* scanQueryCaptures(mode, queryType, { signal, batchSize = 256 } =
           // finish. Resume at the unfinished capture after a productive slice.
           // If the capture alone exhausts a fresh slice, fail without replay.
           if (filtered.reason !== "timeout" || offset === sliceStart) requireComplete(filtered);
+          else assertCurrent();
           if (batch.length === batchSize) {
-            yield { grammar: layer.grammar, captures: batch, layerId, last: false };
+            yield { grammar: layer.grammar, captures: batch, layerId, last: false, ...layerData };
             batch = [];
             assertCurrent();
           }
           if (offset < captures.length) {
-            await yieldTask();
+            await yieldTask(filtered.reason === "timeout");
             assertCurrent();
           }
         }
@@ -194,7 +221,7 @@ async function* scanQueryCaptures(mode, queryType, { signal, batchSize = 256 } =
         }
       }
       assertCurrent();
-      yield { grammar: layer.grammar, captures: batch, layerId, last: true };
+      yield { grammar: layer.grammar, captures: batch, layerId, last: true, ...layerData };
       assertCurrent();
     } finally {
       resolver.destroy();

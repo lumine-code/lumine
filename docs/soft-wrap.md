@@ -30,4 +30,6 @@ The editor owns the preferred line length, defaulting to 80 columns. Users can c
 
 Resolving the two constraints takes constant time. Resizing within a constraint does not rebuild the display projection when the resulting column stays unchanged. A changed column uses the existing wrapping algorithm and resize debounce.
 
+Editing a long tab-free ASCII row with standard character widths and no continuation indent or folds reuses the indexed wraps before the edited region. When a wrap reaches the same point in the unchanged suffix, its following geometry and cached screen lines can be reused too. Other rows use the general layout algorithm. Once geometry is known, building screen lines reads bounded source fragments from the requested location. The text tree supplies trailing whitespace boundaries across fragments.
+
 `editor.unwrappedLineLengthLimit` is the independent safety wrapping limit for ordinary views with soft wrap disabled; it defaults to 500 columns. Large documents instead use the bounded unwrapped projection unless wrapping is explicitly enabled for that document. Mini editors and automatically sized views retain their sizing policies. See [Large document editing](large-document-editing.md).

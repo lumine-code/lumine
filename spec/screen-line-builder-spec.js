@@ -15,7 +15,7 @@ describe("ScreenLineBuilder", () => {
     return buffer;
   }
 
-  it("materializes a long buffer row once and emits ordinary text in runs", () => {
+  it("reads once from a wrap checkpoint and emits ordinary text in runs", () => {
     const buffer = buildBuffer("x".repeat(4000));
     const displayLayer = buffer.addDisplayLayer({ softWrapColumn: 20 });
 
@@ -23,13 +23,18 @@ describe("ScreenLineBuilder", () => {
     // about constructing screen lines after their wrap boundaries are known.
     displayLayer.populateSpatialIndexIfNeeded(Infinity, Infinity);
     const lineReads = spyOn(buffer, "lineForRow").and.callThrough();
+    const sourceReads = spyOn(
+      Object.getPrototypeOf(buffer.getTextSnapshot()),
+      "slice",
+    ).and.callThrough();
     const characterReads = spyOn(buffer, "getCharacterAtPosition").and.callThrough();
     const textAppends = spyOn(displayLayer.screenLineBuilder, "emitText").and.callThrough();
 
     const screenLines = displayLayer.getScreenLines(150, 160);
 
     expect(screenLines.map(({ lineText }) => lineText)).toEqual(new Array(10).fill("x".repeat(20)));
-    expect(lineReads.calls.allArgs()).toEqual([[0]]);
+    expect(sourceReads).toHaveBeenCalledOnceWith(3000, 4000);
+    expect(lineReads).not.toHaveBeenCalled();
     expect(characterReads).not.toHaveBeenCalled();
     // The builder starts at row 150's spatial-index checkpoint. Ordinary text
     // takes one append per requested row, plus an empty-indent append at each
@@ -48,6 +53,10 @@ describe("ScreenLineBuilder", () => {
 
     displayLayer.populateSpatialIndexIfNeeded(Infinity, Infinity);
     const lineReads = spyOn(buffer, "lineForRow").and.callThrough();
+    const sourceReads = spyOn(
+      Object.getPrototypeOf(buffer.getTextSnapshot()),
+      "slice",
+    ).and.callThrough();
     const characterReads = spyOn(buffer, "getCharacterAtPosition").and.callThrough();
 
     expect(
@@ -61,7 +70,12 @@ describe("ScreenLineBuilder", () => {
       { lineText: "   →·¬", softWrapIndent: -1 },
       { lineText: "last", softWrapIndent: -1 },
     ]);
-    expect(lineReads.calls.allArgs()).toEqual([[0], [1], [2]]);
+    expect(sourceReads.calls.allArgs()).toEqual([
+      [0, 7],
+      [9, 16],
+      [17, 21],
+    ]);
+    expect(lineReads).not.toHaveBeenCalled();
     expect(characterReads).not.toHaveBeenCalled();
   });
 
@@ -124,9 +138,17 @@ describe("ScreenLineBuilder", () => {
       [2, 2],
     ]);
     const lineReads = spyOn(foldedBuffer, "lineForRow").and.callThrough();
+    const sourceReads = spyOn(
+      Object.getPrototypeOf(foldedBuffer.getTextSnapshot()),
+      "slice",
+    ).and.callThrough();
 
     expect(foldedDisplayLayer.getScreenLine(0).lineText).toBe("ab⋯i");
-    expect(lineReads.calls.allArgs()).toEqual([[0], [2]]);
+    expect(sourceReads.calls.allArgs()).toEqual([
+      [0, 3],
+      [10, 11],
+    ]);
+    expect(lineReads).not.toHaveBeenCalled();
   });
 
   it("starts at an indented soft-wrap checkpoint with the correct open scopes", () => {
@@ -188,6 +210,69 @@ describe("ScreenLineBuilder", () => {
     const lineCount = displayLayer.getScreenLineCount();
 
     expectDirectRangeMatchesFull(displayLayer, 2, lineCount);
+  });
+
+  it("reads only a bounded suffix to render a cold viewport in a long wrapped row", () => {
+    const prefixLength = 640_000;
+    const buffer = buildBuffer(`${"q".repeat(prefixLength)}xy😀\t  \r\nrest`);
+    const layer = buffer.addDisplayLayer({
+      softWrapColumn: 64,
+      softWrapHangingIndent: 0,
+      tabLength: 4,
+      invisibles: { tab: "→", space: "·", cr: "¤", eol: "¬" },
+    });
+    // Populate geometry before measuring the independent presentation read.
+    expect(layer.getScreenLineCount()).toBe(10_002);
+    spyOn(buffer, "lineForRow").and.throwError("Whole buffer row read");
+    const source = buffer.getTextSnapshot();
+    const reads = spyOn(Object.getPrototypeOf(source), "slice").and.callThrough();
+
+    const [middleLine] = layer.getScreenLines(5_000, 5_001);
+    expect(middleLine.lineText).toBe("q".repeat(64));
+    expect(reads).toHaveBeenCalledOnceWith(320_000, 324_096);
+    reads.calls.reset();
+
+    const lines = layer.getScreenLines(9_999, 10_001);
+
+    expect(lines.map((line) => line.lineText)).toEqual(["q".repeat(64), "xy😀→   ··¤¬"]);
+    expect(reads).toHaveBeenCalledOnceWith(prefixLength - 64, prefixLength + 7);
+  });
+
+  it("keeps astral text and tab tokens intact across bounded reads", () => {
+    const prefix = "a".repeat(4095);
+    const buffer = buildBuffer(`${prefix}😀\tx`);
+    const layer = buffer.addDisplayLayer({
+      softWrapColumn: 8000,
+      tabLength: 4,
+      invisibles: { tab: "→" },
+    });
+    const [line] = layer.getScreenLines(0, 1);
+    expect(line.lineText).toBe(`${prefix}😀→  x`);
+  });
+
+  it("uses current trailing whitespace across shared source pieces after an edit and undo", () => {
+    const length = 200_000;
+    const buffer = buildBuffer(`prefix${" ".repeat(length)}\t\r\nlast`);
+    const layer = buffer.addDisplayLayer({ softWrapColumn: 64 });
+    expect(layer.findTrailingWhitespaceStartColumn(0)).toBe(6);
+    buffer.insert([0, length - 50_000], "x");
+    expect(layer.findTrailingWhitespaceStartColumn(0)).toBe(length - 49_999);
+    buffer.undo();
+    expect(layer.findTrailingWhitespaceStartColumn(0)).toBe(6);
+  });
+
+  it("ends trailing whitespace styling when a fold moves into the next buffer row", () => {
+    const buffer = buildBuffer("a  \n  b");
+    const layer = buffer.addDisplayLayer({
+      softWrapColumn: 80,
+      foldCharacter: "…",
+      invisibles: { space: "·" },
+    });
+    layer.foldBufferRange([
+      [0, 2],
+      [1, 0],
+    ]);
+    expect(layer.getScreenLines(0, 1)[0].lineText).toBe("a·…  b");
   });
 });
 

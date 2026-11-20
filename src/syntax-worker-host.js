@@ -5,6 +5,7 @@ const SelectorStore = require("@lumine-code/selector-store");
 const GrammarRegistry = require("./grammar-registry");
 const TreeSitterGrammar = require("./tree-sitter-grammar");
 const TreeSitterLanguageMode = require("./tree-sitter-language-mode");
+const FoldResolver = require("./tree-sitter-fold-resolver");
 const TextBuffer = require("./text-buffer");
 const runtime = require("./tree-sitter-runtime");
 const { paintTile } = require("./syntax-paint-policy");
@@ -21,6 +22,13 @@ const {
 } = require("./syntax-worker-protocol");
 const { Point, Range } = TextBuffer;
 const INPUT_PARSE_PRIORITY = -100;
+const FOLD_BUILTINS = new Set([
+  "getFoldRangeForRow",
+  "getFoldableRanges",
+  "getFoldableRangesAtIndentLevel",
+  "getFoldableRangeContainingPoint",
+  "isFoldableAtRow",
+]);
 
 function aborted(message = "Syntax snapshot is obsolete") {
   const error = new Error(message);
@@ -367,6 +375,12 @@ class SyntaxWorkerHost {
           },
         );
       if (error.code === "ERR_SYNTAX_QUERY_BUDGET") {
+        if (
+          operation === "builtin" &&
+          FOLD_BUILTINS.has(data.method) &&
+          error.reason !== "cancelled"
+        )
+          throw error;
         const unavailable = aborted("Syntax query exceeded its resource budget");
         unavailable.code = error.code;
         unavailable.reason = error.reason;
@@ -420,6 +434,13 @@ class SyntaxWorkerHost {
     const barrier = this.inputBarrier;
     if (!barrier) return null;
     return waitFor(barrier.promise, signal).then(() => this.waitForInput(current, signal));
+  }
+
+  async yieldForFolds(current, signal) {
+    await new Promise(setImmediate);
+    const input = this.waitForInput(current, signal);
+    if (input) await input;
+    current?.();
   }
 
   async dispatchOperation(operation, data, { signal, emit } = {}) {
@@ -980,7 +1001,14 @@ class SyntaxWorkerHost {
           combined,
         );
       else if (operation === "builtin") {
-        value = await this.builtin(mode, data.method, data.args);
+        if (FOLD_BUILTINS.has(data.method)) {
+          const input = this.waitForInput(current, combined);
+          if (input) await input;
+          value = await this.foldBuiltin(mode, data.method, data.args, {
+            signal: combined,
+            yieldTurn: () => this.yieldForFolds(current, combined),
+          });
+        } else value = await this.builtin(mode, data.method, data.args);
         if (data.stream && (Array.isArray(value) || value instanceof Map)) {
           const kind = value instanceof Map ? "map" : "array";
           const count = value.size ?? value.length;
@@ -1041,15 +1069,7 @@ class SyntaxWorkerHost {
 
   builtin(mode, method, args) {
     args = [...args];
-    if (
-      [
-        "scopes",
-        "syntaxScopes",
-        "commentStringsForPosition",
-        "getFoldableRangeContainingPoint",
-        "token",
-      ].includes(method)
-    )
+    if (["scopes", "syntaxScopes", "commentStringsForPosition", "token"].includes(method))
       args[0] = Point.fromObject(args[0]);
     if (method === "getRangeForSyntaxNodeContainingRange") args[0] = Range.fromObject(args[0]);
     if (method === "bufferRangeForScopeAtPosition") args[1] = Point.fromObject(args[1]);
@@ -1059,15 +1079,10 @@ class SyntaxWorkerHost {
       "suggestedIndentForBufferRowsAtRows",
       "suggestedIndentForPastedRanges",
       "suggestedIndentForEditedBufferRow",
-      "getFoldRangeForRow",
-      "getFoldableRanges",
-      "getFoldableRangesAtIndentLevel",
-      "getFoldableRangeContainingPoint",
       "getRangeForSyntaxNodeContainingRange",
       "commentStringsForPosition",
       "isRowCommented",
       "validateGrammarQueries",
-      "isFoldableAtRow",
       "bufferRangeForScopeAtPosition",
     ]);
     if (method === "scopes") return mode.scopeDescriptorForPosition(args[0]).scopes;
@@ -1086,6 +1101,21 @@ class SyntaxWorkerHost {
       );
     if (!allowed.has(method)) throw new Error(`Unknown syntax operation: ${method}`);
     return mode[method](...args);
+  }
+
+  async foldBuiltin(mode, method, [argument], options) {
+    switch (method) {
+      case "getFoldRangeForRow":
+        return mode.getWorkerFoldRangeForRow(argument, options);
+      case "getFoldableRanges":
+        return mode.getWorkerFoldableRanges(options);
+      case "getFoldableRangesAtIndentLevel":
+        return mode.getWorkerFoldableRangesAtIndentLevel(argument, options);
+      case "getFoldableRangeContainingPoint":
+        return mode.getWorkerFoldableRangeContainingPoint(Point.fromObject(argument), options);
+      case "isFoldableAtRow":
+        return Boolean(await mode.getWorkerFoldRangeForRow(argument, options));
+    }
   }
 
   metadata(session) {
@@ -1194,6 +1224,7 @@ class SyntaxWorkerHost {
     const tiles = [],
       names = new Map();
     const pending = ranges.map((range) => ({ range, origin: range }));
+    const deferredFolds = new Map();
     while (pending.length) {
       const input = this.waitForInput(current, signal);
       if (input) await input;
@@ -1260,33 +1291,22 @@ class SyntaxWorkerHost {
         let deadline = performance.now() + 4;
         for (let row = first; row <= endRow; row++) {
           try {
-            folds.push([row, mode.getFoldRangeForRow(row, 4)]);
+            folds.push([row, mode.getFoldRangeForRow(row, 4, { localOnly: true })]);
+            deferredFolds.delete(row);
           } catch (error) {
             if (error.code !== "ERR_SYNTAX_QUERY_BUDGET") throw error;
-            break;
+            if (FoldResolver.needsRangeCollection(error)) deferredFolds.set(row, folds);
+            else break;
           }
           if (row < endRow && performance.now() >= deadline) {
-            await new Promise(setImmediate);
-            const input = this.waitForInput(current, signal);
-            if (input) await input;
-            current?.();
+            await this.yieldForFolds(current, signal);
             deadline = performance.now() + 4;
           }
         }
       }
       if (emit) {
         current?.();
-        if (folds.length)
-          this.notify(
-            serialize({
-              event: "paint-folds",
-              session: session.id,
-              revision: session.revision,
-              generation: session.generation,
-              presentation,
-              folds,
-            }),
-          );
+        this.publishPaintFolds(session, presentation, folds);
         const next = await acknowledgement;
         names.clear();
         current?.();
@@ -1311,7 +1331,85 @@ class SyntaxWorkerHost {
         if (endRow < last) pending.unshift({ range: [endRow + 1, last], origin });
       }
     }
+    if (deferredFolds.size) {
+      current?.();
+      if (emit) this.scheduleDeferredPaintFolds(session, presentation, deferredFolds);
+      else await this.resolveDeferredPaintFolds(mode, deferredFolds, current, signal);
+    }
     return emit ? this.metadata(session) : { tiles, scopes: [...names] };
+  }
+
+  publishPaintFolds(session, presentation, folds, deferred = false) {
+    if (!folds.length) return;
+    this.notify(
+      serialize({
+        event: "paint-folds",
+        session: session.id,
+        revision: session.revision,
+        generation: session.generation,
+        presentation,
+        folds,
+        deferred,
+      }),
+    );
+  }
+
+  scheduleDeferredPaintFolds(session, presentation, rows) {
+    const previous = session.deferredPaintFolds;
+    if (previous && previous.presentation === presentation && !previous.controller.signal.aborted) {
+      for (const [row, folds] of rows) previous.rows.set(row, folds);
+      return;
+    }
+    previous?.controller.abort(aborted());
+    const controller = new AbortController();
+    const { signal } = controller;
+    const { generation, revision } = session;
+    const job = { presentation, controller, rows };
+    session.deferredPaintFolds = job;
+    session.jobs.add(controller);
+    const current = () => {
+      signal.throwIfAborted();
+      if (session.generation !== generation || session.revision !== revision) throw aborted();
+    };
+    const publish = (folds) => {
+      current();
+      this.publishPaintFolds(session, presentation, folds, true);
+    };
+    // The paint RPC can return before this lookup finishes, so a new viewport
+    // can paint immediately. Edits cancel this work with the other session jobs.
+    void runtime
+      .run(this.contextFor(session, "paint-folds"), () =>
+        this.resolveDeferredPaintFolds(session.mode, rows, current, signal, publish),
+      )
+      .catch((error) => this.failSession(session, error))
+      .finally(() => {
+        session.jobs.delete(controller);
+        if (session.deferredPaintFolds === job) session.deferredPaintFolds = null;
+      });
+  }
+
+  async resolveDeferredPaintFolds(mode, rows, current, signal, publish) {
+    const options = { signal, yieldTurn: () => this.yieldForFolds(current, signal) };
+    await options.yieldTurn();
+    const results = [];
+    for (const [row, folds] of rows) {
+      try {
+        const fold = await mode.getWorkerFoldRangeForRow(row, options);
+        const target = publish ? results : folds;
+        target.push([row, fold]);
+      } catch (error) {
+        if (error.code !== "ERR_SYNTAX_QUERY_BUDGET") throw error;
+        // An exact fold that still exceeds a budget stays unavailable. The
+        // local folds and text tiles have already been published.
+        break;
+      }
+      if (publish && results.length === 256) {
+        publish(results);
+        results.length = 0;
+        await options.yieldTurn();
+      }
+    }
+    publish?.(results);
   }
 
   async previewView(session, range, emit, current, signal) {

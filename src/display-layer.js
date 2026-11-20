@@ -12,12 +12,14 @@ const ScreenLineCache = require("./screen-line-cache");
 const { MAX_BUILT_IN_SCOPE_ID } = require("./constants");
 const { MAX_UNITS: PAINT_WINDOW_UNITS } = require("./syntax-paint-window");
 const { isWrapBoundary: defaultIsWrapBoundary } = require("./text-utils");
+const completeCleanup = require("./complete-cleanup");
 
 const SIMPLE_LINE_FAST_PATH_MIN_LENGTH = 4096;
 const HARD_TAB_RUN_MIN_LENGTH = 64;
 const ASCII_WRAP_BOUNDARY_NONE = 0;
 const ASCII_WRAP_BOUNDARY_WHITESPACE = 1;
 const ASCII_WRAP_BOUNDARY_STANDARD = 2;
+const ASCII_WRAP_WITHOUT_DELIMITERS = 1 << 2;
 const SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE = 1 << 0;
 const ASCII_EVENT_DENSITY_SAMPLE_SIZE = 4096;
 const ASCII_EVENT_DENSITY_LIMIT = 0.25;
@@ -30,6 +32,7 @@ const ASCII_ONLY_REGEXP = /^[\x00-\x7f]*$/;
 const ASCII_WITHOUT_WHITESPACE_REGEXP = /^[^\t \u0080-\uffff]*$/;
 const ASCII_WITHOUT_STANDARD_WRAP_BOUNDARIES_REGEXP = /^[^\t \x2d\x2f\u0080-\uffff]*$/;
 const GEOMETRY_STABLE_REPLACEMENT_REGEXP = /^[A-Za-z0-9_]+$/;
+const WRAP_READ_UNITS = 4096;
 let nextLayoutGroupId = 1;
 
 class DisplayLayer {
@@ -53,6 +56,7 @@ class DisplayLayer {
     this.mappingGeneration = 0;
     this.windowGeneration = 0;
     this.pendingGeometryStableChange = null;
+    this.pendingWrappedReflow = null;
 
     this.invisibles = params.invisibles != null ? params.invisibles : {};
     this.tabLength = params.tabLength != null ? params.tabLength : 4;
@@ -168,6 +172,7 @@ class DisplayLayer {
 
   reset(params) {
     this.pendingGeometryStableChange = null;
+    this.pendingWrappedReflow = null;
     if (!this.isDestroyed() && this.setParams(params)) {
       this.markMarkerScreenPositionsDirty();
       this.clearSpatialIndex();
@@ -224,6 +229,7 @@ class DisplayLayer {
 
   separateLayoutGroup(preserveSpatialState = true) {
     this.pendingGeometryStableChange = null;
+    this.pendingWrappedReflow = null;
     this.layoutGroupId = nextLayoutGroupId++;
     this.layoutState = preserveSpatialState
       ? copyLayoutState(this.layoutState)
@@ -324,6 +330,92 @@ class DisplayLayer {
       this.notifyObserversIfMarkerScreenPositionsChanged();
     }
     return foldId;
+  }
+
+  replaceFoldRanges(ranges, isCurrent) {
+    const layer = this.foldsMarkerLayer;
+    const unmatched = new Map();
+    for (const marker of layer.getMarkers()) {
+      const range = marker.getRange();
+      const key = foldRangeKey(range);
+      const matches = unmatched.get(key);
+      if (matches) matches.push({ marker, range });
+      else unmatched.set(key, [{ marker, range }]);
+    }
+
+    const additions = [];
+    for (const input of ranges) {
+      const range = this.buffer.clipRange(input);
+      const key = foldRangeKey(range);
+      const matches = unmatched.get(key);
+      if (matches) {
+        matches.pop();
+        if (!matches.length) unmatched.delete(key);
+      } else {
+        additions.push(range);
+      }
+    }
+    const removals = [...unmatched.values()].flat();
+    if ((!additions.length && !removals.length) || !isCurrent()) return;
+
+    let endRow = 0;
+    for (const { range } of removals) endRow = Math.max(endRow, range.end.row);
+    for (const range of additions) endRow = Math.max(endRow, range.end.row);
+    // Keep the old projection available so the refresh reports the correct
+    // screen range even when the newly folded rows have never been displayed.
+    this.populateSpatialIndexIfNeeded(endRow + 1, Infinity);
+    if (!isCurrent()) return;
+
+    this.separateLayoutGroup();
+    const revision = this.buffer.getTextRevision();
+    const privateMarkerObservers =
+      layer.emitCreateMarkerEvents ||
+      layer.markersWithDestroyListeners.size > 0 ||
+      layer.displayMarkerLayers.size > 0;
+
+    this.buffer.batchMarkerLayerUpdates(() => {
+      let startRow = Infinity;
+      let endRow = -1;
+      const include = (range) => {
+        startRow = Math.min(startRow, range.start.row);
+        endRow = Math.max(endRow, range.end.row);
+      };
+      const failures = [];
+      try {
+        for (const { marker, range } of removals) {
+          if (privateMarkerObservers && !isCurrent()) break;
+          include(range);
+          marker.destroy();
+        }
+        for (const range of additions) {
+          if (privateMarkerObservers && !isCurrent()) break;
+          include(range);
+          layer.markRange(range, { invalidate: "overlap", exclusive: true });
+        }
+      } catch (error) {
+        failures.push(error);
+      }
+      if (startRow <= endRow && !this.isDestroyed()) {
+        // Private marker callbacks can edit text synchronously. Reconcile
+        // against the current rows if their changes moved the edited ranges.
+        if (revision !== this.buffer.getTextRevision()) {
+          startRow = 0;
+          endRow = this.buffer.getLastRow();
+        }
+        this.markMarkerScreenPositionsDirty();
+        const change = this.updateSpatialIndex(startRow, endRow + 1, endRow + 1, Infinity);
+        completeCleanup(
+          [
+            () => this.didChange(change),
+            () => this.notifyObserversIfMarkerScreenPositionsChanged(),
+          ],
+          "Fold replacement observers failed",
+          failures,
+        );
+      } else if (failures.length) {
+        throw failures[0];
+      }
+    });
   }
 
   destroyFold(foldId) {
@@ -1051,16 +1143,6 @@ class DisplayLayer {
     );
   }
 
-  trailingWhitespaceStartForBufferRow(row) {
-    const source = this.buffer.getTextSnapshot(),
-      start = source.lineStart(row);
-    return (
-      this.layoutState.unwrappedMetrics.measure(
-        source.subtext(start, start + this.buffer.lineLengthForRow(row)),
-      ).lastNonWhitespace + 1
-    );
-  }
-
   prepareHighlightingForScreenRows(startRow, endRow, owner, options = {}) {
     const languageMode = this.buffer.languageMode;
     if (!languageMode.requestHighlighting) return;
@@ -1257,16 +1339,7 @@ class DisplayLayer {
     if (length == null) return 0;
     const source = this.buffer.getTextSnapshot();
     const start = source.lineStart(bufferRow);
-    let column = length;
-    while (column > 0) {
-      const chunkStart = Math.max(0, column - 4096);
-      const text = source.slice(start + chunkStart, start + column);
-      let index = text.length;
-      while (index && (text[index - 1] === " " || text[index - 1] === "\t")) index--;
-      if (index) return chunkStart + index;
-      column = chunkStart;
-    }
-    return column;
+    return length - source.trailingHorizontalWhitespace(start, start + length);
   }
 
   registerBuiltInScope(flags, className) {
@@ -1345,6 +1418,7 @@ class DisplayLayer {
 
     if (this.pendingGeometryStableChange !== change) return;
     this.pendingGeometryStableChange = null;
+    this.pendingWrappedReflow = this.prepareWrappedReflow(change);
     const { oldRange, newRange } = change;
     if (
       oldRange.start.row !== oldRange.end.row ||
@@ -1440,7 +1514,159 @@ class DisplayLayer {
     return this.isWrapBoundary === isWordStart || this.isWrapBoundary === defaultIsWrapBoundary;
   }
 
+  prepareWrappedReflow(change) {
+    const { oldRange, newRange } = change;
+    const { row } = oldRange.start;
+    if (
+      oldRange.end.row !== row ||
+      newRange.start.row !== row ||
+      newRange.end.row !== row ||
+      newRange.start.column !== oldRange.start.column
+    ) {
+      return;
+    }
+    const mode = this.layoutState.reflowableRows.get(row);
+    if (!mode || !this.hasStandardCharacterWidth()) return;
+
+    return {
+      change,
+      mode,
+      layoutState: this.layoutState,
+      ratioForCharacter: this.ratioForCharacter,
+      isWrapBoundary: this.isWrapBoundary,
+      source: this.buffer.getTextSnapshot(),
+      length: this.buffer.lineLengthForRow(row),
+    };
+  }
+
+  reflowWrappedRow(prepared) {
+    if (
+      prepared.layoutState !== this.layoutState ||
+      prepared.ratioForCharacter !== this.ratioForCharacter ||
+      prepared.isWrapBoundary !== this.isWrapBoundary
+    ) {
+      return;
+    }
+    const { oldRange, newRange } = prepared.change;
+    const { row, column: editColumn } = oldRange.start;
+    const oldEnd = oldRange.end.column;
+    const newEnd = newRange.end.column;
+    const delta = newEnd - oldEnd;
+    const source = this.buffer.getTextSnapshot();
+    const lineStart = source.lineStart(row);
+    const length = this.buffer.lineLengthForRow(row);
+    const width = this.softWrapColumn;
+    if (
+      length < SIMPLE_LINE_FAST_PATH_MIN_LENGTH ||
+      length !== prepared.length + delta ||
+      newEnd > length ||
+      source.charCodeAt(lineStart) === 32 ||
+      this.foldsMarkerLayer.findMarkers({ intersectsRow: row }).length > 0
+    ) {
+      return;
+    }
+    const mode = asciiWrapModeAfterEdit(
+      source,
+      lineStart + editColumn,
+      lineStart + newEnd,
+      prepared.mode,
+    );
+    if (mode === ASCII_WRAP_BOUNDARY_NONE) return;
+
+    // A wrap before the edit can look ahead a full screen row to find its
+    // break. Including that complete lookahead preserves the prefix.
+    let restart = Math.max(0, editColumn - width - 1);
+    const oldLineStart = prepared.source.lineStart(row);
+    const oldLastNonSpace =
+      prepared.length -
+      prepared.source.trailingHorizontalWhitespace(oldLineStart, oldLineStart + prepared.length) -
+      1;
+    if (oldLastNonSpace < oldEnd) {
+      // Whitespace presentation can change farther left than the wraps.
+      const newLastNonSpace =
+        length - source.trailingHorizontalWhitespace(lineStart, lineStart + length) - 1;
+      restart = Math.min(restart, oldLastNonSpace, newLastNonSpace);
+    }
+
+    const startScreenRow = this.translateBufferPositionWithSpatialIndex(
+      Point(row, restart),
+      "forward",
+    ).row;
+    const start = this.translateScreenPositionWithSpatialIndex(
+      Point(startScreenRow, 0),
+      "forward",
+      true,
+    ).column;
+    const reader = boundedWrapReader(source, lineStart, length);
+    const lengths = [];
+    const splices = [];
+    let column = start;
+    let oldStop = prepared.length;
+    let newStop = length;
+    let oldEndScreenRow =
+      this.translateBufferPositionWithSpatialIndex(Point(row, prepared.length), "forward").row + 1;
+    const fixedWraps = (mode & ASCII_WRAP_WITHOUT_DELIMITERS) !== 0;
+    const canConverge = !fixedWraps || delta % width === 0;
+    let oldBoundary;
+    let oldBoundaryRow;
+    while (length - column > width) {
+      const wrap =
+        fixedWraps || (prepared.mode & ASCII_WRAP_WITHOUT_DELIMITERS && column >= newEnd)
+          ? column + width
+          : asciiWrapColumn(reader, column, width, mode);
+      lengths.push(wrap - column);
+      const oldWrap = wrap - delta;
+      if (canConverge && wrap >= newEnd && oldWrap > start && oldWrap < prepared.length) {
+        if (oldBoundary === undefined) {
+          const hunk = this.spatialIndex.changeForOldPosition(Point(row, oldWrap));
+          oldBoundary = hunk?.oldStart.row === row ? hunk.oldStart.column : start;
+          oldBoundaryRow = hunk?.oldStart.row === row ? hunk.newEnd.row : startScreenRow;
+        }
+        while (oldBoundary < oldWrap) {
+          oldBoundary += this.screenLineLengths.get(oldBoundaryRow++);
+        }
+        if (oldBoundary === oldWrap) {
+          // This boundary starts the same unchanged suffix in both revisions.
+          // Keep its existing hunk, row metadata, and cached presentation.
+          oldStop = oldWrap;
+          newStop = wrap;
+          oldEndScreenRow = oldBoundaryRow;
+          break;
+        }
+      }
+      queueSpatialSplice(splices, startScreenRow + lengths.length - 1, wrap - column, 0, 0, 1, 0);
+      column = wrap;
+    }
+    if (newStop === length) lengths.push(length - column);
+
+    // The incoming wrap has zero width in the buffer and ends at `start`.
+    // spliceOld retains it alongside earlier hunks.
+    this.spatialIndex.spliceOld(
+      Point(row, start),
+      Point(0, oldStop - start),
+      Point(0, newStop - start),
+    );
+    applyGeometrySplices(this.spatialIndex, splices);
+    if (mode !== prepared.mode) this.layoutState.reflowableRows.set(row, mode);
+    const oldCount = oldEndScreenRow - startScreenRow;
+    const newCount = lengths.length;
+    const flags = new Array(newCount).fill(0);
+    if (start === 0) flags[0] = SCREEN_LINE_STARTS_IN_LEADING_WHITESPACE;
+    this.spliceScreenLineLengths(startScreenRow, oldCount, lengths);
+    this.tabCounts.spliceRows(startScreenRow, oldCount, new Array(newCount).fill(0));
+    this.screenLineStartFlags.spliceRows(startScreenRow, oldCount, flags);
+    this.cachedScreenLines.spliceRows(startScreenRow, oldCount, newCount);
+    this.rightmostScreenPosition = this.findRightmostScreenPosition();
+    return {
+      start: Point(startScreenRow, 0),
+      oldExtent: Point(oldCount, 0),
+      newExtent: Point(newCount, 0),
+    };
+  }
+
   bufferDidChange(change) {
+    const pendingWrappedReflow = this.pendingWrappedReflow;
+    this.pendingWrappedReflow = null;
     if (this.pendingProjection) {
       const { softWrapColumn, oldScreenLineCount } = this.pendingProjection;
       this.pendingProjection = null;
@@ -1485,7 +1711,14 @@ class DisplayLayer {
       const extent = Point(rowCount, 0);
       layoutChange = { start: Point(startScreenRow, 0), oldExtent: extent, newExtent: extent };
     } else {
-      layoutChange = this.updateSpatialIndex(startRow, oldEndRow + 1, newEndRow + 1, Infinity);
+      layoutChange = this.updateSpatialIndex(
+        startRow,
+        oldEndRow + 1,
+        newEndRow + 1,
+        Infinity,
+        NullDeadline,
+        pendingWrappedReflow?.change === change ? pendingWrappedReflow : null,
+      );
     }
     layoutChange.origin = change.origin ?? "edit";
     this.didChange(layoutChange);
@@ -1494,6 +1727,7 @@ class DisplayLayer {
 
   adoptSpatialStateFrom(source, layoutChange = null) {
     this.pendingGeometryStableChange = null;
+    this.pendingWrappedReflow = null;
     this.layoutState = source.layoutState;
 
     if (layoutChange == null) return;
@@ -1562,7 +1796,12 @@ class DisplayLayer {
     newEndBufferRow,
     endScreenRow,
     deadline = NullDeadline,
+    preparedReflow = null,
   ) {
+    if (preparedReflow) {
+      const change = this.reflowWrappedRow(preparedReflow);
+      if (change) return change;
+    }
     if (this.softWrapColumn === Infinity) {
       return this.updateUnwrappedSpatialIndex(startBufferRow, oldEndBufferRow, newEndBufferRow);
     }
@@ -1595,6 +1834,7 @@ class DisplayLayer {
     const insertedScreenLineLengths = [];
     const insertedTabCounts = [];
     const insertedScreenLineStartFlags = [];
+    const reflowableRows = [];
     const currentScreenLineTabColumns = [];
     let rightmostInsertedScreenPosition = Point(0, -1);
     let bufferRow = startBufferRow;
@@ -1680,6 +1920,7 @@ class DisplayLayer {
         asciiWrapBoundaryMode !== ASCII_WRAP_BOUNDARY_NONE &&
         canUseSimpleLineFastPath(this, bufferLine, asciiWrapBoundaryMode)
       ) {
+        reflowableRows.push([bufferRow, asciiWrapBoundaryMode | ASCII_WRAP_WITHOUT_DELIMITERS]);
         let remainingLength = bufferLineLength;
         while (remainingLength > this.softWrapColumn) {
           queueSpatialSplice(pendingSpatialSplices, screenRow, this.softWrapColumn, 0, 0, 1, 0);
@@ -1712,6 +1953,7 @@ class DisplayLayer {
         !foldEndsByColumn &&
         canUseAsciiBoundaryFastPath(this, bufferLine, asciiWrapBoundaryMode)
       ) {
+        reflowableRows.push([bufferRow, asciiWrapBoundaryMode]);
         screenRow = populateSpatialIndexForAsciiBoundaryLine(
           this,
           bufferLine,
@@ -2019,6 +2261,12 @@ class DisplayLayer {
 
     applyGeometrySplices(this.spatialIndex, pendingSpatialSplices);
 
+    this.layoutState.reflowableRows.spliceRows(
+      startBufferRow,
+      oldEndBufferRow - startBufferRow,
+      bufferRow - startBufferRow,
+    );
+    for (const [row, mode] of reflowableRows) this.layoutState.reflowableRows.set(row, mode);
     if (bufferRow > this.indexedBufferRowCount) {
       this.indexedBufferRowCount = bufferRow;
     }
@@ -2402,6 +2650,7 @@ function createEmptyLayoutState() {
     rightmostScreenPosition: Point(0, 0),
     indexedBufferRowCount: 0,
     unwrappedRows: new RowSequence(),
+    reflowableRows: new RowSequence(),
   };
 }
 
@@ -2416,6 +2665,7 @@ function copyLayoutState(state) {
     unwrapped: state.unwrapped,
     unwrappedRows: state.unwrappedRows.copy(),
     unwrappedMetrics: state.unwrappedMetrics,
+    reflowableRows: state.reflowableRows.copy(),
   };
   if (state.unwrapped) configureUnwrappedMetrics(copy, state.buffer, state.tabLength);
   return copy;
@@ -2731,6 +2981,50 @@ function asciiWrapBoundaryModeForLine(displayLayer, line, lineLength) {
   if (displayLayer.isWrapBoundary === isWordStart) return ASCII_WRAP_BOUNDARY_WHITESPACE;
   if (displayLayer.isWrapBoundary === defaultIsWrapBoundary) return ASCII_WRAP_BOUNDARY_STANDARD;
   return ASCII_WRAP_BOUNDARY_NONE;
+}
+
+function asciiWrapModeAfterEdit(source, start, end, mode) {
+  const delimiters =
+    mode & ASCII_WRAP_BOUNDARY_STANDARD
+      ? ASCII_WITHOUT_STANDARD_WRAP_BOUNDARIES_REGEXP
+      : ASCII_WITHOUT_WHITESPACE_REGEXP;
+  for (let position = start; position < end; position += WRAP_READ_UNITS) {
+    const text = source.slice(position, Math.min(position + WRAP_READ_UNITS, end));
+    if (!ASCII_ONLY_REGEXP.test(text) || text.includes("\t")) return ASCII_WRAP_BOUNDARY_NONE;
+    if (mode & ASCII_WRAP_WITHOUT_DELIMITERS && !delimiters.test(text))
+      mode &= ~ASCII_WRAP_WITHOUT_DELIMITERS;
+  }
+  return mode;
+}
+
+function boundedWrapReader(source, lineStart, length) {
+  let start = 0;
+  let window = "";
+  return (column) => {
+    if (column < start || column >= start + window.length) {
+      start = Math.floor(column / WRAP_READ_UNITS) * WRAP_READ_UNITS;
+      window = source.slice(
+        lineStart + start,
+        lineStart + Math.min(length, start + WRAP_READ_UNITS),
+      );
+    }
+    return window.charCodeAt(column - start);
+  };
+}
+
+function asciiWrapColumn(read, start, width, mode) {
+  const target = start + width;
+  for (let column = target; column > start; column--) {
+    const preceding = read(column - 1);
+    if (
+      (preceding === 32 ||
+        (mode === ASCII_WRAP_BOUNDARY_STANDARD && (preceding === 45 || preceding === 47))) &&
+      read(column) !== 32
+    ) {
+      return column;
+    }
+  }
+  return target;
 }
 
 function canUseSimpleLineFastPath(displayLayer, line, asciiWrapBoundaryMode) {
@@ -3155,11 +3449,8 @@ function asciiCharactersHaveUnitWidth(ratioForCharacter) {
 // other, or null when the two describe the same folds. Ranges are compared by
 // value: a restored marker is a different object from the one it replaces.
 function differingRowSpan(before, after) {
-  const key = (range) =>
-    `${range.start.row},${range.start.column},${range.end.row},${range.end.column}`;
-
-  const beforeKeys = new Set(before.map(key));
-  const afterKeys = new Set(after.map(key));
+  const beforeKeys = new Set(before.map(foldRangeKey));
+  const afterKeys = new Set(after.map(foldRangeKey));
 
   let startRow = Infinity;
   let endRow = -Infinity;
@@ -3168,10 +3459,14 @@ function differingRowSpan(before, after) {
     if (range.end.row > endRow) endRow = range.end.row;
   };
 
-  for (const range of before) if (!afterKeys.has(key(range))) consider(range);
-  for (const range of after) if (!beforeKeys.has(key(range))) consider(range);
+  for (const range of before) if (!afterKeys.has(foldRangeKey(range))) consider(range);
+  for (const range of after) if (!beforeKeys.has(foldRangeKey(range))) consider(range);
 
   return endRow < startRow ? null : { startRow, endRow };
+}
+
+function foldRangeKey({ start, end }) {
+  return `${start.row},${start.column},${end.row},${end.column}`;
 }
 
 const NullDeadline = {

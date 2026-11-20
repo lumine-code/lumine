@@ -10,7 +10,7 @@ Toggle Soft Wrap explicitly to enable wrapping in an individual large document. 
 
 ## Coordinates and presentation
 
-Document positions and scroll offsets remain logical values. CSS receives a bounded local coordinate space; text tiles, gutters, highlights, cursors, input anchors and overlays share its origin. Native scrollbar extents are bounded and mapped to the logical scroll range. Wheel and keyboard movement retains logical precision, while dragging the native thumb maps its available physical resolution to the whole document.
+Document positions and scroll offsets remain logical values. CSS receives a bounded local coordinate space on each axis. Text tiles, gutters, highlights, cursors, input anchors and overlays share its origin. The editor's scrollbars map the full logical range onto viewport-sized tracks. Wheel and keyboard movement retains logical precision, while dragging a thumb maps the track's physical resolution to the whole document.
 
 Vertical overlays can read `TextEditorElement.pixelPositionBeforeBlocksForScreenRow(row, {viewport: true})` and `pixelPositionAfterBlocksForScreenRow(row, {viewport: true})` from the measured row index. These methods do not request horizontal measurement or render the editor recursively. Use the latter for the text's top edge and the former for the next row's boundary when excluding block decorations. Display-layer changes with `origin: "highlight"` repaint scopes without changing row geometry; row-only projections should retain their coordinates for those events.
 
