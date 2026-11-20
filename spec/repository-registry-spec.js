@@ -4676,6 +4676,25 @@ describe("RepositoryRegistry", () => {
       expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
     });
 
+    it("refreshes a submodule and its superproject when the submodule index moves", () => {
+      const moduleWorkdir = path.join(workingDirectory, "modules", "fixture");
+      fs.mkdirSync(moduleWorkdir, { recursive: true });
+      const moduleGitDir = path.join(repository.getPath(), "modules", "fixture");
+      const submodule = new FakeRepository(moduleWorkdir, moduleGitDir);
+      registry.register(submodule);
+
+      const plan = registry.repositoryRefreshPlanForFileChanges([
+        {
+          action: "renamed",
+          path: path.join(moduleGitDir, "index"),
+          oldPath: path.join(moduleGitDir, "index.lock"),
+        },
+      ]);
+      expect(plan.pending.get(submodule)).toBe("status");
+      expect(plan.pending.get(repository)).toBe("status");
+      expect(plan.pending.size).toBe(2);
+    });
+
     it("refreshes the refs too when a ref moves", async () => {
       project.emitFileChanges([
         { action: "modified", path: path.join(repository.getPath(), "HEAD") },
@@ -4801,6 +4820,54 @@ describe("RepositoryRegistry", () => {
         expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(1);
         expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
         expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
+      });
+
+      for (const indexName of ["index", "sharedindex." + "a".repeat(40)]) {
+        it("keeps main and linked index writes private for " + indexName, () => {
+          worktree.getCommonDirectory = () => repository.getPath();
+          for (const [gitDirectory, owner, other] of [
+            [repository.getPath(), repository, worktree],
+            [worktreeGitDirectory, worktree, repository],
+          ]) {
+            const plan = registry.repositoryRefreshPlanForFileChanges([
+              {
+                action: "renamed",
+                path: path.join(gitDirectory, indexName),
+                oldPath: path.join(gitDirectory, indexName + ".lock"),
+              },
+            ]);
+            expect(plan.pending.get(owner)).toBe("status");
+            expect(plan.pending.has(other)).toBe(false);
+            expect(plan.deletedRepositories.has(other)).toBe(false);
+          }
+        });
+      }
+
+      it("routes a translated private worktree index alias to its owner", () => {
+        const commonAlias = path.join(workingDirectory, "common-index-alias");
+        const mainEntry = registry.entryByRepository.get(repository);
+        registry.claimGitDirectory(mainEntry, normalize(commonAlias));
+        mainEntry.gitDirectoryAliases.push(normalize(commonAlias));
+        worktree.getCommonDirectory = () => repository.getPath();
+
+        const plan = registry.repositoryRefreshPlanForFileChanges([
+          {
+            action: "updated",
+            path: path.join(commonAlias, "worktrees", "feature", "index"),
+          },
+        ]);
+        expect(plan.pending.get(worktree)).toBe("status");
+        expect(plan.pending.has(repository)).toBe(false);
+      });
+
+      it("still refreshes all worktrees for shared files in the same batch as a private index", () => {
+        worktree.getCommonDirectory = () => repository.getPath();
+        const plan = registry.repositoryRefreshPlanForFileChanges([
+          { action: "updated", path: path.join(repository.getPath(), "index") },
+          { action: "updated", path: path.join(repository.getPath(), "config") },
+        ]);
+        expect(plan.pending.get(repository)).toBe("both");
+        expect(plan.pending.get(worktree)).toBe("both");
       });
 
       it("routes private and common metadata through a discovered main-root alias without claiming shared ownership", () => {

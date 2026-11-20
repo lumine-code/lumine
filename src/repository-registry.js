@@ -56,6 +56,14 @@ function isGitMarkerPath(filePath) {
   return Boolean(filePath) && isGitMarkerName(path.basename(filePath));
 }
 
+function isWorktreeIndexName(name) {
+  return (
+    name === "index" ||
+    name === "index.lock" ||
+    /^sharedindex\.(?:[a-f0-9]{40}|[a-f0-9]{64})(?:\.lock)?$/.test(name)
+  );
+}
+
 async function pathAliasesAsync(filePath) {
   const aliases = new Set(pathAliases(filePath));
   try {
@@ -3039,6 +3047,7 @@ module.exports = class RepositoryRegistry {
         if (!changedPath) continue;
 
         const name = path.basename(changedPath);
+        const worktreeIndex = isWorktreeIndexName(gitMetadataName(changedPath));
         if (deleted) {
           const normalizedChangedPath = normalizePath(changedPath);
           deletedPaths.add(normalizedChangedPath);
@@ -3050,6 +3059,17 @@ module.exports = class RepositoryRegistry {
           }
         }
         for (const context of contextsFor(changedPath)) {
+          // The index and its split-index backing files belong to the Git
+          // directory of one checkout. Seeing its common directory does not
+          // mean seeing that index. An enclosing superproject still needs to
+          // learn about a submodule index under modules/<path>.
+          if (
+            worktreeIndex &&
+            ((context.gitRelativeDirectory === "" && context.commonOnly) ||
+              /^worktrees\/[^/]+$/.test(context.gitRelativeDirectory ?? ""))
+          ) {
+            continue;
+          }
           if (deleted) deletedRepositories.add(context.repository);
           if (
             deleted &&
@@ -3130,9 +3150,10 @@ module.exports = class RepositoryRegistry {
       metadataRouting,
     });
     if (gitMatches.length > 0) {
-      return gitMatches.map(({ entry, relativePath }) => ({
+      return gitMatches.map(({ entry, relativePath, commonOnly }) => ({
         repository: entry.repository,
         gitRelativeDirectory: relativePath,
+        ...(commonOnly ? { commonOnly } : {}),
       }));
     }
 
@@ -3159,14 +3180,15 @@ module.exports = class RepositoryRegistry {
     // repeating a fleet scan for every distinct changed directory.
     for (const entry of this.entriesById.values()) {
       if (!this.isLiveRoutingEntry(entry)) continue;
-      for (const aliases of this.metadataDomainAliases(entry)) {
+      for (const [domain, aliases] of this.metadataDomainAliases(entry).entries()) {
         for (const alias of aliases) {
           let entries = index.get(alias);
           if (!entries) {
-            entries = new Set();
+            entries = new Map();
             index.set(alias, entries);
           }
-          entries.add(entry);
+          // Private spelling wins if an alias belongs to both domains.
+          if (!entries.has(entry)) entries.set(entry, domain !== 0);
         }
       }
     }
@@ -3182,15 +3204,17 @@ module.exports = class RepositoryRegistry {
     const seen = new Set();
     let candidate = normalizedDirectory;
     while (true) {
-      const entries = index ? index.get(candidate) || [] : [this.gitDirectoryOwners.get(candidate)];
-      for (const entry of entries) {
+      const entries = index
+        ? index.get(candidate) || []
+        : [[this.gitDirectoryOwners.get(candidate), false]];
+      for (const [entry, commonOnly] of entries) {
         if (seen.has(entry) || !this.isLiveRoutingEntry(entry)) continue;
         seen.add(entry);
         const relativePath =
           candidate === normalizedDirectory
             ? ""
             : normalizedDirectory.slice(candidate.length + (candidate.endsWith(path.sep) ? 0 : 1));
-        matches.push({ entry, relativePath: relativePath.split(path.sep).join("/") });
+        matches.push({ entry, relativePath: relativePath.split(path.sep).join("/"), commonOnly });
       }
       const parent = path.dirname(candidate);
       if (parent === candidate) break;
