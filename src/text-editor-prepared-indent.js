@@ -5,7 +5,6 @@ const TextChangeMap = require("./text-change-map");
 const { inspectRows, indentSource } = require("./text-editor-comment-operations");
 const { autoIndentRanges, mergeRanges } = require("./text-editor-auto-indent");
 const { canPrepareInputIndentation } = require("./syntax-worker-protocol");
-const { insertPreparedSource, insertedSourceEvent } = require("./text-editor-snapshot-operations");
 const pending = new WeakMap();
 const queues = new WeakMap();
 const inputVersions = new WeakMap();
@@ -245,6 +244,8 @@ async function prepare(editor, data, options, queue) {
     const records = [],
       appliedChanges = [];
     subscriptions.add(draft.onDidApplyChanges((batch) => appliedChanges.push(...batch.changes)));
+    const pasteOperations =
+      data.move || data.mutation ? null : require("./text-editor-snapshot-operations");
     let mutation;
     if (data.mutation) {
       staged.autoIndent = editor.shouldAutoIndent();
@@ -334,14 +335,14 @@ async function prepare(editor, data, options, queue) {
         }
         check();
         staged.transact(() => {
-          const range = insertPreparedSource(selection, inserted, {
+          const range = pasteOperations.insertPreparedSource(selection, inserted, {
             ...options,
             undo: undefined,
             normalizeLineEndings: false,
             autoscroll: false,
           });
           records.push({ marker: staged.markBufferRange(range, { invalidate: "never" }), indent });
-          staged.emitWillPublishTextInsertion(insertedSourceEvent(inserted, range));
+          staged.emitWillPublishTextInsertion(pasteOperations.insertedSourceEvent(inserted, range));
           if (fullLine) {
             const position = oldPosition.translate([1, 0]);
             selection.setBufferRange([position, position]);
@@ -438,7 +439,7 @@ async function prepare(editor, data, options, queue) {
     const events = records.map(({ marker, text }) => {
       const range = marker.getBufferRange();
       if (mutation) return { text, range };
-      return insertedSourceEvent(
+      return pasteOperations.insertedSourceEvent(
         finalSource.subtext(finalSource.offsetAt(range.start), finalSource.offsetAt(range.end)),
         range,
       );
