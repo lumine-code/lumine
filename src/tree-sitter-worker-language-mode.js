@@ -1020,16 +1020,18 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   buildPresentationHighlightIterator() {
     const mode = this;
     let iterator;
+    const seekToPosition = (position, end) => {
+      const result = mode.cache.read(Point.fromObject(position), mode.buffer.clipPosition(end), [
+        mode.grammar.idForScope(mode.grammar.scopeName),
+      ]);
+      iterator = result.iterator;
+      return result.scopes;
+    };
     return {
       seek(position, endRow = mode.buffer.getLastRow()) {
-        const result = mode.cache.read(
-          Point.fromObject(position),
-          mode.buffer.clipPosition([endRow + 1, 0]),
-          [mode.grammar.idForScope(mode.grammar.scopeName)],
-        );
-        iterator = result.iterator;
-        return result.scopes;
+        return seekToPosition(position, [endRow + 1, 0]);
       },
+      seekToPosition,
       getPosition: () => iterator?.getPosition() ?? Point.INFINITY,
       getOpenScopeIds: () => iterator?.getOpenScopeIds() ?? [],
       getCloseScopeIds: () => iterator?.getCloseScopeIds() ?? [],

@@ -12,6 +12,13 @@ const TEXT_READ_UNITS = 4096;
 
 let nextScreenLineId = 1;
 
+function seekDecorations(iterator, start, end) {
+  return (
+    (iterator.seekToPosition ? iterator.seekToPosition(start, end) : iterator.seek(start, end)) ||
+    []
+  );
+}
+
 module.exports = class ScreenLineBuilder {
   constructor(displayLayer) {
     this.displayLayer = displayLayer;
@@ -35,8 +42,9 @@ module.exports = class ScreenLineBuilder {
     const iterator = languageMode.buildPresentationHighlightIterator
       ? languageMode.buildPresentationHighlightIterator(highlightingOwner)
       : languageMode.buildHighlightIterator();
+    const decorationEnd = iterator.seekToPosition ? end : end.row;
     this.containingScopeIds = [];
-    this.scopeIdsToReopen = iterator.seek(start, end.row) || [];
+    this.scopeIdsToReopen = seekDecorations(iterator, start, decorationEnd);
     this.beginLine();
     this.screenColumn = startColumn;
     this.bufferPosition = { row: start.row, column: start.column };
@@ -57,7 +65,7 @@ module.exports = class ScreenLineBuilder {
         this.emitText(layer.foldCharacter);
         this.emitCloseTag(this.getBuiltInScopeId(FOLD));
         this.bufferPosition = { row: firstBufferRow + run.endRowDelta, column: run.endColumn };
-        this.scopeIdsToReopen = iterator.seek(this.bufferPosition, end.row) || [];
+        this.scopeIdsToReopen = seekDecorations(iterator, this.bufferPosition, decorationEnd);
         trailingColumn = null;
         continue;
       }
@@ -75,7 +83,7 @@ module.exports = class ScreenLineBuilder {
         if (compare(this.bufferPosition, iterator.getPosition()) > 0) {
           this.emitTokenBoundary();
           this.closeContainingScopes();
-          this.scopeIdsToReopen = iterator.seek(this.bufferPosition, end.row) || [];
+          this.scopeIdsToReopen = seekDecorations(iterator, this.bufferPosition, decorationEnd);
         }
         this.emitDecorationBoundaries(iterator);
         if (character !== " " && character !== "\t") leading = false;
@@ -168,11 +176,12 @@ module.exports = class ScreenLineBuilder {
     const uncachedScreenLineRanges = this.findUncachedScreenLineRanges(
       this.screenRow,
       endScreenRow,
+      Boolean(decorationIterator.seekToPosition),
     );
     let uncachedScreenLineRangeIndex = 0;
     let uncachedScreenLineRange = uncachedScreenLineRanges[uncachedScreenLineRangeIndex];
     let decorationIteratorNeedsSeek = true;
-    let decorationIteratorEndBufferRow = null;
+    let decorationEnd;
     const hunks = this.displayLayer.spatialIndex.getChangesInNewRange(
       Point(this.screenRow, 0),
       Point(endScreenRow, 0),
@@ -237,7 +246,7 @@ module.exports = class ScreenLineBuilder {
         uncachedScreenLineRange = uncachedScreenLineRanges[++uncachedScreenLineRangeIndex];
       }
       if (uncachedScreenLineRange && this.screenRow === uncachedScreenLineRange.startScreenRow) {
-        decorationIteratorEndBufferRow = uncachedScreenLineRange.endBufferRow;
+        decorationEnd = uncachedScreenLineRange.decorationEnd;
         decorationIteratorNeedsSeek = true;
       }
 
@@ -254,8 +263,11 @@ module.exports = class ScreenLineBuilder {
         this.compareBufferPosition(decorationIterator.getPosition()) > 0
       ) {
         decorationIteratorNeedsSeek = false;
-        this.scopeIdsToReopen =
-          decorationIterator.seek(this.bufferPosition, decorationIteratorEndBufferRow) || [];
+        this.scopeIdsToReopen = seekDecorations(
+          decorationIterator,
+          this.bufferPosition,
+          decorationEnd,
+        );
       }
 
       var prevCachedScreenLine = this.displayLayer.cachedScreenLines.get(this.screenRow - 1);
@@ -286,7 +298,7 @@ module.exports = class ScreenLineBuilder {
             }
             reachedEndOfUncachedRange = this.screenRow === uncachedScreenLineRange.endScreenRow;
           } else {
-            this.emitFold(nextHunk, decorationIterator, decorationIteratorEndBufferRow);
+            this.emitFold(nextHunk, decorationIterator, decorationEnd);
             this.loadBufferLine(source);
           }
 
@@ -418,7 +430,7 @@ module.exports = class ScreenLineBuilder {
     return endColumn;
   }
 
-  findUncachedScreenLineRanges(startScreenRow, endScreenRow) {
+  findUncachedScreenLineRanges(startScreenRow, endScreenRow, exactEnd) {
     const ranges = [];
     const cachedScreenLines = this.displayLayer.cachedScreenLines;
     const screenLineLengths = this.displayLayer.screenLineLengths;
@@ -437,15 +449,20 @@ module.exports = class ScreenLineBuilder {
       }
 
       const lastScreenRow = screenRow - 1;
-      const endOfLastScreenLine = Point(lastScreenRow, screenLineLengths.get(lastScreenRow));
+      // The next screen row is an exclusive buffer checkpoint even when
+      // both rows are segments of a single long text line.
+      const endpoint = exactEnd
+        ? Point(screenRow, 0)
+        : Point(lastScreenRow, screenLineLengths.get(lastScreenRow));
+      const bufferEnd = this.displayLayer.translateScreenPositionWithSpatialIndex(
+        endpoint,
+        "forward",
+        exactEnd,
+      );
       ranges.push({
         startScreenRow: rangeStartScreenRow,
         endScreenRow: screenRow,
-        endBufferRow: this.displayLayer.translateScreenPositionWithSpatialIndex(
-          endOfLastScreenLine,
-          "forward",
-          false,
-        ).row,
+        decorationEnd: exactEnd ? bufferEnd : bufferEnd.row,
       });
     }
 
@@ -524,7 +541,7 @@ module.exports = class ScreenLineBuilder {
     }
   }
 
-  emitFold(nextHunk, decorationIterator, endBufferRow) {
+  emitFold(nextHunk, decorationIterator, decorationEnd) {
     this.emitCloseTag(this.getBuiltInScopeId(this.currentBuiltInClassNameFlags));
     this.currentBuiltInClassNameFlags = 0;
 
@@ -538,7 +555,7 @@ module.exports = class ScreenLineBuilder {
     this.bufferPosition.row = nextHunk.oldEnd.row;
     this.bufferPosition.column = nextHunk.oldEnd.column;
 
-    this.scopeIdsToReopen = decorationIterator.seek(this.bufferPosition, endBufferRow);
+    this.scopeIdsToReopen = seekDecorations(decorationIterator, this.bufferPosition, decorationEnd);
   }
 
   emitSoftWrap(nextHunk) {

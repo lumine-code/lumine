@@ -1,4 +1,8 @@
 const TextBuffer = require("../src/text-buffer");
+const HighlightCache = require("../src/tree-sitter-highlight-cache");
+const NullLanguageMode = require("../src/null-language-mode");
+const Point = require("../src/point");
+const TreeSitterWorkerLanguageMode = require("../src/tree-sitter-worker-language-mode");
 const TestLanguageMode = require("./text-buffer-helpers/test-language-mode");
 
 describe("ScreenLineBuilder", () => {
@@ -14,6 +18,97 @@ describe("ScreenLineBuilder", () => {
     buffers.push(buffer);
     return buffer;
   }
+
+  function installWorkerPaint(buffer, end, events) {
+    const mode = new NullLanguageMode({ buffer });
+    mode.grammar = { scopeName: "source.test", idForScope: () => 301 };
+    mode.cache = new HighlightCache();
+    mode.cache.replace([{ start: Point.ZERO, end, scopes: [301, 303], events }], {
+      revision: 0,
+      generation: 1,
+    });
+    mode.exactScreenEnds = true;
+    mode.buildPresentationHighlightIterator = function () {
+      const iterator =
+        TreeSitterWorkerLanguageMode.prototype.buildPresentationHighlightIterator.call(this);
+      if (!this.exactScreenEnds) delete iterator.seekToPosition;
+      return iterator;
+    };
+    buffer.setLanguageMode(mode);
+    return mode;
+  }
+
+  it("reads cached worker scopes only through the requested wrap and keeps boundary colors", () => {
+    const buffer = buildBuffer("x".repeat(20000));
+    const layer = buffer.addDisplayLayer({ softWrapColumn: 80 });
+    const events = Array.from({ length: 1999 }, (_, index) => {
+      const opening = index % 2 === 0 ? 305 : 303;
+      const closing = index % 2 === 0 ? 303 : 305;
+      return { position: Point(0, (index + 1) * 10), open: [opening], close: [closing] };
+    });
+    const mode = installWorkerPaint(buffer, Point(0, 20000), events);
+    const read = spyOn(mode.cache, "read").and.callThrough();
+    const rows = Array.from({ length: 48 }, (_, index) => index + 2);
+    const build = () =>
+      rows.map((row) => {
+        const { lineText, tags, softWrapIndent } = layer.getScreenLine(row, {});
+        return { lineText, tags, softWrapIndent };
+      });
+    const exact = build();
+
+    expect(read.calls.allArgs().map(([start, end]) => [start.toArray(), end.toArray()])).toEqual(
+      rows.map((row) => [
+        [0, row * 80],
+        [0, (row + 1) * 80],
+      ]),
+    );
+    expect(
+      read.calls
+        .all()
+        .every(({ returnValue }) => returnValue.iterator.snapshot.events.length <= 10),
+    ).toBe(true);
+    layer.cachedScreenLines.length = 0;
+    mode.exactScreenEnds = false;
+    expect(build()).toEqual(exact);
+  });
+
+  it("keeps exact worker bounds through folds, tabs, EOL invisibles, and Unicode windows", () => {
+    const buffer = buildBuffer("ab\tcd   \r\ninside fold\r\n  🐲z\t \nlast");
+    const layers = [6, Infinity].map((softWrapColumn) => {
+      const layer = buffer.addDisplayLayer({
+        softWrapColumn,
+        softWrapHangingIndent: 1,
+        invisibles: { tab: "→", space: "·", cr: "¤", eol: "¬" },
+      });
+      layer.foldBufferRange([
+        [0, 4],
+        [2, 2],
+      ]);
+      return layer;
+    });
+    const events = [
+      { position: Point(0, 3), open: [305], close: [303] },
+      { position: Point(1, 8), open: [307], close: [] },
+      { position: Point(2, 2), open: [309], close: [307] },
+      { position: Point(2, 5), open: [], close: [309, 305] },
+      { position: Point(2, 7), open: [303], close: [] },
+      { position: Point(3, 2), open: [], close: [303] },
+    ];
+    const mode = installWorkerPaint(buffer, Point(3, 4), events);
+    const content = ({ lineText, tags, softWrapIndent }) => ({ lineText, tags, softWrapIndent });
+    const draw = () => [
+      layers[0].getScreenLines().map(content),
+      ...[
+        [0, 5],
+        [2, 9],
+        [4, 20],
+      ].map(([start, end]) => content(layers[1].getScreenLineWindow(0, start, end, {}))),
+    ];
+    const exact = draw();
+    for (const layer of layers) layer.cachedScreenLines.length = 0;
+    mode.exactScreenEnds = false;
+    expect(draw()).toEqual(exact);
+  });
 
   it("reads once from a wrap checkpoint and emits ordinary text in runs", () => {
     const buffer = buildBuffer("x".repeat(4000));
