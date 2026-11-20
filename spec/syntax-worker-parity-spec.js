@@ -2,6 +2,7 @@ const path = require("node:path");
 const Service = require("../src/syntax-worker-service");
 const WorkerMode = require("../src/tree-sitter-worker-language-mode");
 const InlineMode = require("../src/tree-sitter-language-mode");
+const { PREVIEW_DOCUMENT_UNITS } = require("../src/syntax-worker-protocol");
 const fixtures = [
   [
     "source.js",
@@ -23,6 +24,49 @@ const fixtures = [
   ["source.js", "function work() {\n  return 1;\n}\n".repeat(18000)],
 ];
 
+async function waitForExactPaint(editor, mode, rows, context, requireCurrent) {
+  const buffer = editor.getBuffer();
+  const worker = mode.asynchronousSyntax;
+  const cache = worker ? mode.cache : mode.highlightCache;
+  const missingRows = () => {
+    if (mode.publicationPending) return rows;
+    const stamp = requireCurrent
+      ? {
+          revision: buffer.getTextRevision(),
+          generation: worker ? mode.session.generation : mode.presentation.generation,
+          ...(worker ? { presentation: mode.presentationVersion } : {}),
+        }
+      : null;
+    return rows.filter(
+      (row) =>
+        !cache.covers(
+          buffer.clipPosition([row, 0]),
+          buffer.clipPosition([row + 1, 0]),
+          stamp,
+          (snapshot) => snapshot.quality === "exact",
+        ),
+    );
+  };
+  const label = `${context} ${worker ? "worker" : "inline"} ${requireCurrent ? "current " : ""}exact paint`;
+  try {
+    await conditionPromise(() => missingRows().length === 0, label);
+  } catch (cause) {
+    const coverage = cache.snapshots.map(({ start, end, quality, reason, stamp }) => ({
+      start: [start.row, start.column],
+      end: [end.row, end.column],
+      quality,
+      reason,
+      revision: stamp?.revision,
+      generation: stamp?.generation,
+      presentation: stamp?.presentation,
+    }));
+    throw new Error(
+      `${label} still missing rows ${missingRows().join(", ")}. Cached windows ${JSON.stringify(coverage)}`,
+      { cause },
+    );
+  }
+}
+
 describe("Syntax owner parity", () => {
   beforeEach(async () => {
     jasmine.useRealClock();
@@ -43,6 +87,7 @@ describe("Syntax owner parity", () => {
     it(`matches trees, scopes and paint for ${scope} (${text.length} UTF-16 units) through edits and undo`, async () => {
       const service = new Service(lumine.grammars);
       const editors = [];
+      const exactPaint = !hasLongString && text.length <= PREVIEW_DOCUMENT_UNITS;
       try {
         for (const Mode of [InlineMode, WorkerMode]) {
           const editor = lumine.workspace.buildTextEditor();
@@ -55,10 +100,14 @@ describe("Syntax owner parity", () => {
               config: lumine.config,
               grammars: lumine.grammars,
               service,
+              // Compare exact tokens independently of scheduler pauses during
+              // an inline query. Size and structural limits still apply.
+              queryBudget: Mode === InlineMode && exactPaint ? { now: () => 0 } : undefined,
             }),
           );
         }
-        const compare = async () => {
+        const compare = async (phase) => {
+          const context = `${scope}, ${phase}`;
           const states = [];
           for (const editor of editors) {
             await editor.whenGrammarSettled();
@@ -88,7 +137,13 @@ describe("Syntax owner parity", () => {
               ]),
             );
             const scopes = await editor.getScopeDescriptorsForBufferPositions(positions);
+            // After an edit, unchanged rows may reuse coordinate-adjusted
+            // exact paint. Token equality still checks the retained content.
+            if (exactPaint)
+              await waitForExactPaint(editor, mode, rows, context, phase === "initial");
             states.push({
+              rows,
+              positions,
               structure,
               scopes: scopes.map((value) => value.getScopesArray()),
               paint: rows.map((row) =>
@@ -115,15 +170,31 @@ describe("Syntax owner parity", () => {
             }
             expect(mode.error).toBeFalsy();
           }
-          expect(states[1]).toEqual(states[0]);
+          const [inline, worker] = states;
+          expect(worker.structure).withContext(`${context} structure`).toEqual(inline.structure);
+          expect(worker.positions)
+            .withContext(`${context} scope positions`)
+            .toEqual(inline.positions);
+          expect(worker.scopes.length)
+            .withContext(`${context} scope count`)
+            .toBe(inline.scopes.length);
+          expect(worker.rows).withContext(`${context} screen rows`).toEqual(inline.rows);
+          for (const [index, position] of inline.positions.entries())
+            expect(worker.scopes[index])
+              .withContext(`${context} scopes at ${position.join(":")}`)
+              .toEqual(inline.scopes[index]);
+          for (const [index, row] of inline.rows.entries())
+            expect(worker.paint[index])
+              .withContext(`${context} tokens at screen row ${row}`)
+              .toEqual(inline.paint[index]);
         };
-        await compare();
+        await compare("initial");
         for (const editor of editors) editor.getBuffer().insert([0, 0], "\n");
-        await compare();
+        await compare("edited");
         for (const editor of editors) editor.undo();
-        await compare();
+        await compare("undone");
         for (const editor of editors) editor.redo();
-        await compare();
+        await compare("redone");
       } finally {
         for (const editor of editors) editor.destroy();
         service.dispose();
