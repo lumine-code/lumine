@@ -240,7 +240,7 @@ class Patch {
     const empty =
       (compare(next.oldStart, next.oldEnd) === 0 && compare(next.newStart, next.newEnd) === 0) ||
       (this.#discardIdentities && oldSource && newSource && oldSource.equals(newSource));
-    this.#changes.splice(first, last - first, ...(empty ? [] : [next]));
+    this.#changes.splice(first, last - first, empty ? [] : [next]);
   }
 
   spliceOld(start, oldExtent, newExtent) {
@@ -267,15 +267,58 @@ class Patch {
     const a = first > 0 ? this.#changes.at(first - 1) : null,
       b = this.#changes.at(first);
     if (a && b && compare(a.oldEnd, b.oldStart) === 0) {
-      this.#changes.splice(first - 1, 2, {
-        oldStart: a.oldStart,
-        oldEnd: b.oldEnd,
-        newStart: a.newStart,
-        newEnd: traverse(a.newEnd, distance(b.newEnd, b.newStart)),
-        oldSource: a.oldSource && b.oldSource ? append(a.oldSource, b.oldSource) : null,
-        newSource: a.newSource && b.newSource ? append(a.newSource, b.newSource) : null,
-      });
+      this.#changes.splice(first - 1, 2, [
+        {
+          oldStart: a.oldStart,
+          oldEnd: b.oldEnd,
+          newStart: a.newStart,
+          newEnd: traverse(a.newEnd, distance(b.newEnd, b.newStart)),
+          oldSource: a.oldSource && b.oldSource ? append(a.oldSource, b.oldSource) : null,
+          newSource: a.newSource && b.newSource ? append(a.newSource, b.newSource) : null,
+        },
+      ]);
     }
+  }
+
+  // Replace wraps in a fold-free, tab-free span of one buffer row. The incoming
+  // wrap and any matching wrap at the suffix boundary belong to the retained
+  // geometry. Only edges between consecutive lengths become new zero-indent
+  // soft wraps.
+  replaceSoftWraps(start, { oldEnd, newEnd, screenRow, lengths }) {
+    if (this.#merge || this.coordinateMap) {
+      throw new TypeError("Soft wraps require a geometry patch without merging");
+    }
+    const { row, column } = start;
+    this.spliceOld(start, { row: 0, column: oldEnd - column }, { row: 0, column: newEnd - column });
+    const wrapCount = lengths.length - 1;
+    if (wrapCount === 0) return;
+
+    const records = new Array(wrapCount);
+    let bufferColumn = column;
+    for (let index = 0; index < wrapCount; index++) {
+      const width = lengths[index];
+      bufferColumn += width;
+      const position = { row, column: bufferColumn };
+      records[index] = {
+        oldStart: position,
+        oldEnd: position,
+        newStart: { row: screenRow + index, column: width },
+        newEnd: { row: screenRow + index + 1, column: 0 },
+        oldSource: null,
+        newSource: null,
+      };
+    }
+
+    const first = this.#changes.lowerBound(
+      (change) => compare(change.oldStart, records[0].oldStart) >= 0,
+    );
+    const suffix = this.#changes.at(first);
+    if (suffix) {
+      const last = records[wrapCount - 1];
+      const suffixStart = traverse(last.newEnd, distance(suffix.oldStart, last.oldEnd));
+      this.#changes.shiftSuffix(first, null, null, suffix.newStart, suffixStart);
+    }
+    this.#changes.splice(first, 0, records);
   }
 
   spliceMany(values) {

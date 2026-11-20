@@ -1,3 +1,5 @@
+const path = require("node:path");
+const { ipcRenderer } = require("electron");
 const Service = require("../src/syntax-worker-service");
 const WorkerMode = require("../src/tree-sitter-worker-language-mode");
 const dispatchInput = require("../src/text-editor-input-queue");
@@ -329,6 +331,81 @@ describe("Atomic input indentation", () => {
     expect(editor.getText()).toBe("class Record:\n    ");
     editor.undo();
     expect(editor.getText()).toBe("class Record:");
+  });
+
+  it("renders the first changed frame indented when trusted typing follows Enter", async () => {
+    const original = "class Record:\n    sentinel = 1";
+    await start(original);
+    lumine.config.set("editor.showInvisibles", false);
+    jasmine.attachToDOM(lumine.workspace.getElement());
+    const element = editor.getElement();
+    const hiddenInput = element.getComponent().getHiddenInput();
+    const bindings = lumine.keymaps.add(
+      "atomic-input-indent-spec",
+      require("@lumine-code/season").readFileSync(path.join(__dirname, "../keymaps/base.json")),
+    );
+    editor.setCursorBufferPosition([0, Infinity]);
+    hiddenInput.focus({ preventScroll: true });
+    const paintedRow = () =>
+      element.querySelector('.line[data-screen-row="1"]:not([data-off-screen])')?.textContent;
+    const before = "    sentinel = 1";
+    const indent = "    ";
+    const typed = "    x";
+    const finalText = `class Record:\n${typed}\n${before}`;
+    const frames = [];
+    let frame;
+    const observe = () => {
+      if (!element.isConnected) return;
+      frames.push(paintedRow());
+      frame = requestAnimationFrame(observe);
+    };
+    const changes = [];
+    const publication = editor.getBuffer().onDidApplyChanges(() => changes.push(editor.getText()));
+    const received = Promise.withResolvers();
+    hiddenInput.addEventListener("textInput", (event) => received.resolve(event), { once: true });
+    let gate;
+    try {
+      await waitForFrames(() => paintedRow() === before, { description: "initial editor rows" });
+      frame = requestAnimationFrame(observe);
+      gate = hold();
+      await ipcRenderer.invoke("lumine:window", "sendInputEvent", {
+        type: "keyDown",
+        keyCode: "Enter",
+      });
+      await ipcRenderer.invoke("lumine:window", "sendInputEvent", {
+        type: "keyUp",
+        keyCode: "Enter",
+      });
+      await gate.ready;
+      await ipcRenderer.invoke("lumine:window", "sendInputEvent", { type: "char", keyCode: "x" });
+      const event = await received.promise;
+      expect(event.isTrusted).toBe(true);
+      expect(event.data).toBe("x");
+      for (let i = 0; i < 2; i++) await new Promise(requestAnimationFrame);
+      expect(frames.length).toBeGreaterThan(0);
+      expect(frames.every((text) => text === before)).toBe(true);
+      expect(changes).toEqual([]);
+
+      gate.release();
+      await waitForFrames(() => paintedRow() === typed, { description: "indented typed row" });
+      await editor.whenGrammarSettled();
+      for (let i = 0; i < 2; i++) await new Promise(requestAnimationFrame);
+      const firstChanged = frames.findIndex((text) => text !== before);
+      expect(firstChanged).toBeGreaterThanOrEqual(0);
+      const changedFrames = frames.slice(firstChanged);
+      const firstTyped = changedFrames.indexOf(typed);
+      expect(firstTyped).toBeGreaterThanOrEqual(0);
+      expect(changedFrames.slice(0, firstTyped).every((text) => text === indent)).toBe(true);
+      expect(changedFrames.slice(firstTyped).every((text) => text === typed)).toBe(true);
+      expect(changes).toEqual([`class Record:\n${indent}\n${before}`, finalText]);
+      expect(editor.getText()).toBe(finalText);
+      expect(editor.getCursorBufferPosition()).toEqual([1, 5]);
+    } finally {
+      gate?.release();
+      cancelAnimationFrame(frame);
+      publication.dispose();
+      bindings.dispose();
+    }
   });
 
   it("does not replay queued typing at an independently moved cursor after cancelling Enter", async () => {

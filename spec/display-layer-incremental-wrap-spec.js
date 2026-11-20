@@ -53,6 +53,32 @@ describe("DisplayLayer incremental wrapping", () => {
     expect(layer.translateBufferPosition([0, 1000001]).toArray()).toEqual([12500, 1]);
   });
 
+  it("bulk replaces every affected wrap when an edit near the head cannot converge", () => {
+    const line = '{"payload":[' + '"abc de-f.,ghi jkl.mnop",'.repeat(41000) + '"finish"]}';
+    const { buffer, layer } = create(line + "\na\n  hidden\nz\nlast", 81);
+    const fold = [
+      [1, 1],
+      [3, 0],
+    ];
+    layer.foldBufferRange(fold);
+    for (let index = 0; index < 20; index++) buffer.insert([0, line.length - 40 + index], " ");
+    const scalarSplice = spyOn(layer.spatialIndex, "splice").and.callThrough();
+    const rowSplice = spyOn(layer, "spliceScreenLineLengths").and.callThrough();
+
+    for (let index = 0; index < 5; index++) buffer.insert([0, 20 + index], " ");
+
+    expect(scalarSplice).not.toHaveBeenCalled();
+    const [start, removed, inserted] = rowSplice.calls.mostRecent().args;
+    expect(start).toBe(0);
+    expect(removed).toBe(13667);
+    expect(inserted.length).toBe(13667);
+    const fresh = create(buffer.getText(), 81).layer;
+    fresh.foldBufferRange(fold);
+    expect(layer.spatialIndex.getChanges()).toEqual(fresh.spatialIndex.getChanges());
+    expect(layer.screenLineLengths.slice()).toEqual(fresh.screenLineLengths.slice());
+    expect(layer.getText(13665)).toBe(fresh.getText(13665));
+  });
+
   it("maintains exact one-column wrap checkpoints through insert, delete, undo and redo", () => {
     const { buffer, layer } = create("a\n" + "x".repeat(4200) + "\nb", 1);
     buffer.insert([1, 4198], "a -b");

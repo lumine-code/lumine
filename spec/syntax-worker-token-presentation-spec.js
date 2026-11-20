@@ -14,6 +14,68 @@ function scopesAt(editor, [row, column]) {
 
 describe("Worker token boundary presentation", () => {
   beforeEach(() => jasmine.useRealClock());
+
+  it("repaints existing text when a typed slash changes a number into a comment", async () => {
+    await lumine.packages.activatePackage("language-javascript");
+    jasmine.attachToDOM(lumine.views.getView(lumine.workspace));
+    const service = new Service(lumine.grammars);
+    const editor = lumine.workspace.buildTextEditor({ autoIndent: false });
+    editor.setText("value / 2\n");
+    const mode = new WorkerMode({
+      buffer: editor.getBuffer(),
+      grammar: lumine.grammars.grammarForScopeName("source.js"),
+      service,
+    });
+    editor.getBuffer().setLanguageMode(mode);
+    const pane = lumine.workspace.getActivePane();
+    pane.addItem(editor);
+    pane.activateItem(editor);
+    const frame = () => new Promise(requestAnimationFrame);
+    const line = () => editor.getElement().querySelector('.line[data-screen-row="0"]');
+    const paint = async () => {
+      await editor.whenGrammarSettled();
+      await mode.refresh();
+      await frame();
+    };
+    const viewRequested = Promise.withResolvers();
+    const releaseView = Promise.withResolvers();
+    try {
+      editor.setCursorBufferPosition([0, 7]);
+      await frame();
+      await paint();
+      expect(line()?.querySelector(".syntax--constant.syntax--numeric")?.textContent).toBe("2");
+
+      const editRevision = editor.getBuffer().getTextRevision() + 1;
+      const request = service.request.bind(service);
+      spyOn(service, "request").and.callFake((session, operation, data, options) => {
+        if (operation !== "view" || options.revision !== editRevision)
+          return request(session, operation, data, options);
+        viewRequested.resolve();
+        return releaseView.promise.then(() => request(session, operation, data, options));
+      });
+      editor.insertText("/");
+      await viewRequested.promise;
+      await frame();
+      expect(line()?.textContent).toBe("value // 2");
+      expect(line()?.querySelector(".syntax--constant.syntax--numeric")?.textContent).toBe("2");
+      expect(line()?.querySelector(".syntax--comment.syntax--line")).toBeNull();
+
+      releaseView.resolve();
+      await paint();
+      expect(line()?.querySelector(".syntax--comment.syntax--line")?.textContent).toContain("2");
+      expect(line()?.querySelector(".syntax--constant.syntax--numeric")).toBeNull();
+
+      editor.undo();
+      await paint();
+      expect(line()?.textContent).toBe("value / 2");
+      expect(line()?.querySelector(".syntax--constant.syntax--numeric")?.textContent).toBe("2");
+    } finally {
+      releaseView.resolve();
+      editor.destroy();
+      await service.dispose();
+    }
+  });
+
   for (const { pack, scope, marked, insert, semanticChange } of cases) {
     it(`retains the inserted character's paint in ${scope}: ${marked} + ${JSON.stringify(insert)}`, async () => {
       await lumine.packages.activatePackage(pack);

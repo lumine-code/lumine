@@ -1576,16 +1576,18 @@ class DisplayLayer {
     // A wrap before the edit can look ahead a full screen row to find its
     // break. Including that complete lookahead preserves the prefix.
     let restart = Math.max(0, editColumn - width - 1);
-    const oldLineStart = prepared.source.lineStart(row);
-    const oldLastNonSpace =
-      prepared.length -
-      prepared.source.trailingHorizontalWhitespace(oldLineStart, oldLineStart + prepared.length) -
-      1;
-    if (oldLastNonSpace < oldEnd) {
-      // Whitespace presentation can change farther left than the wraps.
-      const newLastNonSpace =
-        length - source.trailingHorizontalWhitespace(lineStart, lineStart + length) - 1;
-      restart = Math.min(restart, oldLastNonSpace, newLastNonSpace);
+    if (restart > 0) {
+      const oldLineStart = prepared.source.lineStart(row);
+      const oldLastNonSpace =
+        prepared.length -
+        prepared.source.trailingHorizontalWhitespace(oldLineStart, oldLineStart + prepared.length) -
+        1;
+      if (oldLastNonSpace < oldEnd) {
+        // Whitespace presentation can change farther left than the wraps.
+        const newLastNonSpace =
+          length - source.trailingHorizontalWhitespace(lineStart, lineStart + length) - 1;
+        restart = Math.min(restart, oldLastNonSpace, newLastNonSpace);
+      }
     }
 
     const startScreenRow = this.translateBufferPositionWithSpatialIndex(
@@ -1599,7 +1601,6 @@ class DisplayLayer {
     ).column;
     const reader = boundedWrapReader(source, lineStart, length);
     const lengths = [];
-    const splices = [];
     let column = start;
     let oldStop = prepared.length;
     let newStop = length;
@@ -1634,19 +1635,18 @@ class DisplayLayer {
           break;
         }
       }
-      queueSpatialSplice(splices, startScreenRow + lengths.length - 1, wrap - column, 0, 0, 1, 0);
       column = wrap;
     }
     if (newStop === length) lengths.push(length - column);
 
     // The incoming wrap has zero width in the buffer and ends at `start`.
     // spliceOld retains it alongside earlier hunks.
-    this.spatialIndex.spliceOld(
-      Point(row, start),
-      Point(0, oldStop - start),
-      Point(0, newStop - start),
-    );
-    applyGeometrySplices(this.spatialIndex, splices);
+    this.spatialIndex.replaceSoftWraps(Point(row, start), {
+      oldEnd: oldStop,
+      newEnd: newStop,
+      screenRow: startScreenRow,
+      lengths,
+    });
     if (mode !== prepared.mode) this.layoutState.reflowableRows.set(row, mode);
     const oldCount = oldEndScreenRow - startScreenRow;
     const newCount = lengths.length;

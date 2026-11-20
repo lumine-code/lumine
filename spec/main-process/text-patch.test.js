@@ -103,6 +103,35 @@ test("retained geometry copies survive lazy suffix shifts and independent edits"
   assert.equal(copy.getChanges().at(-1).newStart.row, 10000);
   assert.equal(patch.getChanges().at(-1).newStart.row, 10099);
 });
+
+test("bulk soft-wrap replacement matches scalar geometry and retains a copied root", () => {
+  const original = new Patch({ mergeAdjacentChanges: false });
+  const zero = { row: 0, column: 0 };
+  const wrap = { row: 1, column: 0 };
+  original.splice({ row: 0, column: 4 }, zero, wrap);
+  for (const [index, column] of [10, 7, 12, 9, 16, 1].entries()) {
+    original.splice({ row: 2 + index, column }, zero, wrap);
+  }
+  original.splice({ row: 9, column: 3 }, { row: 3, column: 7 }, { row: 0, column: 1 });
+  const retained = original.getChanges();
+
+  for (const lengths of [[29], [13, 18], [6, 12, 4, 11, 2]]) {
+    const actual = original.copy();
+    const expected = original.copy();
+    const start = { row: 1, column: 10 };
+    const oldEnd = 38;
+    const newEnd = start.column + lengths.reduce((sum, length) => sum + length);
+    const screenRow = 3;
+    expected.spliceOld(start, { row: 0, column: oldEnd - 10 }, { row: 0, column: newEnd - 10 });
+    for (let index = 0; index < lengths.length - 1; index++) {
+      expected.splice({ row: screenRow + index, column: lengths[index] }, zero, wrap);
+    }
+    actual.replaceSoftWraps(start, { oldEnd, newEnd, screenRow, lengths });
+    assert.deepEqual(actual.getChanges(), expected.getChanges());
+    assert.deepEqual(original.getChanges(), retained);
+  }
+});
+
 test("geometry lookup snapshots are reused until their persistent change record changes", () => {
   const patch = new Patch({ mergeAdjacentChanges: false });
   for (let row = 0; row < 128; row++)

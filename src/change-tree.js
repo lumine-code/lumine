@@ -185,7 +185,7 @@ class ChangeTree {
   map(callback) {
     return this.slice().map(callback);
   }
-  splice(start, removed, ...inserted) {
+  splice(start, removed, inserted = []) {
     const [before, rest] = split(this.#root, start);
     const [, after] = split(rest, removed);
     this.#root = join(join(before, build(inserted)), after);
