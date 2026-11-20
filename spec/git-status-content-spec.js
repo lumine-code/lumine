@@ -190,6 +190,24 @@ describe("Git status content verification", () => {
     ).toEqual([["LICENSE", "M"]]);
   });
 
+  it("skips content verification if status was read against a replaced index", async () => {
+    const context = await fixture();
+    const raw = await context.rawStatus();
+    expect(raw).toContain("1 .M ");
+    const run = jasmine.createSpy("Git runner").and.callFake(async (args, cwd, options) => {
+      if (args[0] === "status") {
+        fs.utimesSync(path.join(context.gitDirectory, "index"), new Date(1000), new Date(1000));
+        return raw;
+      }
+      return context.runner.run(args, cwd, options);
+    });
+
+    expect(await context.provider(run).getStatus(context.workingDirectory, context.options)).toBe(
+      raw,
+    );
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   it("retains candidates if the index changes during content verification", async () => {
     const context = await fixture();
     const provider = context.provider(async (args, cwd, options) => {

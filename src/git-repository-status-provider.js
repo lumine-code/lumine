@@ -91,6 +91,10 @@ async function normalizeWorktreeStatus(
   const records = String(output).split("\0");
   const candidates = contentCandidates(records);
   if (candidates.length === 0) return output;
+  // A replaced index makes this status ineligible for content verification.
+  const currentIndex = await fileSignature(indexPath);
+  throwIfAborted(options.signal);
+  if (before !== currentIndex) return output;
   const signatures = await fileSignatures(workingDirectory, candidates, options.signal);
   let hashes;
   try {
