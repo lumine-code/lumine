@@ -62,7 +62,6 @@ function traceNativeTransitions(window) {
 }
 
 app.setPath("userData", process.env.LUMINE_WINDOW_STATE_PROFILE);
-app.on("window-all-closed", () => app.quit());
 
 async function change(window, event, operation, complete, description = event) {
   if (complete()) return;
@@ -350,13 +349,11 @@ app
       );
       assert.deepEqual(store.read(name), result.saved);
     }
-    // Let the native mode callback unwind after the snapshot has been saved.
-    // Destroying the minimized fixture guarantees its closed event and allows
-    // the test application to quit through window-all-closed.
-    setImmediate(() => {
-      if (stage === "minimize") window.destroy();
-      else window.close();
-    });
+    // Let the native mode callback unwind. The snapshot has already been
+    // frozen and reported, so teardown can bypass the page's close handshake.
+    await new Promise(setImmediate);
+    window.destroy();
+    app.exit(0);
   })
   .catch((error) => {
     console.error(`WINDOW_STATE_TRACE ${JSON.stringify(nativeTrace)}`);
