@@ -4,11 +4,9 @@
    to which its children can be positioned. */
 lumine-dock {
   --lumine-dock-divider-size: 1px;
-  --dock-grip-size: 8px;
-  --dock-grip-overlap: calc((var(--dock-grip-size) - var(--lumine-dock-divider-size)) / 2);
   display: flex;
   position: relative;
-  anchor-scope: --lumine-dock-divider;
+  anchor-scope: --lumine-dock-divider, --lumine-dock-toggle;
 }
 
 .lumine-dock-inner {
@@ -230,6 +228,8 @@ lumine-dock > .lumine-dock-inner:not(.lumine-dock-open) > .lumine-dock-toggle-bu
   }
 
   &.lumine-dock-toggle-button-visible {
+    anchor-name: --lumine-dock-toggle;
+
     .lumine-dock-toggle-button-inner {
       pointer-events: auto;
     }
@@ -320,48 +320,49 @@ lumine-dock .lumine-dock-content-wrapper > .lumine-dock-resize-handle {
   width: auto;
   height: auto;
   flex: 0 0 auto;
-  pointer-events: none;
 
   &.lumine-dock-resize-handle-resizable {
-    pointer-events: auto;
-
-    &::before {
-      content: "";
+    &::before,
+    &::after {
       /* The viewport-positioned hit area can extend past the dock's mask. */
       position: fixed;
       position-anchor: --lumine-dock-divider;
-      z-index: 9;
       cursor: inherit;
     }
-
     &.left,
     &.right {
       cursor: col-resize;
 
-      &::before {
-        inset: anchor(top) auto anchor(bottom) calc(anchor(center) - var(--dock-grip-size) / 2);
-        width: var(--dock-grip-size);
+      &::before,
+      &::after {
+        left: calc(anchor(center) - var(--resize-grip-size) / 2);
+        width: var(--resize-grip-size);
       }
-    }
-    &.left::before {
-      clip-path: inset(
-        0 var(--dock-grip-workspace-inset, 0px) 0 var(--dock-grip-content-inset, 0px)
-      );
-    }
-    &.right::before {
-      clip-path: inset(
-        0 var(--dock-grip-content-inset, 0px) 0 var(--dock-grip-workspace-inset, 0px)
-      );
+      &::before {
+        top: anchor(top);
+        bottom: anchor(--lumine-dock-toggle top, anchor(bottom));
+      }
+      &::after {
+        /* Without a visible toggle, the first segment fills the divider. */
+        top: anchor(--lumine-dock-toggle bottom, anchor(bottom));
+        bottom: anchor(bottom);
+      }
     }
     &.bottom {
       cursor: row-resize;
 
+      &::before,
+      &::after {
+        top: calc(anchor(center) - var(--resize-grip-size) / 2);
+        height: var(--resize-grip-size);
+      }
       &::before {
-        inset: calc(anchor(center) - var(--dock-grip-size) / 2) anchor(right) auto anchor(left);
-        height: var(--dock-grip-size);
-        clip-path: inset(
-          var(--dock-grip-workspace-inset, 0px) 0 var(--dock-grip-content-inset, 0px)
-        );
+        left: anchor(left);
+        right: anchor(--lumine-dock-toggle left, anchor(right));
+      }
+      &::after {
+        left: anchor(--lumine-dock-toggle right, anchor(right));
+        right: anchor(right);
       }
     }
   }
@@ -379,59 +380,6 @@ lumine-dock .lumine-dock-content-wrapper > .lumine-dock-resize-handle {
   &.bottom {
     height: var(--lumine-dock-divider-size);
     border-top: var(--lumine-dock-divider-size) solid var(--tool-panel-border-color);
-  }
-}
-
-/* Inside :has(), & identifies renderer-owned scroll surfaces. These surfaces
-   and horizontal tracks can meet either end of a side divider. */
-:is([data-scrollbar="none"], [role="scrollbar"], textarea, iframe, webview, .xterm) {
-  lumine-dock:has(.item-views :is(.lumine-scrollbar.horizontal.is-scrollable, &)) {
-    --dock-grip-content-inset: var(--dock-grip-overlap);
-  }
-
-  lumine-workspace-axis.horizontal:has(
-      > lumine-workspace-axis.vertical
-        :is(.item-views, lumine-panel.tool-panel:not([style*="display: none"]))
-        :is(.lumine-scrollbar.horizontal.is-scrollable, &)
-    )
-    > lumine-panel-container:is(.left, .right)
-    > lumine-dock,
-  lumine-workspace-axis.vertical:has(
-      > lumine-pane-container .item-views :is(.lumine-scrollbar.is-scrollable, &),
-      > lumine-panel-container.bottom
-        > lumine-panel:not([style*="display: none"])
-        :is(.lumine-scrollbar.is-scrollable, &)
-    )
-    > lumine-panel-container.bottom
-    > lumine-dock {
-    --dock-grip-workspace-inset: var(--dock-grip-overlap);
-  }
-}
-
-/* Managed vertical tracks only affect a side divider when they face it. */
-.lumine-scrollbar.vertical.is-scrollable {
-  lumine-dock.left:has(.item-views &:not(.is-left > *)),
-  lumine-dock.right:has(.item-views .is-left > &),
-  lumine-dock.bottom:has(.item-views &) {
-    --dock-grip-content-inset: var(--dock-grip-overlap);
-  }
-
-  lumine-workspace-axis.horizontal:has(
-      > lumine-workspace-axis.vertical
-        :is(.item-views, lumine-panel.tool-panel:not([style*="display: none"]))
-        .is-left
-        > &
-    )
-    > lumine-panel-container.left
-    > lumine-dock,
-  lumine-workspace-axis.horizontal:has(
-      > lumine-workspace-axis.vertical
-        :is(.item-views, lumine-panel.tool-panel:not([style*="display: none"]))
-        &:not(.is-left > *)
-    )
-    > lumine-panel-container.right
-    > lumine-dock {
-    --dock-grip-workspace-inset: var(--dock-grip-overlap);
   }
 }
 

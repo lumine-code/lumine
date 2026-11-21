@@ -1,4 +1,5 @@
 const { copyableElement } = require("./helpers/pane-item-fixtures");
+const { waitForFrames } = require("./helpers/async-spec-helpers");
 const PaneContainer = require("../src/pane-container");
 const PaneAxis = require("../src/pane-axis");
 
@@ -141,6 +142,72 @@ describe("PaneContainerElement", function () {
       expect(verticalPanes[0]).toBe(pane2.getElement());
       expect(verticalPanes[1]).toBe(pane3.getElement());
     }));
+
+  describe("resize handle hit testing", () => {
+    for (const orientation of ["horizontal", "vertical"]) {
+      it(`keeps the ${orientation} split grip 5px wide beside a scrollbar`, async () => {
+        const workspace = lumine.workspace;
+        const root = workspace.getElement();
+        root.style.cssText = "position: fixed; left: 0; top: 0; width: 800px; height: 500px;";
+        jasmine.attachToDOM(root);
+
+        const sideBySide = orientation === "horizontal";
+        const pane = workspace.getCenter().getActivePane();
+        const item = copyableElement("div", ["center"]);
+        item.style.zIndex = "1";
+        const context = item.appendChild(document.createElement("div"));
+        context.style.cssText = sideBySide
+          ? "position: absolute; inset: 40px 0 auto; height: 100px; isolation: isolate;"
+          : "position: absolute; inset: 0 auto 0 40px; width: 100px; isolation: isolate;";
+        const scrollport = context.appendChild(document.createElement("div"));
+        scrollport.style.cssText = "position: absolute; inset: 0; overflow: auto;";
+        const content = scrollport.appendChild(document.createElement("div"));
+        content.style[sideBySide ? "height" : "width"] = "2000px";
+        pane.activateItem(item);
+        if (sideBySide) pane.splitRight({ activate: false });
+        else pane.splitDown({ activate: false });
+
+        const controller = lumine.scrollbars.attach(scrollport, {
+          kind: "panel",
+          layout: "overlay",
+          policy: "always",
+          horizontal: !sideBySide,
+          vertical: sideBySide,
+        });
+        try {
+          const track = (sideBySide ? controller.vertical : controller.horizontal).element;
+          const handle = pane.getElement().nextElementSibling;
+          await waitForFrames(() => track.classList.contains("is-scrollable"), {
+            frames: 30,
+            description: "split pane scrollbar geometry",
+          });
+
+          const divider = handle.getBoundingClientRect();
+          const rail = track.getBoundingClientRect();
+          const seam = sideBySide ? divider.left : divider.top;
+          const railPoint = (sideBySide ? rail.right : rail.bottom) - 5;
+          const railStart = sideBySide ? rail.top : rail.left;
+          const alongRail = (railStart + (sideBySide ? rail.bottom : rail.right)) / 2;
+          const hit = (across, along) =>
+            sideBySide
+              ? document.elementFromPoint(across, along)
+              : document.elementFromPoint(along, across);
+          expect(track.contains(hit(railPoint, alongRail))).toBe(true);
+          expect(hit(seam - 1, alongRail)).toBe(handle);
+
+          const awayFromRail = railStart - 8;
+          const gripSize = sideBySide ? "width" : "height";
+          expect(getComputedStyle(handle, "::before")[gripSize]).toBe("5px");
+          expect(hit(seam - 2, awayFromRail)).toBe(handle);
+          expect(hit(seam + 2, awayFromRail)).toBe(handle);
+          expect(hit(seam - 4, awayFromRail)).not.toBe(handle);
+          expect(hit(seam + 4, awayFromRail)).not.toBe(handle);
+        } finally {
+          controller.dispose();
+        }
+      });
+    }
+  });
 
   describe("when the resize element is dragged ", function () {
     let [container, containerElement] = [];

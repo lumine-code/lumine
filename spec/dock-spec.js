@@ -300,6 +300,9 @@ describe("Dock", () => {
         .lumine-dock-inner:not(.lumine-dock-open) .lumine-dock-toggle-button.bottom {
           margin-bottom: -1px;
         }
+        lumine-workspace[ui-dock-buttons="hidden"] .lumine-dock-toggle-button {
+          display: none;
+        }
         .lumine-dock-toggle-button-inner { transition: none !important; }
       `;
       jasmine.attachToDOM(themeStyle);
@@ -369,8 +372,27 @@ describe("Dock", () => {
           left: () => document.elementFromPoint(Math.ceil(divider.left) - 1, y),
           right: () => document.elementFromPoint(Math.ceil(divider.right), y),
           bottom: () => document.elementFromPoint(x, Math.ceil(divider.bottom)),
-        }[location]();
-        expect(toggle.contains(hitInDock)).toBe(false);
+        }[location];
+        expect(toggle.contains(hitInDock())).toBe(false);
+        expect(hitInDock()).not.toBe(grip);
+
+        const outsideToggle =
+          location === "bottom" ? [bounds.left, bounds.right] : [bounds.top, bounds.bottom];
+        for (const coordinate of [
+          Math.floor(outsideToggle[0]) - 7,
+          Math.ceil(outsideToggle[1]) + 7,
+        ]) {
+          const hit =
+            location === "bottom"
+              ? document.elementFromPoint(coordinate, Math.ceil(divider.top))
+              : document.elementFromPoint(Math.ceil(divider.left), coordinate);
+          expect(hit).toBe(grip);
+        }
+
+        const workspaceElement = workspace.getElement();
+        workspaceElement.setAttribute("ui-dock-buttons", "hidden");
+        expect(hitInDock()).toBe(grip);
+        workspaceElement.removeAttribute("ui-dock-buttons");
 
         dock.setHovered(false);
         await getNextUpdatePromise();
@@ -379,6 +401,7 @@ describe("Dock", () => {
         const maskEdge = toggle.getBoundingClientRect()[dockEdge];
         const overlap = (hiddenEdge - maskEdge) * (location === "left" ? 1 : -1);
         expect(overlap).toBeLessThanOrEqual(0);
+        expect(hitInDock()).toBe(grip);
       });
     }
 
@@ -424,6 +447,7 @@ describe("Dock", () => {
         .lumine-dock-inner.lumine-dock-open.left { border-right: 1px solid; }
         .lumine-dock-inner.lumine-dock-open.right { border-left: 1px solid; }
         .lumine-dock-inner.lumine-dock-open.bottom { border-top: 1px solid; }
+        .dock-spec-native-scrollport::-webkit-scrollbar { width: 12px; }
       `;
       jasmine.attachToDOM(themeStyle);
       const root = workspace.getElement();
@@ -475,6 +499,13 @@ describe("Dock", () => {
         description: "dock scrollbar geometry",
       });
       return track.getBoundingClientRect();
+    }
+
+    function waitForHit(target, x, y) {
+      return waitForFrames(() => target.contains(document.elementFromPoint(x, y)), {
+        frames: 30,
+        description: "dock resize handle or scrollbar hit area",
+      });
     }
 
     function pressAt(x, y) {
@@ -541,15 +572,17 @@ describe("Dock", () => {
         expect(contentEdge).toBe(dividerStart);
         expect(size).toBe(1);
         expect(borderWidth).toBe("1px");
+        const pseudoSize = location === "bottom" ? "height" : "width";
+        expect(getComputedStyle(grip, "::before")[pseudoSize]).toBe("5px");
 
         const line = (dividerStart + dividerEnd) / 2;
-        for (const offset of [-5, -3, 3, 5]) {
+        for (const offset of [-3.5, -1.5, 1.5, 3.5]) {
           const position = line + direction * offset;
           const target =
             location === "bottom" ? pressAt(cross, position) : pressAt(position, cross);
-          const onGrip = Math.abs(offset) < 4;
+          const onGrip = Math.abs(offset) < 2.5;
           expect(target === grip).toBe(onGrip);
-          if (offset === -5) expect(target).toBe(item);
+          if (offset === -3.5) expect(target).toBe(item);
           expect(Boolean(dock.layoutDrag)).toBe(onGrip);
           window.dispatchEvent(new MouseEvent("mouseup"));
         }
@@ -606,11 +639,13 @@ describe("Dock", () => {
     });
 
     for (const location of ["left", "right"]) {
-      it(`keeps scrollbar pixels on both sides of the ${location} dock divider clickable`, async () => {
+      it(`resizes the ${location} dock at the seam and leaves the rest of each scrollbar usable`, async () => {
         const dock = getDock(location);
         const dockEdge = location === "left" ? "right" : "left";
         const dockTrack = addScrollbar(dock, location, { edge: dockEdge });
-        const centerTrack = addScrollbar(workspace.getCenter(), "center", { edge: location });
+        const centerTrack = addScrollbar(workspace.getCenter(), "center", {
+          edge: location,
+        });
         await showDock(dock);
         const divider = dock.getElement().querySelector(".lumine-dock-resize-handle");
         const dividerBounds = divider.getBoundingClientRect();
@@ -620,10 +655,17 @@ describe("Dock", () => {
           [centerTrack, location],
         ]) {
           const rect = await waitForScrollbar(track);
-          const x = edge === "right" ? rect.right - 1 : rect.left + 1;
+          const adjacent = edge === "right" ? rect.right - 1 : rect.left + 1;
+          const insideTrack = edge === "right" ? rect.right - 4 : rect.left + 4;
           const y = (rect.top + rect.bottom) / 2;
-          expect(Math.abs(x - dividerX)).toBeLessThan(4);
-          expect(track.contains(pressAt(x, y))).toBe(true);
+          expect(Math.abs(adjacent - dividerX)).toBeLessThan(2.5);
+          expect(Math.abs(insideTrack - dividerX)).toBeGreaterThan(2.5);
+          expect(pressAt(adjacent, y)).toBe(divider);
+          expect(dock.layoutDrag).not.toBeNull();
+          window.dispatchEvent(new MouseEvent("mouseup"));
+
+          await waitForHit(track, insideTrack, y);
+          expect(track.contains(pressAt(insideTrack, y))).toBe(true);
           expect(dock.layoutDrag).toBeNull();
           window.dispatchEvent(new MouseEvent("mouseup"));
         }
@@ -633,18 +675,13 @@ describe("Dock", () => {
         const dock = getDock(location);
         const farEdge = location === "left" ? "right" : "left";
         const center = workspace.getCenter();
-        const tabBar = document.createElement("ul");
-        tabBar.className = "tab-bar";
-        tabBar.dataset.scrollbar = "none";
-        tabBar.appendChild(document.createElement("li")).textContent = "Workspace tab";
-        center.getActivePane().getElement().prepend(tabBar);
         const track = addScrollbar(center, "center", { edge: farEdge });
         await showDock(dock);
         const trackBounds = await waitForScrollbar(track);
 
         const grip = dock.getElement().querySelector(".lumine-dock-resize-handle");
         const gripBounds = grip.getBoundingClientRect();
-        const centerOffset = location === "left" ? 3 : -3;
+        const centerOffset = location === "left" ? 1.5 : -1.5;
         const x = gripBounds.left + gripBounds.width / 2 + centerOffset;
         const y = (trackBounds.top + trackBounds.bottom) / 2;
         expect(pressAt(x, y)).toBe(grip);
@@ -653,26 +690,27 @@ describe("Dock", () => {
       });
     }
 
-    it("keeps the center's horizontal scrollbar clickable above the bottom dock", async () => {
+    it("keeps the center's horizontal scrollbar clickable outside the bottom dock grip", async () => {
       const track = addScrollbar(workspace.getCenter(), "center", { horizontal: true });
       const dock = workspace.getBottomDock();
       await showDock(dock);
       const rect = await waitForScrollbar(track);
       const divider = dock.getElement().querySelector(".lumine-dock-resize-handle");
-      const dividerBounds = divider.getBoundingClientRect();
-      const y = rect.bottom - 1;
-      expect(Math.abs(y - dividerBounds.top - dividerBounds.height / 2)).toBeLessThan(4);
-      const target = pressAt((rect.left + rect.right) / 2, y);
+      const x = (rect.left + rect.right) / 2;
+      expect(pressAt(x, rect.bottom - 1)).toBe(divider);
+      expect(dock.layoutDrag).not.toBeNull();
+      window.dispatchEvent(new MouseEvent("mouseup"));
+
+      const y = rect.bottom - 4;
+      await waitForHit(track, x, y);
+      const target = pressAt(x, y);
       expect(track.contains(target)).toBe(true);
       expect(dock.layoutDrag).toBeNull();
       window.dispatchEvent(new MouseEvent("mouseup"));
     });
 
     for (const location of ["left", "right"]) {
-      it(`preserves the native scrollbar next to the ${location} dock divider`, async () => {
-        const style = document.createElement("style");
-        style.textContent = ".dock-spec-native-scrollport::-webkit-scrollbar { width: 12px; }";
-        jasmine.attachToDOM(style);
+      it(`preserves the native scrollbar outside the ${location} dock grip`, async () => {
         const scrollLocation = location === "left" ? "left" : "center";
         const scrollport = copyableElement("div", [scrollLocation]);
         scrollport.dataset.scrollbar = "none";
@@ -684,8 +722,11 @@ describe("Dock", () => {
         await showDock(dock);
 
         const rect = scrollport.getBoundingClientRect();
+        const x = rect.right - 4;
+        const y = (rect.top + rect.bottom) / 2;
         expect(scrollport.offsetWidth - scrollport.clientWidth).toBeGreaterThan(4);
-        expect(pressAt(rect.right - 2, (rect.top + rect.bottom) / 2)).toBe(scrollport);
+        await waitForHit(scrollport, x, y);
+        expect(pressAt(x, y)).toBe(scrollport);
         expect(dock.layoutDrag).toBeNull();
         window.dispatchEvent(new MouseEvent("mouseup"));
       });

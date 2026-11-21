@@ -1,6 +1,18 @@
-/* Pane-items are things that go inside a pane. Like the UI-Demo, the
-   settings-view, the archive-view. Etc. Basically a non-
-   editor resource with a tab. */
+/* Pane and dock resize grips share the same target size and stacking order. */
+:is(lumine-pane-resize-handle, .lumine-dock-resize-handle) {
+  --resize-grip-size: 5px;
+  pointer-events: none;
+}
+
+:is(lumine-pane-axis > lumine-pane-resize-handle, .lumine-dock-resize-handle-resizable)::before,
+.lumine-dock-resize-handle-resizable::after {
+  content: "";
+  /* Stay above pane contents and below inactive docks and their toggle buttons. */
+  z-index: 9;
+  pointer-events: auto;
+}
+
+/* Pane items include editors and tabbed package views. */
 lumine-pane-container {
   position: relative;
   display: flex;
@@ -26,10 +38,7 @@ lumine-pane-container {
     & > lumine-pane-resize-handle {
       position: relative;
       &:before {
-        content: "";
         position: absolute;
-        /* Stay above pane contents and below both inactive docks and their toggle buttons. */
-        z-index: 9;
       }
     }
   }
@@ -40,8 +49,8 @@ lumine-pane-container {
     & > lumine-pane-resize-handle {
       border-bottom: none;
       &:before {
-        height: 8px;
-        top: -4px;
+        height: var(--resize-grip-size);
+        top: calc(-1 * var(--resize-grip-size) / 2);
         left: 0;
         right: 0;
         cursor: row-resize;
@@ -55,8 +64,8 @@ lumine-pane-container {
     & > lumine-pane-resize-handle {
       border-right: none;
       &:before {
-        width: 8px;
-        left: -4px;
+        width: var(--resize-grip-size);
+        left: calc(-1 * var(--resize-grip-size) / 2);
         top: 0;
         bottom: 0;
         cursor: col-resize;
@@ -225,6 +234,7 @@ body.is-unloading {
   left: 0;
   right: 0;
   z-index: 4;
+  pointer-events: auto;
 
   &.horizontal {
     cursor: col-resize;
