@@ -453,13 +453,18 @@ test("injection retries are finite, skip structural limits and stop on invalidat
 
 test("cooperative injection scans refine timed-out windows without losing owners or fragments", async () => {
   const text = `[\r\n${Array.from({ length: 24 }, (_, i) => `"value${i}😀"`).join(",\r\n")}\r\n]`;
-  for (const kind of ["static", "dynamic"]) {
+  for (const [kind, synchronous] of [
+    ["static", false],
+    ["static", true],
+    ["dynamic", false],
+    ["dynamic", true],
+  ]) {
     const f = await fixture(text);
     try {
       let now = 0;
       const successfulWindows = [];
       const rejectedWindows = [];
-      f.mode.shouldParseSynchronously = () => false;
+      f.mode.shouldParseSynchronously = () => synchronous;
       f.mode.injectionCandidateChunkCodeUnits = 128;
       f.mode.queryBudget = { now: () => now, timeoutMs: 25 };
       f.mode._yieldForInjectionCandidateScan = async () => {};
@@ -515,6 +520,7 @@ test("cooperative injection scans refine timed-out windows without losing owners
           expected,
         );
         assert.ok(rejectedWindows.length > 0);
+        if (synchronous) assert.deepEqual(rejectedWindows[0], [0, text.length]);
         let end = 0;
         for (const [start, next] of successfulWindows) {
           assert.equal(start, end);

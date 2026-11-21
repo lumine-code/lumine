@@ -5945,10 +5945,24 @@ class LanguageLayer {
       // Mixed known/unknown types still use a bounded cursor traversal.
     }
 
+    const fitsChunk = end.row - start.row <= chunkRows && endIndex - startIndex <= chunkCodeUnits;
+    const collectChunks = () =>
+      this._collectInjectionCandidateNodesInChunks(
+        tree,
+        types,
+        start,
+        end,
+        startIndex,
+        endIndex,
+        chunkRows,
+        chunkCodeUnits,
+        injectionPointVersion,
+        candidateQuery,
+      );
     if (
+      fitsChunk ||
       (this.languageMode.shouldParseSynchronously() &&
-        endIndex - startIndex <= SYNCHRONOUS_INJECTION_QUERY_UNITS) ||
-      (end.row - start.row <= chunkRows && endIndex - startIndex <= chunkCodeUnits)
+        endIndex - startIndex <= SYNCHRONOUS_INJECTION_QUERY_UNITS)
     )
       return this._runInjectionQuery(
         () =>
@@ -5962,20 +5976,10 @@ class LanguageLayer {
           ),
         tree,
         injectionPointVersion,
+        fitsChunk ? null : collectChunks,
       );
 
-    return this._collectInjectionCandidateNodesInChunks(
-      tree,
-      types,
-      start,
-      end,
-      startIndex,
-      endIndex,
-      chunkRows,
-      chunkCodeUnits,
-      injectionPointVersion,
-      candidateQuery,
-    );
+    return collectChunks();
   }
 
   _collectStaticInjectionCandidates(tree, range, injectionPointVersion, state = null) {
@@ -6019,10 +6023,24 @@ class LanguageLayer {
     );
     const startIndex = this.buffer.characterIndexForPosition(start);
     const endIndex = this.buffer.characterIndexForPosition(end);
+    const fitsChunk = end.row - start.row <= chunkRows && endIndex - startIndex <= chunkCodeUnits;
+    const collectChunks = () =>
+      this._collectStaticInjectionCandidatesInChunks(
+        tree,
+        query,
+        start,
+        end,
+        startIndex,
+        endIndex,
+        chunkRows,
+        chunkCodeUnits,
+        injectionPointVersion,
+        state ?? undefined,
+      );
     if (
+      fitsChunk ||
       (this.languageMode.shouldParseSynchronously() &&
-        endIndex - startIndex <= SYNCHRONOUS_INJECTION_QUERY_UNITS) ||
-      (end.row - start.row <= chunkRows && endIndex - startIndex <= chunkCodeUnits)
+        endIndex - startIndex <= SYNCHRONOUS_INJECTION_QUERY_UNITS)
     ) {
       return this._runInjectionQuery(
         () =>
@@ -6036,20 +6054,10 @@ class LanguageLayer {
           )?.records ?? null,
         tree,
         injectionPointVersion,
+        fitsChunk ? null : collectChunks,
       );
     }
-    return this._collectStaticInjectionCandidatesInChunks(
-      tree,
-      query,
-      start,
-      end,
-      startIndex,
-      endIndex,
-      chunkRows,
-      chunkCodeUnits,
-      injectionPointVersion,
-      state ?? undefined,
-    );
+    return collectChunks();
   }
 
   async _collectIndentationInjectionCandidates(tree, range, injectionPointVersion) {
@@ -6181,19 +6189,20 @@ class LanguageLayer {
     return mergeInjectionState(state, result.value.state);
   }
 
-  _runInjectionQuery(operation, tree, injectionPointVersion) {
+  _runInjectionQuery(operation, tree, injectionPointVersion, onWindowTimeout) {
     let retries = 0;
     const run = () => {
       if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) return null;
       try {
         return operation();
       } catch (error) {
-        if (
-          error.code !== "ERR_SYNTAX_QUERY_BUDGET" ||
-          error.reason !== "timeout" ||
-          retries++ === 2
-        )
+        if (error.code !== "ERR_SYNTAX_QUERY_BUDGET" || error.reason !== "timeout") throw error;
+        if (retries++ === 2) {
+          // A wide synchronous window can exceed the same deadline on every
+          // attempt. Finish it with the ordinary cooperative chunk limits.
+          if (onWindowTimeout) return onWindowTimeout();
           throw error;
+        }
         // A small, cold or preempted query may exhaust one cooperative slice.
         // Retry the same exact window after yielding, never a partial result;
         // persistent timeouts and all structural limits still fail closed.
