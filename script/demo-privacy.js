@@ -11,18 +11,19 @@ function resolvedLocation(location) {
   return path.join(fs.realpathSync(ancestor), ...tail);
 }
 
-function assertNeutralDirectory(directory, privateRoots) {
+function isInside(root, target) {
+  const relative = path.relative(root, target);
+  return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+function resolveCaptureDirectory(workspace, directory, sourceRoots) {
+  const scratch = path.join(fs.realpathSync(workspace), ".dev");
   const target = resolvedLocation(directory);
-  for (const root of privateRoots) {
-    const relative = path.relative(resolvedLocation(root), target);
-    if (
-      !relative ||
-      (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
-    ) {
-      throw new Error(
-        "Capture output must be outside the source workspace and user profile; choose a neutral --out directory.",
-      );
-    }
+  if (!path.relative(scratch, target) || !isInside(scratch, target)) {
+    throw new Error("Capture output must be a new directory under the workspace's .dev directory.");
+  }
+  if (sourceRoots.some((root) => isInside(resolvedLocation(root), target))) {
+    throw new Error("Capture output must be outside the source checkouts.");
   }
   return target;
 }
@@ -39,4 +40,4 @@ function assertPublicText(text, privateRoots) {
   }
 }
 
-module.exports = { assertNeutralDirectory, assertPublicText };
+module.exports = { resolveCaptureDirectory, assertPublicText };

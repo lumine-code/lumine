@@ -3,7 +3,7 @@ require("../src/electron-rm-sync-compatibility");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
-const { assertNeutralDirectory } = require("./demo-privacy");
+const { resolveCaptureDirectory } = require("./demo-privacy");
 const net = require("node:net");
 const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
@@ -300,7 +300,7 @@ async function capture(repository, options = {}) {
   const recipe = validate(require(recipePath));
   const manifest = readJSON(path.join(repo, "package.json"));
   if (!manifest.engines?.lumine) throw new Error("Only Lumine packages have editor demos");
-  const workspace = path.resolve(options.workspace || path.dirname(repo));
+  const workspace = fs.realpathSync(path.resolve(options.workspace || path.dirname(repo)));
   const sourcePackages =
     options["source-packages"] === "bundled"
       ? scanBundledPackageNames(ROOT)
@@ -329,17 +329,17 @@ async function capture(repository, options = {}) {
   }
   const fixtures = inside(repo, recipe.fixtures || "demo");
   const inputs = fixtureFiles(fixtures);
-  const directory = assertNeutralDirectory(
+  const directory = resolveCaptureDirectory(
+    workspace,
     options.out ||
       path.join(
-        process.platform === "win32" ? path.parse(ROOT).root : "/tmp",
-        "Lumine-Demos",
+        workspace,
+        ".dev",
+        "demos",
         `${manifest.name}-${crypto.randomBytes(3).toString("hex")}`,
       ),
-    [workspace, ROOT, repo, os.homedir()],
+    [ROOT, ...packages.values()],
   );
-  if (directory === fixtures || directory.startsWith(fixtures + path.sep))
-    throw new Error("Output cannot be inside the fixtures");
   // Exclusive creation keeps an old capture/profile intact and allows concurrent runs.
   fs.mkdirSync(path.dirname(directory), { recursive: true });
   fs.mkdirSync(directory);
@@ -407,7 +407,7 @@ async function capture(repository, options = {}) {
     sources,
     viewport: recipe.viewport,
     expectedFiles: recipe.scenes.map((s) => s.file),
-    privacy: { version: 1, location: "neutral", textChecked: true },
+    privacy: { version: 1, location: "workspace-scratch", textChecked: true },
     images: [],
   };
   writeJSON(path.join(directory, "run.json"), run);
@@ -492,7 +492,7 @@ async function capture(repository, options = {}) {
       await evaluate("await globalThis.lumineDemo?.cleanup(); return true;").catch((error) =>
         console.error(`Cleanup: ${error.message}`),
       );
-      await drive(["quit"]).catch((error) =>
+      await drive(["quit", "--home", profile]).catch((error) =>
         console.error(`Close the demo window manually: ${error.message}`),
       );
     }

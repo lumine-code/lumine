@@ -6,7 +6,7 @@ const os = require("node:os");
 const crypto = require("node:crypto");
 const vm = require("node:vm");
 const { execFileSync } = require("node:child_process");
-const { assertNeutralDirectory, assertPublicText } = require("./demo-privacy");
+const { resolveCaptureDirectory, assertPublicText } = require("./demo-privacy");
 const {
   inside,
   validate,
@@ -123,26 +123,30 @@ test("source snapshots still reject directories that are not Git repositories", 
   await assert.rejects(sourceRevisions([["package", directory]]), /not a git repository/i);
 });
 
-test("capture paths stay outside private roots, including junction aliases", (t) => {
-  const root = temporary(t);
+test("capture paths stay in workspace scratch space, including with junctions", (t) => {
+  const root = fs.realpathSync(temporary(t));
   const workspace = path.join(root, "workspace");
-  const profile = path.join(root, "user");
+  const source = path.join(workspace, "package");
+  const scratch = path.join(workspace, ".dev");
+  const run = path.join(scratch, "demos", "run");
   fs.mkdirSync(workspace);
-  fs.mkdirSync(profile);
+  fs.mkdirSync(source);
+  assert.equal(resolveCaptureDirectory(workspace, run, [source]), run);
+  for (const target of [scratch, path.join(source, "run"), path.join(root, "public", "run")]) {
+    assert.throws(() => resolveCaptureDirectory(workspace, target, [source]), /\.dev/);
+  }
+  assert.throws(() => resolveCaptureDirectory(workspace, run, [workspace]), /source checkouts/);
+
+  const linkType = process.platform === "win32" ? "junction" : "dir";
+  fs.symlinkSync(root, scratch, linkType);
+  assert.throws(() => resolveCaptureDirectory(workspace, run, [source]), /\.dev/);
+  fs.unlinkSync(scratch);
+  fs.mkdirSync(scratch);
+  const alias = path.join(scratch, "alias");
+  fs.symlinkSync(source, alias, linkType);
   assert.throws(
-    () => assertNeutralDirectory(path.join(workspace, ".dev/run"), [workspace, profile]),
-    /neutral/,
-  );
-  assert.throws(
-    () => assertNeutralDirectory(path.join(profile, "Temp/run"), [workspace, profile]),
-    /neutral/,
-  );
-  const alias = path.join(root, "alias");
-  fs.symlinkSync(workspace, alias, process.platform === "win32" ? "junction" : "dir");
-  assert.throws(() => assertNeutralDirectory(path.join(alias, "run"), [workspace]), /neutral/);
-  assert.equal(
-    assertNeutralDirectory(path.join(root, "public/run"), [workspace, profile]),
-    path.join(root, "public/run"),
+    () => resolveCaptureDirectory(workspace, path.join(alias, "run"), [source]),
+    /\.dev/,
   );
 });
 
@@ -151,14 +155,13 @@ test("privacy checks recognize native, slash and escaped paths in rendered text"
   for (const text of [
     "PS C:\\Users\\Example> ",
     '"C:\\\\Work\\\\Source\\\\project"',
+    "PS C:\\Work\\Source\\.dev\\demos\\run\\project> ",
     "file:///c:/work/source/main.rs",
     "/home/example/private",
   ]) {
     assert.throws(() => assertPublicText(text, roots), /local workspace/);
   }
-  assert.doesNotThrow(() =>
-    assertPublicText("PS C:\\Lumine-Demos\\terminal\\project> node signal.js", roots),
-  );
+  assert.doesNotThrow(() => assertPublicText("PS terminal-sample> node signal.js", roots));
 });
 
 test("normal-mode demo processes skip every protocol-registration action without changing preferences", async () => {

@@ -3,7 +3,6 @@
 // not measure physical monitor scanout. No DevTools or offscreen rendering.
 //   node script/benchmark-presentation.js --samples 100 --output <directory>
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawn, execFileSync } = require("node:child_process");
@@ -37,7 +36,7 @@ if (
   fs.existsSync(path.join(output, "electron.log"))
 )
   throw new Error("--output already contains a presentation run; choose a new directory");
-const home = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-presentation-"));
+const home = fs.mkdtempSync(path.join(output, "profile-"));
 fs.mkdirSync(path.join(home, "electronUserData"));
 fs.mkdirSync(path.join(home, "packages"));
 // Match the workspace's source packages without touching the user's home.

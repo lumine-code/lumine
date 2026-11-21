@@ -38,10 +38,10 @@ require("../src/electron-rm-sync-compatibility");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const net = require("net");
-const os = require("os");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
+const SCRATCH = path.join(ROOT, "..", ".dev", "drive");
 const DEFAULT_PORT = Number(process.env.LUMINE_DRIVE_PORT || 9223);
 
 // The window is usable once its packages have activated; `lumine-workspace` alone
@@ -71,7 +71,8 @@ Commands:
 Options:
   --port <n>             CDP port (default ${DEFAULT_PORT}, or $LUMINE_DRIVE_PORT)
   --window <n>           Which window to drive when several are open (default 0)
-  --home <dir>           launch: scratch LUMINE_HOME (default <tmp>/lumine-drive-<port>)
+  --home <dir>           launch: scratch LUMINE_HOME (default .dev/drive/launch-<port>)
+                         benchmark: fresh profile by default under .dev/drive/
   --link <dir>           launch: symlink a package checkout into <home>/packages, repeatable
   --fresh                launch: also pass --clear-window-state
   --no-dev               launch: omit --dev
@@ -80,7 +81,7 @@ Options:
   --json                 benchmark: emit the full samples as JSON
   --package-threshold <n> benchmark: report every package above this duration (default 5 ms)
   --ms <n>               console/issues: how long to stream, 0 to stream until killed (default 5000)
-  --out <file>           shot: output path (default drive-shot.png)
+  --out <file>           shot: output path (default .dev/drive/drive-shot.png)
   --scale <n>            shot: capture scale (default 1)
   --index <n>            shot/drag: which match to use when the selector hits several
   --steps <n>            drag: how many moves between press and release (default 8)
@@ -122,7 +123,7 @@ function fail(message) {
 }
 
 function homeForPort(port) {
-  return path.join(os.tmpdir(), `lumine-drive-${port}`);
+  return path.join(SCRATCH, `launch-${port}`);
 }
 
 function prepareIsolatedHome(home) {
@@ -444,9 +445,12 @@ async function benchmark({ positional, options }) {
   const port = Number(options.port || DEFAULT_PORT);
   const executable = options.executable ? path.resolve(options.executable) : require("electron");
   if (!fs.existsSync(executable)) fail(`executable does not exist: ${executable}`);
-  const home = path.resolve(
-    options.home || fs.mkdtempSync(path.join(os.tmpdir(), `lumine-benchmark-${port}-`)),
-  );
+  let home = options.home;
+  if (!home) {
+    fs.mkdirSync(SCRATCH, { recursive: true });
+    home = fs.mkdtempSync(path.join(SCRATCH, `benchmark-${port}-`));
+  }
+  home = path.resolve(home);
   prepareIsolatedHome(home);
   const linked = [].concat(options.link || []).map((source) => linkPackage(home, source));
   const logPath = path.join(home, "benchmark.log");
@@ -752,7 +756,8 @@ async function shot({ positional, options }) {
     },
   });
   client.close();
-  const out = path.resolve(options.out || "drive-shot.png");
+  if (!options.out) fs.mkdirSync(SCRATCH, { recursive: true });
+  const out = path.resolve(options.out || path.join(SCRATCH, "drive-shot.png"));
   fs.writeFileSync(out, Buffer.from(data, "base64"));
   console.log(`${out} (${Math.round(rect.width)}x${Math.round(rect.height)})`);
 }
