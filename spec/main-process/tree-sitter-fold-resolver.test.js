@@ -195,8 +195,8 @@ test("fold scans discard cancelled work and distinguish an exhausted budget", as
   const { host, mode, builtin } = await openJson(t, `[\n${"  [1],\n".repeat(400)}  [2]\n]\n`);
   mode.queryCaptureChunkRows = 1;
   const controller = new AbortController();
-  const originalYield = host.yieldForFolds;
-  const mock = t.mock.method(host, "yieldForFolds", (...args) => {
+  const originalYield = host.yieldForInput;
+  const mock = t.mock.method(host, "yieldForInput", (...args) => {
     controller.abort();
     return originalYield.apply(host, args);
   });

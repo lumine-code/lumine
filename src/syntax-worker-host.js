@@ -22,6 +22,8 @@ const {
 } = require("./syntax-worker-protocol");
 const { Point, Range } = TextBuffer;
 const INPUT_PARSE_PRIORITY = -100;
+const OPTIONAL_PAINT_BUDGET_MS = 8;
+const PAINT_SCAN_SLICE_MS = 4;
 const FOLD_BUILTINS = new Set([
   "getFoldRangeForRow",
   "getFoldableRanges",
@@ -255,6 +257,7 @@ class SyntaxWorkerHost {
       indentationOnly: Boolean(session.parent),
       indentationRanges: session.indentationRanges,
       editedIndentationRows: session.editedIndentationRows,
+      scopedPresentation: !session.parent,
     });
     session.initialSyntaxSnapshot = null;
     session.initialSyntaxChanges = null;
@@ -264,18 +267,25 @@ class SyntaxWorkerHost {
     mode.requestHighlighting(this, []);
     session.mode = mode;
     session.metadata = null;
+    session.scopedPaint = null;
     session.tabStyleReady = false;
     session.buffer.setLanguageMode(mode);
     session.subscriptions = new CompositeDisposable(
       mode.onDidChangeHighlighting((range) => {
         if (!mode.publicationPending) this.previews.release(session);
         if (range.start.row <= 1000) session.tabStyleReady = false;
+        const scoped = session.scopedPaint;
         this.notify({
           event: "highlight",
           session: session.id,
           revision: session.revision,
           generation: session.generation,
           range: range.serialize(),
+          reconciled:
+            mode.publishingHighlightRanges &&
+            scoped?.revision === session.revision &&
+            scoped?.generation === session.generation &&
+            scoped.epoch === mode.getSyntaxRequestEpoch(),
         });
       }),
       mode.onDidTokenize(() =>
@@ -343,6 +353,7 @@ class SyntaxWorkerHost {
     session.inputSnapshot?.destroy();
     session.inputBaseline = null;
     session.inputChanges = null;
+    session.forkBase = null;
     session.initialSyntaxSnapshot?.close();
     session.pendingEdit?.reject(aborted("Syntax document was closed"));
     this.previews.release(session);
@@ -436,11 +447,58 @@ class SyntaxWorkerHost {
     return waitFor(barrier.promise, signal).then(() => this.waitForInput(current, signal));
   }
 
-  async yieldForFolds(current, signal) {
+  async yieldForInput(current, signal) {
     await new Promise(setImmediate);
     const input = this.waitForInput(current, signal);
     if (input) await input;
     current?.();
+  }
+
+  async settleInputBaseline(session, signal) {
+    const parent = this.sessions.get(session.parent);
+    const { source, draftRevision, mode, revision, generation, epoch } = session.forkBase;
+    const current = () => {
+      if (
+        !parent ||
+        this.sessions.get(session.id) !== session ||
+        parent.mode !== mode ||
+        parent.revision !== revision ||
+        parent.generation !== generation ||
+        mode.getSyntaxRequestEpoch() !== epoch ||
+        parent.buffer.getTextSnapshot() !== source
+      )
+        throw aborted();
+    };
+    current();
+    if (
+      !mode.publicationPending &&
+      session.inputBaseline?.complete &&
+      session.inputBaseline.epoch === epoch
+    ) {
+      if (mode.lastTransactionParseError) throw mode.lastTransactionParseError;
+      return mode;
+    }
+
+    const controller = new AbortController();
+    const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+    session.jobs.add(controller);
+    const release =
+      session.purpose === "input" ? mode.acquireInputParsePriority(INPUT_PARSE_PRIORITY) : null;
+    try {
+      const transaction = await waitFor(mode.atGrammarSettlement(), combined);
+      combined.throwIfAborted();
+      current();
+      if (transaction.parseError || mode.lastTransactionParseError)
+        throw transaction.parseError ?? mode.lastTransactionParseError;
+      const baseline = mode.captureSyntaxSnapshot({ indentationOnly: true });
+      session.inputBaseline = baseline;
+      session.initialSyntaxSnapshot?.close();
+      session.initialSyntaxSnapshot = baseline?.restore(source, draftRevision);
+      return mode;
+    } finally {
+      release?.();
+      session.jobs.delete(controller);
+    }
   }
 
   async dispatchOperation(operation, data, { signal, emit } = {}) {
@@ -666,47 +724,38 @@ class SyntaxWorkerHost {
     if (operation === "initialize") {
       if (session.initialized) throw new Error("Syntax document is already initialized");
       session.initialized = true;
-      let validateInputOwnership = false;
-      if (
-        session.parent &&
-        data.indentationOptions?.isPastedText === false &&
-        isWhitespaceInsertion(session.initialSyntaxChanges.flatMap((batch) => batch.changes))
-      ) {
-        const parent = this.sessions.get(session.parent);
-        if (!parent) throw aborted();
-        const transaction = await waitFor(parent.mode.atGrammarSettlement(), signal);
+      const changes =
+        session.parent && data.indentationOptions?.isPastedText === false
+          ? session.initialSyntaxChanges.flatMap((batch) => batch.changes)
+          : null;
+      let snapshot;
+      if (changes && isWhitespaceInsertion(changes)) {
+        const mode = await this.settleInputBaseline(session, signal);
         signal?.throwIfAborted();
-        if (this.sessions.get(session.id) !== session) throw aborted();
-        if (transaction.parseError || parent.mode.lastTransactionParseError)
-          throw transaction.parseError ?? parent.mode.lastTransactionParseError;
-        session.inputChanges = session.initialSyntaxChanges.flatMap((batch) => batch.changes);
         if (
-          !session.inputBaseline?.complete ||
-          session.inputBaseline.source !== parent.buffer.getTextSnapshot() ||
-          session.inputBaseline.epoch !== parent.mode.getSyntaxRequestEpoch()
+          this.sessions.get(session.id) !== session ||
+          mode.getSyntaxRequestEpoch() !== session.forkBase.epoch
         )
-          session.inputBaseline = parent.mode.captureSyntaxSnapshot({ indentationOnly: true });
-        const snapshot = await createInputSnapshot(parent.mode, buffer, session.inputChanges, {
+          throw aborted();
+        session.inputChanges = changes;
+        snapshot = createInputSnapshot(mode, buffer, changes, {
           signal,
           snapshot: session.inputBaseline,
         });
-        if (this.sessions.get(session.id) !== session) {
-          snapshot?.destroy();
-          throw aborted();
-        }
-        if (snapshot) {
-          session.inputSnapshot = snapshot;
-          session.mode = snapshot;
-          session.captureInitialChanges?.dispose();
-          session.initialSyntaxSnapshot?.close();
-          session.initialSyntaxSnapshot = null;
-          session.initialSyntaxChanges = null;
-          return;
-        }
-        validateInputOwnership = Boolean(session.inputBaseline?.complete);
+      }
+      session.forkBase = null;
+      if (snapshot) {
+        session.inputSnapshot = snapshot;
+        session.mode = snapshot;
+        session.captureInitialChanges?.dispose();
+        session.initialSyntaxSnapshot?.close();
+        session.initialSyntaxSnapshot = null;
+        session.initialSyntaxChanges = null;
+        return;
       }
       // A parsed ownership proof must discover the complete relevant forest.
       // Token-changing operations retain the ordinary local-context discovery.
+      const validateInputOwnership = session.inputChanges && session.inputBaseline?.complete;
       if (session.parent && data.indentationRanges?.length && !validateInputOwnership) {
         const contexts = [];
         let deadline = performance.now() + 4;
@@ -787,6 +836,7 @@ class SyntaxWorkerHost {
     const revision = session.revision,
       generation = session.generation,
       mode = session.mode;
+    const paintEpoch = operation === "view" ? mode?.getSyntaxRequestEpoch?.() : null;
     if (data.revision !== undefined && data.revision !== revision) throw aborted();
     session.jobs.add(controller);
     const current = () => {
@@ -795,7 +845,8 @@ class SyntaxWorkerHost {
         this.sessions.get(session.id) !== session ||
         session.revision !== revision ||
         session.generation !== generation ||
-        session.mode !== mode
+        session.mode !== mode ||
+        (operation === "view" && mode?.getSyntaxRequestEpoch?.() !== paintEpoch)
       )
         throw aborted();
     };
@@ -817,7 +868,8 @@ class SyntaxWorkerHost {
           throw new Error("Invalid speculative syntax session");
         if (data.purpose !== undefined && data.purpose !== "input")
           throw new TypeError("Invalid speculative syntax purpose");
-        const copy = new TextBuffer({ text: buffer.getTextSnapshot() });
+        const source = buffer.getTextSnapshot();
+        const copy = new TextBuffer({ text: source });
         copy.getPath = () => buffer.getPath();
         const fork = {
           id: data.target,
@@ -828,6 +880,14 @@ class SyntaxWorkerHost {
           generation: 0,
           initialized: false,
           purpose: data.purpose,
+          forkBase: {
+            source,
+            draftRevision: copy.getTextRevision(),
+            mode,
+            revision,
+            generation,
+            epoch: mode.getSyntaxRequestEpoch(),
+          },
           jobs: new Set(),
           initialSyntaxChanges: [],
         };
@@ -854,14 +914,18 @@ class SyntaxWorkerHost {
       }
       let transaction;
       try {
-        const settlement = mode.atGrammarSettlement();
-        if (
+        const first =
           operation === "view" &&
           data.allowPreview &&
           Array.isArray(data.ranges?.[0]) &&
-          mode.publicationPending &&
-          data.ranges?.length
-        ) {
+          mode.publicationPending
+            ? paintTile(buffer, ...data.ranges[0])
+            : null;
+        const settlement =
+          operation !== "view"
+            ? mode.atGrammarSettlement()
+            : first && this.waitForViewSyntax(session, new Range(first.start, first.end), combined);
+        if (first) {
           // Give the exact small-edit path its ordinary fast turn before
           // spending anything on a private, explicitly provisional preview.
           let timer;
@@ -897,7 +961,7 @@ class SyntaxWorkerHost {
             if (preview) return { revision, generation, value: preview, syntaxReady: false };
           } else transaction = fast.value;
         }
-        transaction ??= await waitFor(settlement, combined);
+        transaction ??= settlement ? await waitFor(settlement, combined) : {};
         this.previews.release(session);
       } catch (error) {
         this.failSession(session, error);
@@ -999,6 +1063,7 @@ class SyntaxWorkerHost {
           data.follow,
           data.presentation,
           combined,
+          data.optional,
         );
       else if (operation === "builtin") {
         if (FOLD_BUILTINS.has(data.method)) {
@@ -1006,7 +1071,7 @@ class SyntaxWorkerHost {
           if (input) await input;
           value = await this.foldBuiltin(mode, data.method, data.args, {
             signal: combined,
-            yieldTurn: () => this.yieldForFolds(current, combined),
+            yieldTurn: () => this.yieldForInput(current, combined),
           });
         } else value = await this.builtin(mode, data.method, data.args);
         if (data.stream && (Array.isArray(value) || value instanceof Map)) {
@@ -1060,7 +1125,12 @@ class SyntaxWorkerHost {
         );
       } else throw new Error(`Unknown syntax operation: ${operation}`);
       current();
-      return { revision, generation, value: serialize(value), syntaxReady };
+      return {
+        revision,
+        generation,
+        value: serialize(value),
+        syntaxReady: syntaxReady && (operation !== "view" || !mode.publicationPending),
+      };
     } finally {
       session.jobs.delete(controller);
       controller.abort(aborted("Syntax analysis finished"));
@@ -1120,6 +1190,7 @@ class SyntaxWorkerHost {
 
   metadata(session) {
     const { mode, buffer } = session;
+    if (mode.publicationPending) return { syntaxReady: false };
     const count = mode.injectionsMarkerLayer.getMarkerCount();
     if (!session.metadata || session.metadataDirty || session.metadata.count !== count) {
       const grammars = new Set(),
@@ -1160,6 +1231,34 @@ class SyntaxWorkerHost {
       typingContextRevision: session.revision,
       usesSyntaxIndentation: require("./typing-indentation-rules").usesSyntaxIndentation(mode),
     };
+  }
+
+  async waitForViewSyntax(session, range, signal, optional = false) {
+    const { mode } = session;
+    try {
+      const transaction = await waitFor(
+        mode.waitForHighlightRange
+          ? mode.waitForHighlightRange(range, signal, optional)
+          : mode.atGrammarSettlement(),
+        signal,
+      );
+      const error = transaction.parseError ?? mode.lastTransactionParseError;
+      if (error) throw error;
+      if (mode.publicationPending && !optional) {
+        const scoped = session.scopedPaint;
+        if (scoped?.revision !== session.revision || scoped?.generation !== session.generation) {
+          session.scopedPaint = {
+            revision: session.revision,
+            generation: session.generation,
+            epoch: mode.getSyntaxRequestEpoch(),
+          };
+        }
+      }
+      return transaction;
+    } catch (error) {
+      this.failSession(session, error);
+      throw error;
+    }
   }
 
   applyChanges(buffer, changes) {
@@ -1219,51 +1318,82 @@ class SyntaxWorkerHost {
     });
   }
 
-  async view(session, ranges, emit, current, follow = false, presentation, signal) {
+  async preparePaintTile(session, tile, optional, current, signal) {
+    const { buffer, mode } = session;
+    const options = { presentation: true };
+    if (mode.waitForHighlightRange) {
+      await this.waitForViewSyntax(session, new Range(tile.start, tile.end), signal, optional);
+      const input = this.waitForInput(current, signal);
+      if (input) await input;
+      options.allowPending = true;
+    }
+    if (tile.window) options.endPosition = tile.end;
+    if (optional) options.timeBudgetMs = OPTIONAL_PAINT_BUDGET_MS;
+    for (let retries = 0; ; retries++) {
+      const iterator = mode.buildHighlightIterator(options);
+      const scopes = runtime.run(this.contextFor(session, "paint-query"), () =>
+        iterator.seek(tile.start, tile.endRow),
+      );
+      if (iterator.limitedReason !== "timeout" || (!optional && retries > 0))
+        return { tile, iterator, scopes: [...scopes] };
+      if (optional) {
+        // Refine optional work on row boundaries against the same full tree.
+        // Leave a stubborn range uncovered for the foreground budget.
+        if (tile.window || tile.start.row === tile.endRow) return null;
+        const middle = Math.floor((tile.start.row + tile.endRow) / 2);
+        tile = paintTile(buffer, tile.start.row, middle);
+      }
+      await this.yieldForInput(current, signal);
+    }
+  }
+
+  async view(
+    session,
+    ranges,
+    emit,
+    current,
+    follow = false,
+    presentation,
+    signal,
+    optional = false,
+  ) {
     const { buffer, mode } = session;
     const tiles = [],
       names = new Map();
-    const pending = ranges.map((range) => ({ range, origin: range }));
+    const pending = ranges.map((range) => ({ range, origin: range, optional }));
     const deferredFolds = new Map();
+    let optionalPaintPaused = false;
     while (pending.length) {
       const input = this.waitForInput(current, signal);
       if (input) await input;
-      current?.();
-      const { range, origin } = pending.shift();
+      const work = pending.shift();
+      const { range, origin, optional } = work;
       const isWindow = !Array.isArray(range);
       const tile = isWindow ? windowTile(buffer, range) : paintTile(buffer, ...range);
       if (!tile) continue;
-      const { start, end, endRow } = tile;
-      const first = start.row,
-        last = isWindow ? endRow : range[1];
-      const options = isWindow ? { presentation: true, endPosition: end } : { presentation: true };
-      let iterator = mode.buildHighlightIterator(options);
-      let scopes = [
-        ...runtime.run(this.contextFor(session, "paint-query"), () => iterator.seek(start, endRow)),
-      ];
-      if (iterator.limitedReason === "timeout") {
-        // Cold queries or transient contention must not strand ordinary paint
-        // in a cached fallback. Retry once after yielding, with a new iterator's
-        // unchanged deadline. Structural/result limits are deliberately stable.
-        await new Promise(setImmediate);
-        const input = this.waitForInput(current, signal);
-        if (input) await input;
-        current?.();
-        iterator = mode.buildHighlightIterator(options);
-        scopes = [
-          ...runtime.run(this.contextFor(session, "paint-query"), () =>
-            iterator.seek(start, endRow),
-          ),
-        ];
+      const prepared = await this.preparePaintTile(session, tile, optional, current, signal);
+      current?.();
+      if (!prepared) {
+        optionalPaintPaused = true;
+        break;
       }
+      const {
+        iterator,
+        scopes,
+        tile: { start, end, endRow },
+      } = prepared;
+      const first = start.row;
+      const last = isWindow ? endRow : range[1];
       const events = [],
         folds = [];
       for (const id of scopes) names.set(id, mode.scopeNameForScopeId(id));
       const quality = iterator.limitedReason ? "limited" : "exact";
       const window = isWindow;
       let header = { start, end, scopes, quality, reason: iterator.limitedReason, window };
-      current?.();
+      let scanDeadline;
+      let scanned = 0;
       while (iterator.getPosition().compare(end) < 0) {
+        scanDeadline ??= performance.now() + PAINT_SCAN_SLICE_MS;
         const open = [...iterator.getOpenScopeIds()],
           close = [...iterator.getCloseScopeIds()];
         events.push({ position: iterator.getPosition(), open, close });
@@ -1277,6 +1407,10 @@ class SyntaxWorkerHost {
           const input = this.waitForInput(current, signal);
           if (input) await input;
           current?.();
+          scanDeadline = performance.now() + PAINT_SCAN_SLICE_MS;
+        } else if ((++scanned & 63) === 0 && performance.now() >= scanDeadline) {
+          await this.yieldForInput(current, signal);
+          scanDeadline = performance.now() + PAINT_SCAN_SLICE_MS;
         }
       }
       // Publish the complete color tile before folds. Fold lookup can compile
@@ -1287,7 +1421,9 @@ class SyntaxWorkerHost {
         serialize({ ...header, kind: "end", events, folds: [], names: [...names] }),
       );
       if (acknowledgement) void Promise.resolve(acknowledgement).catch(() => {});
-      if (quality === "exact") {
+      if (quality === "exact" && mode.publicationPending) {
+        if (emit) for (let row = first; row <= endRow; row++) deferredFolds.set(row, folds);
+      } else if (quality === "exact") {
         let deadline = performance.now() + 4;
         for (let row = first; row <= endRow; row++) {
           try {
@@ -1299,7 +1435,7 @@ class SyntaxWorkerHost {
             else break;
           }
           if (row < endRow && performance.now() >= deadline) {
-            await this.yieldForFolds(current, signal);
+            await this.yieldForInput(current, signal);
             deadline = performance.now() + 4;
           }
         }
@@ -1313,10 +1449,20 @@ class SyntaxWorkerHost {
         if (follow) {
           if (next?.range) {
             const same = rangeKey(next.range) === rangeKey(origin);
-            if (same && endRow < last) pending.unshift({ range: [endRow + 1, last], origin });
-            else if (!same) pending.unshift({ range: next.range, origin: next.range });
+            if (same && endRow < last)
+              pending.unshift({
+                ...work,
+                range: [endRow + 1, last],
+                optional: Boolean(next.optional),
+              });
+            else if (!same)
+              pending.unshift({
+                range: next.range,
+                origin: next.range,
+                optional: Boolean(next.optional),
+              });
           }
-        } else if (endRow < last) pending.unshift({ range: [endRow + 1, last], origin });
+        } else if (endRow < last) pending.unshift({ ...work, range: [endRow + 1, last] });
       } else {
         tiles.push({
           start,
@@ -1328,7 +1474,7 @@ class SyntaxWorkerHost {
           reason: iterator.limitedReason,
           window,
         });
-        if (endRow < last) pending.unshift({ range: [endRow + 1, last], origin });
+        if (endRow < last) pending.unshift({ ...work, range: [endRow + 1, last] });
       }
     }
     if (deferredFolds.size) {
@@ -1336,7 +1482,8 @@ class SyntaxWorkerHost {
       if (emit) this.scheduleDeferredPaintFolds(session, presentation, deferredFolds);
       else await this.resolveDeferredPaintFolds(mode, deferredFolds, current, signal);
     }
-    return emit ? this.metadata(session) : { tiles, scopes: [...names] };
+    const value = emit ? this.metadata(session) : { tiles, scopes: [...names] };
+    return optionalPaintPaused ? { ...value, optionalPaintPaused: true } : value;
   }
 
   publishPaintFolds(session, presentation, folds, deferred = false) {
@@ -1355,21 +1502,33 @@ class SyntaxWorkerHost {
   }
 
   scheduleDeferredPaintFolds(session, presentation, rows) {
+    const { mode, generation, revision } = session;
+    const epoch = mode.getSyntaxRequestEpoch?.();
     const previous = session.deferredPaintFolds;
-    if (previous && previous.presentation === presentation && !previous.controller.signal.aborted) {
+    if (
+      previous &&
+      previous.presentation === presentation &&
+      previous.epoch === epoch &&
+      !previous.controller.signal.aborted
+    ) {
       for (const [row, folds] of rows) previous.rows.set(row, folds);
       return;
     }
     previous?.controller.abort(aborted());
     const controller = new AbortController();
     const { signal } = controller;
-    const { generation, revision } = session;
-    const job = { presentation, controller, rows };
+    const job = { presentation, epoch, controller, rows };
     session.deferredPaintFolds = job;
     session.jobs.add(controller);
     const current = () => {
       signal.throwIfAborted();
-      if (session.generation !== generation || session.revision !== revision) throw aborted();
+      if (
+        session.generation !== generation ||
+        session.revision !== revision ||
+        session.mode !== mode ||
+        mode.getSyntaxRequestEpoch?.() !== epoch
+      )
+        throw aborted();
     };
     const publish = (folds) => {
       current();
@@ -1379,7 +1538,7 @@ class SyntaxWorkerHost {
     // can paint immediately. Edits cancel this work with the other session jobs.
     void runtime
       .run(this.contextFor(session, "paint-folds"), () =>
-        this.resolveDeferredPaintFolds(session.mode, rows, current, signal, publish),
+        this.resolveDeferredPaintFolds(mode, rows, current, signal, publish),
       )
       .catch((error) => this.failSession(session, error))
       .finally(() => {
@@ -1389,7 +1548,11 @@ class SyntaxWorkerHost {
   }
 
   async resolveDeferredPaintFolds(mode, rows, current, signal, publish) {
-    const options = { signal, yieldTurn: () => this.yieldForFolds(current, signal) };
+    const options = { signal, yieldTurn: () => this.yieldForInput(current, signal) };
+    if (mode.publicationPending) {
+      const { parseError } = await waitFor(mode.atGrammarSettlement(), signal);
+      if (parseError) throw parseError;
+    }
     await options.yieldTurn();
     const results = [];
     for (const [row, folds] of rows) {

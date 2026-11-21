@@ -26,6 +26,8 @@ const intersectsRows = (snapshot, first, last) =>
   snapshot.start.row <= last &&
   (snapshot.end.row > first || (snapshot.end.row === first && snapshot.end.column > 0));
 const boundedPaint = (snapshot) => snapshot.bounded !== false;
+const currentPaint = (snapshot) => snapshot.quality !== "provisional";
+const boundedCurrentPaint = (snapshot) => boundedPaint(snapshot) && currentPaint(snapshot);
 const requestIntersects = (request, tile) =>
   request.windows
     ? request.windows.some(
@@ -38,8 +40,9 @@ const paintCovered = (mode, range, stamp = null) =>
         mode.buffer.clipPosition([range[0], 0]),
         mode.buffer.clipPosition([range[1] + 1, 0]),
         stamp,
+        stamp ? currentPaint : null,
       )
-    : mode.cache.covers(range.start, range.end, stamp, boundedPaint);
+    : mode.cache.covers(range.start, range.end, stamp, stamp ? boundedCurrentPaint : boundedPaint);
 
 class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   constructor({ buffer, grammar, service }) {
@@ -80,6 +83,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       },
     );
     this.initializeSyntax();
+    this.schedule();
   }
 
   initializeSyntax() {
@@ -188,6 +192,13 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       }
       this.schedule();
     } else if (event.event === "highlight" && event.revision === this.buffer.getTextRevision()) {
+      // Finishing the offscreen forest does not change already proven scopes
+      // for this revision and grammar epoch.
+      if (event.reconciled) {
+        this.reconciledPresentation = this.presentationVersion;
+        this.schedule();
+        return;
+      }
       this.presentationVersion++;
       this.paintRetries?.clear();
       this.refreshController?.abort();
@@ -271,7 +282,6 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
         continue;
       }
       if (snapshot.quality === "provisional") provisional = true;
-      else if (this.publicationPending) retained = true;
       if (snapshot.reason) reasons.add(snapshot.reason);
     }
     const covered = visible.every((request) =>
@@ -280,7 +290,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     return {
       state: provisional
         ? "provisional"
-        : covered && !this.publicationPending
+        : covered
           ? reasons.size
             ? "limited"
             : "ready"
@@ -644,6 +654,23 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     request.priority = priority;
     request.prefetch = prefetch;
     request.background = background;
+    if (changed && primaryRequest(request) && this.activePaint) {
+      const work = this.activePaint;
+      // A complete packet already being delivered can acknowledge the new
+      // viewport directly. Cancel only if that packet did not retarget work.
+      queueMicrotask(() => {
+        if (this.activePaint !== work) return;
+        const { range, optional } = work;
+        const tile = Array.isArray(range)
+          ? { start: new Point(range[0], 0), end: this.buffer.clipPosition([range[1] + 1, 0]) }
+          : range;
+        if (
+          optional ||
+          ![...this.requests].some((view) => primaryRequest(view) && requestIntersects(view, tile))
+        )
+          this.refreshController?.abort();
+      });
+    }
     this.paintRetries?.update();
     if (schedule) this.schedule();
     return (request.windows ?? ranges).every((range) => paintCovered(this, range));
@@ -692,15 +719,25 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       views.push({ ranges, visibleCount, size, priority: request.priority });
     }
     views.sort((a, b) => a.priority - b.priority || a.size - b.size);
-    const ranges = [];
+    const wanted = new Map();
+    const add = (range, optional) => {
+      const key = rangeKey(range);
+      if (!wanted.has(key)) wanted.set(key, { range, optional });
+    };
+    for (const view of views)
+      if (primaryRequest(view))
+        for (let i = 0; i < view.visibleCount; i++) add(view.ranges[i], false);
     // Every visible split precedes the lead of another split. Minimap and
     // measurement owners cannot put auxiliary reads ahead of editor text.
     for (const priority of new Set(views.map((view) => view.priority))) {
       const group = views.filter((view) => view.priority === priority);
-      for (const view of group) ranges.push(...view.ranges.slice(0, view.visibleCount));
-      for (const view of group) ranges.push(...view.ranges.slice(view.visibleCount));
+      if (priority > 1)
+        for (const view of group)
+          for (let i = 0; i < view.visibleCount; i++) add(view.ranges[i], false);
+      for (const view of group)
+        for (let i = view.visibleCount; i < view.ranges.length; i++) add(view.ranges[i], true);
     }
-    return [...new Map(ranges.map((range) => [rangeKey(range), range])).values()];
+    return [...wanted.values()];
   }
 
   updateCacheAllowance(active = this.service.focusedBuffer?.deref() === this.buffer) {
@@ -809,44 +846,53 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
         const generation = this.session.generation;
         const presentation = this.presentationVersion;
         const stamp = { revision, generation, presentation };
+        const needsMetadata = () =>
+          this.tokenized && this.publicationPending && this.reconciledPresentation === presentation;
         const current = () =>
           !this.destroyed &&
           revision === this.buffer.getTextRevision() &&
           generation === this.session.generation &&
           presentation === this.presentationVersion;
-        const nextRange = () =>
-          this.wantedRanges().find((range) => !paintCovered(this, range, stamp)) ??
-          (() => {
-            const retry = this.paintRetries.next();
-            return (
-              retry &&
-              (retry.window
-                ? { start: retry.start, end: retry.end }
-                : [retry.start.row, retry.end.row - (retry.end.column === 0 ? 1 : 0)])
-            );
-          })() ??
-          this.backgroundRange(stamp);
-        const first = nextRange();
+        const nextPaint = () => {
+          const first = this.wantedRanges().find(({ range }) => !paintCovered(this, range, stamp));
+          if (first && !first.optional) return first;
+          const retry = this.paintRetries.next();
+          if (retry) {
+            const { start, end } = retry;
+            const range = retry.window
+              ? { start, end }
+              : [start.row, end.row - (end.column === 0 ? 1 : 0)];
+            return { range, optional: false };
+          }
+          if (first) return first;
+          const range = this.backgroundRange(stamp);
+          if (range) return { range, optional: true };
+        };
+        const first = nextPaint();
         if (!first) {
+          if (needsMetadata()) await this.settle();
           return;
         }
         const ids = new Map();
         let tile;
         const controller = (this.refreshController = new AbortController());
+        this.activePaint = first;
         try {
           const metadata = await this.service.request(
             this.session,
             "view",
             {
-              ranges: [first],
+              ranges: [first.range],
               stream: true,
               follow: true,
+              optional: first.optional,
               // Retained, edit-adjusted colors are preferable to parsing an
               // isolated fragment without its surrounding syntax context.
               allowPreview:
-                Array.isArray(first) &&
+                !first.optional &&
+                Array.isArray(first.range) &&
                 this.buffer.getLength() <= PREVIEW_DOCUMENT_UNITS &&
-                !paintCovered(this, first),
+                !paintCovered(this, first.range),
               presentation,
             },
             {
@@ -992,19 +1038,30 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
                         : update.end;
                     this.emitter.emit("did-change-highlighting", new Range(update.start, end));
                   }
-                  if (current() && tile.quality !== "provisional") return { range: nextRange() };
+                  if (current() && tile.quality !== "provisional") {
+                    const next = nextPaint();
+                    this.activePaint = next;
+                    return next;
+                  }
                 }
               },
             },
           );
           if (current()) {
-            if (metadata.syntaxReady === false) return;
+            if (metadata.optionalPaintPaused) this.warmupPaused = true;
+            if (metadata.syntaxReady === false) {
+              if (needsMetadata()) await this.settle();
+              return;
+            }
             this.receiveMetadata(metadata);
             this.publicationPending = false;
           }
         } catch (error) {
           if (error.name === "AbortError" && !this.destroyed) continue;
           throw error;
+        } finally {
+          this.activePaint = null;
+          if (this.refreshController === controller) this.refreshController = null;
         }
       }
     })().finally(() => {

@@ -1,11 +1,12 @@
 // Opt-in Electron benchmark, compatible with older worker implementations.
 // LUMINE_SYNTAX_SYSTEM_BENCHMARK={"out":"<directory>","label":"baseline"}
 // Run: npm run test:only -- benchmark/syntax-system-spec.js
-// Cases: small-edits, competing-parses, long-line, repeated-close.
+// Cases: small-edits, competing-parses, injection-viewport, long-line, repeated-close.
 // Reports DOM update and animation-frame observations separately; neither is a
 // compositor screenshot. Synthetic inputs are never saved to disk.
 const fs = require("node:fs");
 const path = require("node:path");
+const { createHash } = require("node:crypto");
 
 // The same file is an analysis module in the worker. It reads only scalar
 // metadata and bounded source slices; no full-document materialization.
@@ -29,6 +30,13 @@ exports.inspect = (context) => {
     processMemory: process.memoryUsage(),
   };
 };
+
+exports.inspectInjectionViewport = (context, { points }) => ({
+  javascriptLayers: context
+    .getLanguageLayers()
+    .filter((layer) => layer.scopeName === "source.js" && layer.rootNode).length,
+  nodeTypes: points.map((point) => context.getSyntaxNodeAtBufferPosition(point)?.type ?? null),
+});
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const frame = () => new Promise(requestAnimationFrame);
@@ -231,6 +239,99 @@ async function measureEdits(editor, configuration) {
   };
 }
 
+function injectionViewportFixture({ injectionBlocks, injectionRows }) {
+  const visible = "const target = 1234567;";
+  const bodyLine = "const padding = [123, 2, 3];";
+  const offscreen = "<script>\n" + (bodyLine + "\n").repeat(injectionRows) + "</script>\n";
+  const separatorRows = 1024;
+  const source =
+    "<script>\n" +
+    visible +
+    "\n</script>\n" +
+    "<p>offscreen boundary</p>\n".repeat(separatorRows) +
+    offscreen.repeat(injectionBlocks);
+  const firstOffscreenRow = 3 + separatorRows + 1;
+  return {
+    source,
+    visible,
+    points: [
+      [1, visible.indexOf("1234567") + 1],
+      [
+        firstOffscreenRow + (injectionBlocks - 1) * (injectionRows + 2) + injectionRows - 1,
+        bodyLine.indexOf("1") + 1,
+      ],
+    ],
+  };
+}
+
+async function measureInjectionViewport(editor, start, fixture, settle, timeoutMs) {
+  let exactColorMs = null;
+  let exactColorFrameMs = null;
+  let fullSyntaxMs = null;
+  let syntaxTokenAtExactColor = null;
+  const sample = (now = performance.now(), fromFrame = false) => {
+    const line = domLine(editor, 1);
+    const visibleNumber = line?.querySelector(".syntax--numeric");
+    const exact =
+      line?.textContent === fixture.visible &&
+      visibleNumber?.textContent === "1234567" &&
+      editor.getBuffer().getLanguageMode().getHighlightingStatus().state === "ready";
+    if (exact && exactColorMs === null) {
+      exactColorMs = now - start;
+      syntaxTokenAtExactColor = Boolean(editor.getBuffer().getSyntaxSnapshotToken());
+    }
+    if (exact && fromFrame && exactColorFrameMs === null) exactColorFrameMs = now - start;
+    return { exact };
+  };
+  const stopFrames = measureFrames((now) => sample(now, true));
+  const mutation = new MutationObserver(() => sample());
+  mutation.observe(editor.getElement(), {
+    subtree: true,
+    characterData: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+  const fullSyntax = settle(editor).then((ready) => {
+    fullSyntaxMs = performance.now() - start;
+    return ready;
+  });
+  try {
+    const [fullSyntaxReady] = await Promise.all([
+      fullSyntax,
+      waitUntil(
+        () => exactColorFrameMs !== null || !editor.getSyntaxAvailability().available,
+        timeoutMs,
+        "The injected number did not receive exact viewport colors",
+      ),
+    ]);
+    expect(fullSyntaxReady).toBe(true);
+    expect(exactColorFrameMs).not.toBeNull();
+    const viewport = stopFrames();
+    const analysis = await bounded(
+      editor.analyzeSyntax(__filename, "inspectInjectionViewport", { points: fixture.points }),
+      timeoutMs,
+      "Full syntax inspection timed out",
+    );
+    expect(analysis?.nodeTypes).toEqual(["number", "number"]);
+    expect(editor.getText() === fixture.source).toBe(true);
+    return {
+      exactColorMs,
+      exactColorFrameMs,
+      fullSyntaxMs,
+      syntaxTokenAtExactColor,
+      analysis,
+      ...viewport,
+    };
+  } catch (error) {
+    const presentation = JSON.stringify(presentationSummary(editor));
+    throw new Error(`${error.message}. Viewport: ${presentation}`, { cause: error });
+  } finally {
+    mutation.disconnect();
+    stopFrames();
+  }
+}
+
 if (typeof describe === "function")
   describe("Syntax system latency and resource benchmark", () => {
     it("records visible correctness, multi-document contention, long lines and worker retention", async () => {
@@ -244,6 +345,8 @@ if (typeof describe === "function")
         edits: 20,
         editGapMs: 40,
         backgroundRows: 150000,
+        injectionBlocks: 2,
+        injectionRows: 40000,
         longLineUnits: 1000000,
         closeRows: 300000,
         closeCycles: 3,
@@ -254,6 +357,8 @@ if (typeof describe === "function")
       for (const key of [
         "edits",
         "backgroundRows",
+        "injectionBlocks",
+        "injectionRows",
         "longLineUnits",
         "closeRows",
         "closeCycles",
@@ -271,7 +376,7 @@ if (typeof describe === "function")
       jasmine.attachToDOM(workspace);
       const service = new Service(lumine.grammars);
       const editors = new Set();
-      const build = (text, active = false) => {
+      const build = (text, active = false, activeGrammar = grammar) => {
         const editor = lumine.workspace.buildTextEditor();
         editors.add(editor);
         editor.setText(text);
@@ -279,7 +384,9 @@ if (typeof describe === "function")
         editor.setCursorBufferPosition([0, 0]);
         editor
           .getBuffer()
-          .setLanguageMode(new WorkerMode({ buffer: editor.getBuffer(), grammar, service }));
+          .setLanguageMode(
+            new WorkerMode({ buffer: editor.getBuffer(), grammar: activeGrammar, service }),
+          );
         if (active) activate(editor);
         return editor;
       };
@@ -401,6 +508,33 @@ if (typeof describe === "function")
             close(first);
             close(second);
             close(third);
+            activate(small);
+          }
+        }
+        if (configuration.cases.includes("injection-viewport")) {
+          await lumine.packages.activatePackage("language-html");
+          const html = lumine.grammars.grammarForScopeName("text.html.basic");
+          const fixture = injectionViewportFixture(configuration);
+          const inputHash = createHash("sha256").update(fixture.source).digest("hex");
+          const start = performance.now();
+          const nested = build(fixture.source, true, html);
+          try {
+            const timings = await measureInjectionViewport(
+              nested,
+              start,
+              fixture,
+              settle,
+              configuration.timeoutMs,
+            );
+            expect(timings.analysis?.javascriptLayers).toBe(configuration.injectionBlocks + 1);
+            result.cases.push({
+              name: "injection-viewport",
+              inputHash,
+              inputUnits: fixture.source.length,
+              ...timings,
+            });
+          } finally {
+            close(nested);
             activate(small);
           }
         }
@@ -538,12 +672,23 @@ if (typeof describe === "function")
       console.log(
         JSON.stringify({
           output: path.join(configuration.out, "syntax-system.json"),
-          cases: result.cases.map(({ name, colorFrameMs, thirdColorMs, neighbourResponseMs }) => ({
-            name,
-            colorFrameMs,
-            thirdColorMs,
-            neighbourResponseMs,
-          })),
+          cases: result.cases.map(
+            ({
+              name,
+              colorFrameMs,
+              thirdColorMs,
+              neighbourResponseMs,
+              exactColorMs,
+              fullSyntaxMs,
+            }) => ({
+              name,
+              colorFrameMs,
+              thirdColorMs,
+              neighbourResponseMs,
+              exactColorMs,
+              fullSyntaxMs,
+            }),
+          ),
         }),
       );
     }, 360000);

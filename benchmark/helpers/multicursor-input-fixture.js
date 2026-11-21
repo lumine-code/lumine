@@ -37,6 +37,21 @@ for (const [language, ownership] of [
         ownership,
       });
 }
+// Keep these opt-in cases above the large-buffer parse coalescing threshold.
+for (const [language, ownership] of [
+  ["python", "fast"],
+  ["ipython", "fast"],
+  ["ipython", "quoted"],
+]) {
+  definitions.push({
+    id: `${language}-1000${ownership === "fast" ? "" : `-${ownership}`}-chain-2`,
+    language,
+    sizeKiB: 1000,
+    cursors: 2,
+    kind: "chain",
+    ownership,
+  });
+}
 
 // Portable provider: the worker resolves this module in its own realm. Its
 // deliberately opaque contract requires a parsed ownership proof even though

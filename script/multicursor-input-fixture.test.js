@@ -31,7 +31,7 @@ test("the 32 original public sources, outputs and cursor anchors retain their go
 });
 
 test("every public ownership fixture agrees with the independent Enter oracle before any burst typing", () => {
-  assert.equal(definitions.length, 74);
+  assert.equal(definitions.length, 77);
   for (const definition of definitions) {
     const input = fixture(definition);
     const plan = burstStates(input);

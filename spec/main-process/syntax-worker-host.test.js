@@ -361,6 +361,7 @@ test("provisional view packets remain separate from exact semantics and yield to
       settle = resolve;
     });
     mode.atGrammarSettlement = () => settlement;
+    mode.waitForHighlightRange = () => settlement;
     mode.publicationPending = true;
     const packets = [];
     const result = await host.dispatch(

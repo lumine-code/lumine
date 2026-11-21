@@ -253,6 +253,7 @@ class TreeSitterLanguageMode {
     indentationOnly = false,
     indentationRanges = null,
     editedIndentationRows = null,
+    scopedPresentation = false,
   }) {
     this.buffer = buffer;
     this.document = new TreeSitterDocument(buffer);
@@ -269,6 +270,7 @@ class TreeSitterLanguageMode {
     this.syntaxRequestEpoch = 0;
     this.publicationPending = true;
     this.publicationRanges = new TreeSitterRangeList();
+    this.highlightRangeWaiters = scopedPresentation ? new Set() : null;
     this.grammar = grammar;
     this.config = config ?? lumine.config;
     this.grammarRegistry = grammars;
@@ -426,6 +428,7 @@ class TreeSitterLanguageMode {
     if (this.destroyed) return;
     // Queued and running initial parses observe destruction before publishing.
     this.destroyed = true;
+    for (const waiter of this.highlightRangeWaiters ?? []) waiter.cancel();
     this.foldRenderingRecovery?.cancel?.();
     this.foldRenderingRecovery = null;
     this.initialSyntaxSnapshot?.close();
@@ -592,7 +595,7 @@ class TreeSitterLanguageMode {
     return cancel;
   }
 
-  scheduleInitialInjectionUpdate(callback) {
+  scheduleInitialInjectionUpdate(callback, layer) {
     if (this.destroyed) return Promise.resolve(false);
 
     let resolveJob;
@@ -603,9 +606,11 @@ class TreeSitterLanguageMode {
     });
     this.pendingInitialInjectionUpdates.push({
       callback,
+      layer,
       resolve: resolveJob,
       reject: rejectJob,
     });
+    if (this.highlightPriorityLayers?.has(layer)) this.initialInjectionPrioritiesChanged = true;
     this.ensureInitialInjectionUpdateDrain();
     return jobPromise;
   }
@@ -630,6 +635,15 @@ class TreeSitterLanguageMode {
       await this._yieldForInitialInjectionUpdates();
       if (this.destroyed) break;
 
+      if (this.initialInjectionPrioritiesChanged) {
+        this.initialInjectionPrioritiesChanged = false;
+        const visible = [];
+        const rest = [];
+        for (const job of this.pendingInitialInjectionUpdates) {
+          (this.highlightPriorityLayers?.has(job.layer) ? visible : rest).push(job);
+        }
+        this.pendingInitialInjectionUpdates = visible.concat(rest);
+      }
       const startedAt = performance.now();
       do {
         const job = this.pendingInitialInjectionUpdates.shift();
@@ -868,12 +882,49 @@ class TreeSitterLanguageMode {
     this.updateRootLayer();
   }
 
+  acquireInputParsePriority(priority) {
+    const revision = this.buffer.getTextRevision();
+    const epoch = this.getSyntaxRequestEpoch();
+    let demand = this.inputParseDemand;
+    if (!demand || demand.revision !== revision || demand.epoch !== epoch) {
+      demand = { revision, epoch, priority, count: 0 };
+      this.inputParseDemand = demand;
+      // The interactive operation is blocked on this revision. Wake an
+      // existing quiet-period wait without restarting an active parse.
+      this.cancelPendingRootUpdate();
+    }
+    demand.count++;
+    return () => {
+      if (--demand.count === 0 && this.inputParseDemand === demand) this.inputParseDemand = null;
+    };
+  }
+
+  inputParsePriority(revision, epoch = this.getSyntaxRequestEpoch()) {
+    const demand = this.inputParseDemand;
+    if (
+      demand &&
+      demand.revision === revision &&
+      demand.epoch === epoch &&
+      epoch === this.getSyntaxRequestEpoch() &&
+      revision === this.buffer.getTextRevision()
+    )
+      return demand.priority;
+  }
+
+  parsePriorityForRevision(revision, depth, layer, epoch) {
+    const priority = this.inputParsePriority(revision, epoch) ?? this.parsePriority;
+    if (priority !== undefined) return priority + depth;
+    const focused = lumine.workspace?.getActiveTextEditor()?.getBuffer() === this.buffer;
+    return (focused ? 0 : 100) - (this.highlightPriorityLayers?.has(layer) ? 10 : 0) + depth;
+  }
+
   waitForRootUpdate() {
     if (
       this.useAsyncParsing &&
       this.deferLargeBufferUpdates &&
       this.coalesceLargeBufferEdits &&
-      this.buffer.getLength() >= LARGE_BUFFER_ASYNC_THRESHOLD
+      this.buffer.getLength() >= LARGE_BUFFER_ASYNC_THRESHOLD &&
+      this.inputParsePriority(this.inputParseDemand?.revision) == null
     ) {
       const deadline = this.lastLargeBufferEditAt + SLOW_PARSE_COALESCE_MS;
       const remaining = deadline - performance.now();
@@ -1053,13 +1104,20 @@ class TreeSitterLanguageMode {
     )
       return false;
     this.publicationPending = false;
+    this.publishedSyntaxEpoch = this.syntaxRequestEpoch;
     this.synchronousUpdates = true;
+    this.wakeHighlightRangeWaiters();
     const ranges = [...this.publicationRanges];
     this.publicationRanges.clear();
-    for (const range of ranges) {
-      this.scopeDescriptorCache = null;
-      this.emitFoldUpdate(range, { prefill: false });
-      this.emitter.emit("did-change-highlighting", range);
+    this.publishingHighlightRanges = true;
+    try {
+      for (const range of ranges) {
+        this.scopeDescriptorCache = null;
+        this.emitFoldUpdate(range, { prefill: false });
+        this.emitter.emit("did-change-highlighting", range);
+      }
+    } finally {
+      this.publishingHighlightRanges = false;
     }
     this.presentation.flush();
     return true;
@@ -1095,9 +1153,10 @@ class TreeSitterLanguageMode {
           layer.nodesToInvalidateOnChange.rebase();
           layer.foldNodesToInvalidateOnChange.rebase();
           layer.scopeResolver.reset();
-          const children = layer.hasInjectionDescendants()
-            ? layer._populateInjections(layer.editedRange ?? layer.getExtent(), null)
-            : null;
+          let children;
+          if (layer.hasInjectionDescendants())
+            children = layer._populateInjections(layer.editedRange ?? layer.getExtent(), null);
+          else layer.markInjectionTopology();
           layer.editedRange = null;
           if (children?.then) return children.then(() => advance(index + 1));
           continue;
@@ -1269,6 +1328,94 @@ class TreeSitterLanguageMode {
     return transaction;
   }
 
+  waitForHighlightRange(range, signal, optional = false) {
+    signal?.throwIfAborted();
+    if (!this.publicationPending && this.publishedSyntaxEpoch === this.syntaxRequestEpoch)
+      return this.transactionMetadata();
+    if (optional || !this.highlightRangeWaiters || !this.publicationPending)
+      return this.atGrammarSettlement();
+    if (this.highlightRangeIsReady(range)) return this.transactionMetadata();
+    return new Promise((resolve, reject) => {
+      const finish = () => {
+        signal?.removeEventListener("abort", waiter.cancel);
+        this.highlightRangeWaiters.delete(waiter);
+        this.updateHighlightPriorityLayers();
+      };
+      const waiter = {
+        range,
+        complete: () => {
+          finish();
+          resolve(this.transactionMetadata());
+        },
+        cancel: () => {
+          finish();
+          reject(signal?.reason ?? new DOMException("Highlighting was cancelled", "AbortError"));
+        },
+      };
+      this.highlightRangeWaiters.add(waiter);
+      signal?.addEventListener("abort", waiter.cancel, { once: true });
+      this.updateHighlightPriorityLayers();
+    });
+  }
+
+  highlightRangeIsReady(range) {
+    // Owner bounds are enough because descendant parsers intersect their
+    // input with their ancestors' included ranges. An arbitrary dynamic
+    // input outside its owner breaks that proof, requiring full settlement.
+    if (this.hasExternalInjectionContent) return false;
+    const revision = this.buffer.getTextRevision();
+    const root = this.rootLanguageLayer;
+    if (!root?.canHighlightRevision(revision)) return false;
+    const checked = new Set([root]);
+    for (const marker of this.injectionsMarkerLayer.findMarkers({ intersectsRange: range })) {
+      for (
+        let layer = marker.languageLayer;
+        layer && !checked.has(layer);
+        layer = layer.marker?.parentLanguageLayer
+      ) {
+        if (!layer.canHighlightRevision(revision)) return false;
+        checked.add(layer);
+      }
+    }
+    return true;
+  }
+
+  wakeHighlightRangeWaiters(layer, topologyChanged = false) {
+    if (!this.highlightRangeWaiters?.size) return;
+    const extent = layer?.marker?.getRange();
+    let changedPriorities = false;
+    for (const waiter of this.highlightRangeWaiters) {
+      if (extent && !waiter.range.intersectsWith(extent)) continue;
+      if (topologyChanged && !changedPriorities) {
+        this.updateHighlightPriorityLayers();
+        changedPriorities = true;
+      }
+      if (!this.publicationPending || this.highlightRangeIsReady(waiter.range)) waiter.complete();
+    }
+  }
+
+  updateHighlightPriorityLayers() {
+    const hadPriorities = this.highlightPriorityLayers?.size > 0;
+    if (!this.highlightRangeWaiters?.size) {
+      this.highlightPriorityLayers = null;
+      this.initialInjectionPrioritiesChanged ||= hadPriorities;
+      return;
+    }
+    const layers = new Set();
+    for (const { range } of this.highlightRangeWaiters) {
+      for (const marker of this.injectionsMarkerLayer.findMarkers({ intersectsRange: range })) {
+        for (
+          let layer = marker.languageLayer;
+          layer?.depth && !layers.has(layer);
+          layer = layer.marker?.parentLanguageLayer
+        )
+          layers.add(layer);
+      }
+    }
+    this.highlightPriorityLayers = layers;
+    this.initialInjectionPrioritiesChanged ||= hadPriorities || layers.size > 0;
+  }
+
   transactionMetadata() {
     return {
       changeCount: this.lastTransactionChangeCount ?? 0,
@@ -1383,7 +1530,7 @@ class TreeSitterLanguageMode {
     if (!this.rootLanguageLayer) {
       return new NullLanguageModeHighlightIterator();
     }
-    if (this.publicationPending) return new PendingHighlightIterator(this);
+    if (this.publicationPending && !options.allowPending) return new PendingHighlightIterator(this);
     return new HighlightIterator(this, options);
   }
 
@@ -1672,31 +1819,22 @@ class TreeSitterLanguageMode {
     language,
     oldTree,
     includedRanges,
-    { scopeName = null, signal, depth = 0, onStart, extraEdits = [] } = {},
+    { scopeName = null, signal, depth = 0, onStart, extraEdits = [], layer: parseLayer } = {},
   ) {
     if (this.destroyed || signal?.aborted) return null;
-    if (
-      depth === 0 &&
-      oldTree &&
-      this.deferLargeBufferUpdates &&
-      this.coalesceLargeBufferEdits &&
-      this.buffer.getLength() >= LARGE_BUFFER_ASYNC_THRESHOLD
-    ) {
+    let pending;
+    while (depth === 0 && oldTree && (pending = this.waitForRootUpdate())) {
       // A slow parse cannot finish between repeat-key events. Coalesce them
       // before copying a tree or capturing a growing revision journal. Ranges
       // still belong to the submitted revision; never pair them with new text.
       const revision = this.buffer.getTextRevision();
       await new Promise((resolve) => {
         const finish = () => {
-          cancelBackgroundTask(timer);
           signal?.removeEventListener("abort", finish);
           resolve();
         };
-        const timer = scheduleBackgroundTask(
-          finish,
-          Math.max(0, this.lastLargeBufferEditAt + SLOW_PARSE_COALESCE_MS - performance.now()),
-        );
         signal?.addEventListener("abort", finish, { once: true });
+        pending.then(finish);
       });
       if (this.destroyed || signal?.aborted || revision !== this.buffer.getTextRevision())
         return null;
@@ -1721,6 +1859,7 @@ class TreeSitterLanguageMode {
     }
     if (!fromCheckpoint) capture = this.document.capture(previous);
     const comparison = fromCheckpoint ? this.document.capture(previous) : null;
+    const epoch = this.getSyntaxRequestEpoch();
     return (async () => {
       // Ordinary documents coalesce edit bursts before leasing a parser.
       // A private indentation candidate already contains its complete edit;
@@ -1734,10 +1873,7 @@ class TreeSitterLanguageMode {
       try {
         signal?.throwIfAborted();
         const options = {
-          priority: () =>
-            (this.parsePriority ??
-              (lumine.workspace?.getActiveTextEditor()?.getBuffer() === this.buffer ? 0 : 100)) +
-            depth,
+          priority: () => this.parsePriorityForRevision(capture.revision, depth, parseLayer, epoch),
           runtimeContext: runtime.contextForBuffer(this.buffer, scopeName),
           deadlineForSlice: () => parserScheduler.deadline(4000),
           previous: capture.previous,
@@ -1791,12 +1927,21 @@ class TreeSitterLanguageMode {
     language,
     oldTree,
     includedRanges,
-    { scopeName = null, extraEdits = [], budgetOnly = false, resumable = false, signal } = {},
+    {
+      scopeName = null,
+      extraEdits = [],
+      budgetOnly = false,
+      resumable = false,
+      signal,
+      depth = 0,
+      layer,
+    } = {},
   ) {
     if (this.destroyed) return null;
     const previous =
       oldTree?.language === language && this.backgroundSnapshots.has(oldTree) ? oldTree : null;
     const capture = this.document.capture(previous);
+    const epoch = this.getSyntaxRequestEpoch();
     const parser = this.acquireParserForLanguage(language);
     const options = {
       signal,
@@ -1848,9 +1993,7 @@ class TreeSitterLanguageMode {
             if (this.destroyed) return null;
             return parser.parse(capture.text, {
               ...options,
-              priority: () =>
-                this.parsePriority ??
-                (lumine.workspace?.getActiveTextEditor()?.getBuffer() === this.buffer ? 0 : 100),
+              priority: () => this.parsePriorityForRevision(capture.revision, depth, layer, epoch),
             });
           })
           .then(finish, fail)
@@ -3208,7 +3351,9 @@ class HighlightIterator {
 
     const queryOptions = { ...this.options };
     if (queryOptions.presentation)
-      queryOptions.deadline = (this.languageMode.queryBudget?.now?.() ?? performance.now()) + 50;
+      queryOptions.deadline =
+        (this.languageMode.queryBudget?.now?.() ?? performance.now()) +
+        (queryOptions.timeBudgetMs ?? 50);
     this.limitedReason = null;
     const iterator = rootLanguageLayer.buildHighlightIterator(queryOptions);
 
@@ -3775,6 +3920,7 @@ class LanguageLayer {
 
     this.tree = null;
     this.lastSyntaxTree = null;
+    this.injectionTopologyTree = null;
 
     this.subscriptions = new CompositeDisposable();
 
@@ -3992,6 +4138,7 @@ class LanguageLayer {
     this.tree = null;
     this.lastSyntaxTree = null;
 
+    this.injectionTopologyTree = null;
     this.marker?.parentLanguageLayer?.childLayerMarkers.delete(this.marker);
     this.marker?.destroy();
     this.currentRangesLayer?.destroy();
@@ -4215,6 +4362,28 @@ class LanguageLayer {
 
   getExtent() {
     return this.marker?.getRange() ?? this.languageMode.buffer.getRange();
+  }
+
+  canHighlightRevision(revision) {
+    return (
+      !this.destroyed &&
+      this.tree?.revision === revision &&
+      this.injectionTopologyTree === this.tree &&
+      this.injectionTopologyVersion === this.injectionPointVersion &&
+      !this.treeIsDirty &&
+      !this.updateRequested &&
+      !this.rootRangePolicyNeedsUpdate &&
+      !this.injectionPopulationNeedsRetry &&
+      !this.queryReloadPromise
+    );
+  }
+
+  markInjectionTopology(topologyChanged = false) {
+    if (!this.languageMode.highlightRangeWaiters || this.pendingInjectionPopulationRequests.length)
+      return;
+    this.injectionTopologyTree = this.tree;
+    this.injectionTopologyVersion = this.injectionPointVersion;
+    this.languageMode.wakeHighlightRangeWaiters(this, topologyChanged);
   }
 
   // Given a grammar, returns whether the grammar might be used for this
@@ -4657,6 +4826,7 @@ class LanguageLayer {
       return false;
     }
     this.updating = true;
+    this.injectionTopologyTree = null;
     this.languageMode.invalidateSyntaxSnapshot();
     this.languageMode.publicationPending = true;
     const needsRetry = () =>
@@ -5110,7 +5280,7 @@ class LanguageLayer {
             params.initialInjectionUpdateAborted = true;
           }
         });
-      });
+      }, this);
     }
 
     if (this.depth === 0) nodeRangeSet = this.resolveRootRangeSet();
@@ -5177,6 +5347,8 @@ class LanguageLayer {
         scopeName: this.grammar.scopeName,
         extraEdits: this.parseCompactionEdits,
         signal: controller.signal,
+        depth: this.depth,
+        layer: this,
         resumable: this.languageMode.shouldBudgetSynchronousParse(),
       });
       if (tree?.then) {
@@ -5198,6 +5370,7 @@ class LanguageLayer {
         extraEdits: this.parseCompactionEdits,
         signal: controller.signal,
         depth: this.depth,
+        layer: this,
       })
       .then((tree) => this._applyParsedTree(tree, context))
       .finally(() => {
@@ -5350,7 +5523,7 @@ class LanguageLayer {
         params.async = true;
         return injectionPromise;
       }
-    }
+    } else this.markInjectionTopology();
   }
 
   setCurrentRanges(includedRanges) {
@@ -5587,8 +5760,10 @@ class LanguageLayer {
       return;
     }
     if (!this.hasInjectionDescendants()) {
+      this.markInjectionTopology();
       return;
     }
+    this.injectionTopologyTree = null;
 
     if (!nodeRangeSet && this.depth === 0 && this.rootRangesRestricted) {
       nodeRangeSet = this.rootRangeSet;
@@ -5802,6 +5977,7 @@ class LanguageLayer {
       existingCombinedMembers.length === 0 &&
       affectedCombinedGroups.length === 0
     ) {
+      this.markInjectionTopology();
       return;
     }
 
@@ -6599,6 +6775,23 @@ class LanguageLayer {
       injectionRange: node.range,
       nodeRangeSet: new NodeRangeSet(plan.nodeRangeSet, injectionNodes, injectionPoint),
     };
+    // Static queries have already checked that all captures lie inside the
+    // owner. JavaScript registrations can also construct synthetic ranges.
+    if (
+      typeof injectionPoint.content === "function" &&
+      this.languageMode.highlightRangeWaiters &&
+      !this.languageMode.hasExternalInjectionContent
+    ) {
+      const outsideOwner = ({ startPosition, endPosition }) =>
+        !candidate.injectionRange.containsPoint(startPosition) ||
+        !candidate.injectionRange.containsPoint(endPosition);
+      if (
+        candidate.nodeRangeSet.nodeSpecs.some(
+          (node) => outsideOwner(node) || node.children?.some(outsideOwner),
+        )
+      )
+        this.languageMode.hasExternalInjectionContent = true;
+    }
     const combined =
       typeof injectionPoint.combined === "function"
         ? injectionPoint.combined(node)
@@ -6697,6 +6890,8 @@ class LanguageLayer {
       if (result?.then) promises.push(result);
     }
 
+    if (this._injectionCandidateScanIsCurrent(plan.tree, plan.injectionPointVersion))
+      this.markInjectionTopology(true);
     return promises.length > 0 ? Promise.all(promises) : undefined;
   }
 

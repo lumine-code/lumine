@@ -172,6 +172,77 @@ async function planInput(host, data, request, transport) {
   }
 }
 
+for (const transport of ["bounded", "streamed"]) {
+  test(
+    `${transport} Enter wakes and prioritizes the parent parse it needs`,
+    async (t) => {
+      const source = "class Record:\n    field = 1\n#" + "x".repeat(525000) + "\n";
+      const { host, data, session } = await setup(source);
+      const mode = session.mode;
+      const priorities = [];
+      const run = scheduler.runSlices;
+      t.mock.method(scheduler, "runSlices", function (operation, options) {
+        priorities.push(options.priority());
+        return run.call(this, operation, options);
+      });
+      const index = source.indexOf("1");
+      try {
+        mode.deferLargeBufferUpdates = true;
+        mode.syncTimeoutMicros = 0;
+        mode.lastLargeBufferEditAt = performance.now();
+        await host.dispatch("edit", {
+          session: session.id,
+          beforeRevision: data.revision,
+          revision: 1,
+          changes: [{ startIndex: index, oldEndIndex: index + 1, text: "2" }],
+        });
+        assert.ok(mode.pendingRootUpdatePromise, "The parent edit must be coalescing");
+        // Keep the quiet period open until the input dependency takes priority.
+        mode.lastLargeBufferEditAt += 30000;
+        const current = { ...data, revision: 1 };
+        const result = await planInput(host, current, input(current, 2), transport);
+        assert.deepEqual(result.value.levels, [[1, 1]]);
+        assert.deepEqual(priorities, [-100], "Only the authoritative parent needs a parser");
+        assert.equal(mode.inputParseDemand, null);
+        assert.equal(mode.pendingRootUpdatePromise, null);
+        assert.equal(mode.tree.revision, session.buffer.getTextRevision());
+        assert.equal(session.buffer.lineForRow(1), "    field = 2");
+      } finally {
+        host.close();
+      }
+    },
+    { timeout: 10000 },
+  );
+
+  test(
+    `${transport} Enter releases parent priority when its private session closes`,
+    async (t) => {
+      const { host, data, session } = await setup();
+      const mode = session.mode;
+      const entered = deferred();
+      const settled = deferred();
+      mode.publicationPending = true;
+      t.mock.method(mode, "atGrammarSettlement", () => {
+        entered.resolve();
+        return settled.promise;
+      });
+      try {
+        const pending = planInput(host, data, input(data, 2), transport);
+        const rejected = assert.rejects(pending, { name: "AbortError" });
+        await entered.promise;
+        assert.equal(mode.inputParsePriority(session.buffer.getTextRevision()), -100);
+        host.closeSession(2);
+        await rejected;
+        assert.equal(mode.inputParseDemand, null);
+      } finally {
+        settled.resolve({});
+        host.close();
+      }
+    },
+    { timeout: 10000 },
+  );
+}
+
 test(
   "a pending input plan postpones view queries until its complete result is available",
   { timeout: 10000 },
@@ -674,9 +745,15 @@ test(
       },
     };
     try {
+      const parentSettlement = t.mock.method(host.sessions.get(1).mode, "atGrammarSettlement");
       const projected = await host.dispatch("input-indent", { ...request, target: 2 });
       assert.deepEqual(projected.value.levels, [[2, 1]]);
       assert.equal(records.length, 0, "A whitespace projection must not submit a parser job");
+      assert.equal(
+        parentSettlement.mock.callCount(),
+        0,
+        "A current parent snapshot is already ready",
+      );
       phase = "input";
       request.changes = [{ startIndex: 18, oldEndIndex: 18, text: "\n# note" }];
       const plannedInput = await host.dispatch("input-indent", { ...request, target: 2 });

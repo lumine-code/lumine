@@ -400,6 +400,35 @@ test("prepared storage rebases modified-state patches when a save finishes befor
   }
 });
 
+test("prepared publication replays string-backed independent input edits", async () => {
+  const text = "value\n".repeat(128);
+  const buffer = new TextBuffer(text);
+  const input = await candidate(buffer, (draft) =>
+    draft.setTextInIndependentRanges(
+      Array.from({ length: 128 }, (_, row) => ({
+        range: [
+          [row, 0],
+          [row, 0],
+        ],
+        text: "  ",
+      })),
+    ),
+  );
+  try {
+    assert.equal(input.appliedChanges.length, 128);
+    assert.equal(input.appliedChanges[0].newTextSource, undefined);
+    await publish(input);
+    assert.equal(buffer.getText(), "  value\n".repeat(128));
+    buffer.undo();
+    assert.equal(buffer.getText(), text);
+    buffer.redo();
+    assert.ok(buffer.getTextSnapshot().equals(input.finalSource));
+  } finally {
+    input.dispose();
+    buffer.destroy();
+  }
+});
+
 test("physical CRLF boundaries survive prepared local replay and history", async () => {
   const buffer = new TextBuffer("abc\ndef\r\nend");
   const original = buffer.getText();

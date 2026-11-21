@@ -251,13 +251,15 @@ describe("Syntax worker transport", () => {
       request(measurement, [[9000, 9000]], false, { priority: 2, prefetch: false });
       request(owner, [[1024, 1080]], false, { priority: 0, background: true });
       const wanted = WorkerMode.prototype.wantedRanges.call(mode);
-      expect(wanted[0]).toEqual([1024, 1080]);
-      expect(wanted.filter(([start]) => start >= 9000)).toEqual([[9000, 9000]]);
+      expect(wanted[0]).toEqual({ range: [1024, 1080], optional: false });
+      expect(wanted.filter(({ range: [start] }) => start >= 9000)).toEqual([
+        { range: [9000, 9000], optional: false },
+      ]);
       const split = {};
       request(split, [[5000, 5100]], false, { priority: 0 });
       expect(WorkerMode.prototype.wantedRanges.call(mode).slice(0, 2)).toEqual([
-        [1024, 1080],
-        [5000, 5100],
+        { range: [1024, 1080], optional: false },
+        { range: [5000, 5100], optional: false },
       ]);
       request(split, [], false);
       mode.cache.replace(
@@ -327,13 +329,19 @@ describe("Syntax worker transport", () => {
       WorkerMode.prototype.requestHighlighting.call(mode, owner, [range], false);
     request([100, 140]);
     request([500, 540]);
-    expect(WorkerMode.prototype.wantedRanges.call(mode)[0]).toEqual([500, 540]);
+    expect(WorkerMode.prototype.wantedRanges.call(mode)[0]).toEqual({
+      range: [500, 540],
+      optional: false,
+    });
     request([900, 940]);
     const wanted = WorkerMode.prototype.wantedRanges.call(mode);
-    expect(wanted[0]).toEqual([900, 940]);
-    expect(wanted.every(([first, last]) => last - first < 128)).toBeTrue();
+    expect(wanted[0]).toEqual({ range: [900, 940], optional: false });
+    expect(wanted.every(({ range: [first, last] }) => last - first < 128)).toBeTrue();
     request([500, 540]);
-    expect(WorkerMode.prototype.wantedRanges.call(mode)[0]).toEqual([500, 540]);
+    expect(WorkerMode.prototype.wantedRanges.call(mode)[0]).toEqual({
+      range: [500, 540],
+      optional: false,
+    });
   });
 
   it("prepares every folded viewport fragment before prefetch without querying hidden rows", () => {
@@ -357,10 +365,10 @@ describe("Syntax worker transport", () => {
     );
     const ranges = WorkerMode.prototype.wantedRanges.call(mode);
     expect(ranges.slice(0, 2)).toEqual([
-      [10, 10],
-      [10000, 10000],
+      { range: [10, 10], optional: false },
+      { range: [10000, 10000], optional: false },
     ]);
-    expect(ranges.every(([first, last]) => last <= 10 || first >= 10000)).toBeTrue();
+    expect(ranges.every(({ range: [first, last] }) => last <= 10 || first >= 10000)).toBeTrue();
   });
 
   it("makes parsed syntax available while viewport paint is still waiting", async () => {

@@ -195,10 +195,56 @@ test("required primary fragments finish beyond the soft byte allowance and auxil
         true,
       );
     assert.deepEqual(state.mode.wantedRanges(), [
-      [128, 128],
-      [256, 256],
-      [384, 384],
+      { range: [128, 128], optional: false },
+      { range: [256, 256], optional: false },
+      { range: [384, 384], optional: false },
     ]);
+  } finally {
+    state.dispose();
+  }
+});
+
+test("current viewport colors are ready while full document syntax is still pending", async () => {
+  const state = fixture();
+  try {
+    state.request([[128, 128]]);
+    state.mode.tokenized = true;
+    const request = state.service.request;
+    state.service.request = async (...args) => ({
+      ...(await request(...args)),
+      syntaxReady: false,
+    });
+    state.mode.publicationPending = true;
+    await state.mode.refresh();
+    assert.equal(state.mode.publicationPending, true);
+    assert.equal(state.mode.getHighlightingStatus().state, "ready");
+    state.service.settle = async () => ({ queries: ["indentsQuery"], grammars: ["source.js"] });
+    state.mode.receive({
+      event: "highlight",
+      revision: state.buffer.getTextRevision(),
+      reconciled: true,
+    });
+    await state.mode.refresh();
+    assert.equal(state.mode.getHighlightingStatus().state, "ready");
+    assert.equal(state.mode.publicationPending, false);
+    assert.deepEqual([...state.mode.availableQueries], ["indentsQuery"]);
+  } finally {
+    state.dispose();
+  }
+});
+
+test("jumping to a disjoint viewport cancels active paint for the previous location", async () => {
+  const state = fixture();
+  try {
+    const controller = new AbortController();
+    state.mode.refreshController = controller;
+    state.mode.activePaint = { range: [10, 20], optional: false };
+    const owner = state.request([[12, 13]]);
+    await Promise.resolve();
+    assert.equal(controller.signal.aborted, false);
+    state.request([[500, 501]], {}, owner);
+    await Promise.resolve();
+    assert.equal(controller.signal.aborted, true);
   } finally {
     state.dispose();
   }
@@ -288,7 +334,7 @@ test("highlighting status distinguishes stale revisions, grammar generations and
     put(state);
     assert.equal(state.mode.getHighlightingStatus().state, "ready");
     state.mode.publicationPending = true;
-    assert.equal(state.mode.getHighlightingStatus().state, "retained");
+    assert.equal(state.mode.getHighlightingStatus().state, "ready");
     state.mode.presentationVersion++;
     state.mode.publicationPending = false;
     assert.equal(state.mode.getHighlightingStatus().state, "retained");

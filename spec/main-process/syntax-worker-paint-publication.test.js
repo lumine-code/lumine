@@ -57,7 +57,7 @@ async function fixture() {
         ]),
         folds: [],
       };
-      mode.wantedRanges = () => (packet ? [[first, last]] : []);
+      mode.wantedRanges = () => (packet ? [{ range: [first, last], optional: false }] : []);
       await mode.refresh();
     },
     lines: () => display.getScreenLines(0, 10),

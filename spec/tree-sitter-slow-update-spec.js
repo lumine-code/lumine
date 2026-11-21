@@ -75,6 +75,7 @@ describe("Large-buffer syntax update policy", () => {
     let revision = 1;
     const mode = Object.create(TreeSitterLanguageMode.prototype);
     Object.assign(mode, {
+      useAsyncParsing: true,
       deferLargeBufferUpdates: true,
       coalesceLargeBufferEdits: true,
       lastLargeBufferEditAt: performance.now(),

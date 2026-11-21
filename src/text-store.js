@@ -385,9 +385,12 @@ class TextStore {
           oldStart: change.oldRange.start,
           oldEnd: change.oldRange.end,
           oldTextSource: change.oldTextSource,
-          newTextSource: change.newTextSource ?? change.newText,
+          newTextSource: change.newTextSource,
           get oldText() {
             return change.oldText;
+          },
+          get newText() {
+            return change.newText;
           },
         });
         const physicalChange = edit.getChange();

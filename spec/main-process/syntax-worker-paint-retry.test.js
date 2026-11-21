@@ -4,10 +4,10 @@ const Host = require("../../src/syntax-worker-host");
 const TextBuffer = require("../../src/text-buffer");
 const { Point } = TextBuffer;
 
-function fixture(reasons, { onSeek } = {}) {
+function fixture(reasons, { onSeek, text = "const value = 1;", optional = false } = {}) {
   const host = new Host();
   host.metadata = () => ({ syntaxReady: true });
-  const buffer = new TextBuffer({ text: "const value = 1;" });
+  const buffer = new TextBuffer({ text });
   const attempts = [];
   const session = {
     id: 1,
@@ -18,16 +18,21 @@ function fixture(reasons, { onSeek } = {}) {
       scopeNameForScopeId: (id) => (id === 1 ? "source.js" : "constant.numeric.js"),
       getFoldRangeForRow: () => null,
       buildHighlightIterator(options) {
-        assert.deepEqual(options, { presentation: true });
+        assert.deepEqual(
+          options,
+          optional ? { presentation: true, timeBudgetMs: 8 } : { presentation: true },
+        );
         const attempt = attempts.length;
         const reason = reasons[Math.min(attempt, reasons.length - 1)];
         const iterator = {
           limitedReason: null,
           seek(start, endRow) {
-            assert.deepEqual(start, new Point(0, 0));
-            assert.equal(endRow, 0);
+            if (!optional) {
+              assert.deepEqual(start, new Point(0, 0));
+              assert.equal(endRow, 0);
+            }
             iterator.limitedReason = reason;
-            onSeek?.(attempt);
+            onSeek?.(attempt, start, endRow);
             return reason ? [1] : [1, 2];
           },
           getPosition: () => Point.INFINITY,
@@ -115,6 +120,74 @@ test("persistent paint timeouts stop after two attempts and publish an explicit 
     assert.equal(result.tiles.length, 1);
     assert.equal(result.tiles[0].quality, "limited");
     assert.equal(result.tiles[0].reason, "timeout");
+  } finally {
+    state.dispose();
+  }
+});
+
+test("optional paint shrinks timed-out tiles, yields to input and publishes exact fragments", async () => {
+  const attempts = [];
+  let inputFinished = false;
+  const state = fixture(["timeout", null], {
+    text: "const value = 1;\n".repeat(8),
+    optional: true,
+    onSeek(attempt, start, endRow) {
+      attempts.push([start.row, endRow]);
+      if (attempt === 0) {
+        setImmediate(() => {
+          const release = state.host.acquireInputPriority();
+          setImmediate(() => {
+            inputFinished = true;
+            release();
+          });
+        });
+      } else assert.equal(inputFinished, true);
+    },
+  });
+  try {
+    const result = await state.host.view(
+      state.session,
+      [[0, 7]],
+      null,
+      () => {},
+      false,
+      undefined,
+      undefined,
+      true,
+    );
+    assert.deepEqual(attempts, [
+      [0, 7],
+      [0, 3],
+      [4, 7],
+    ]);
+    assert.deepEqual(
+      result.tiles.map(({ start, end, quality }) => [start.row, end.row, quality]),
+      [
+        [0, 4, "exact"],
+        [4, 8, "exact"],
+      ],
+    );
+  } finally {
+    state.dispose();
+  }
+});
+
+test("an optional single-row timeout stays uncovered for the foreground budget", async () => {
+  const state = fixture(["timeout"], { optional: true });
+  try {
+    const result = await state.host.view(
+      state.session,
+      [[0, 0]],
+      null,
+      () => {},
+      false,
+      undefined,
+      undefined,
+      true,
+    );
+    assert.equal(state.attempts.length, 1);
+    assert.equal(result.optionalPaintPaused, true);
+    assert.deepEqual(result.tiles, []);
   } finally {
     state.dispose();
   }

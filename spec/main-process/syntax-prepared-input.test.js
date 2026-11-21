@@ -12,9 +12,10 @@ const PieceTree = require("../../src/piece-tree");
 const Parser = require("../../src/tree-sitter-parser");
 
 function parseCandidate(indentationOnly, parser) {
-  return {
+  return Object.assign(Object.create(LanguageMode.prototype), {
     indentationOnly,
     buffer: {},
+    syntaxRequestEpoch: 0,
     document: { capture: () => ({ text: new PieceTree("value = 1"), revision: 1, edits: [] }) },
     backgroundSnapshots: new WeakSet(),
     parseDetails: new WeakMap(),
@@ -23,7 +24,7 @@ function parseCandidate(indentationOnly, parser) {
     acquireParserForLanguage: () => parser,
     releaseParserForLanguage() {},
     describeParseFailure: (error) => error,
-  };
+  });
 }
 
 test("private indentation starts within the current task but preserves cancellation before parsing", async (t) => {

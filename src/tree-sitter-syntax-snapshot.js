@@ -95,9 +95,13 @@ class SyntaxSnapshot {
   }
 
   fork(buffer) {
-    if (buffer.getTextSnapshot() !== this.source)
+    return this.restore(buffer.getTextSnapshot(), buffer.getTextRevision());
+  }
+
+  restore(source, revision) {
+    if (source !== this.source)
       throw new Error("A syntax snapshot must fork its own immutable source");
-    return new SyntaxSnapshotRestore(this, buffer.getTextRevision());
+    return new SyntaxSnapshotRestore(this, revision);
   }
 }
 
