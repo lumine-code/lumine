@@ -24,6 +24,9 @@ function write(root, file, value) {
 
 const builderRequire = createRequire(require.resolve("app-builder-lib"));
 const universalRequire = createRequire(builderRequire.resolve("@electron/universal"));
+// ASAR matches the absolute filename. Match the basename so a hidden scratch
+// directory such as .dev does not exclude native fixtures from unpacking.
+const UNPACK_NATIVE = { unpack: "*.node" };
 
 for (const [name, implementation] of [
   ["application archive", asar],
@@ -42,7 +45,7 @@ for (const [name, implementation] of [
     write(source, ".hidden", "hidden contents");
     write(source, "native/addon.node", "native contents");
     const archive = path.join(temp, "app.asar");
-    await implementation.createPackageWithOptions(source, archive, { unpack: "**/*.node" });
+    await implementation.createPackageWithOptions(source, archive, UNPACK_NATIVE);
     assert.equal(implementation.extractFile(archive, "LICENSE").toString(), "project terms");
     assert.equal(implementation.extractFile(archive, ".hidden").toString(), "hidden contents");
     assert.equal(implementation.statFile(archive, "native/addon.node").unpacked, true);
@@ -193,7 +196,7 @@ async function fixture(
   for (const name of ["LICENSE", "THIRD_PARTY_NOTICES"]) {
     fs.copyFileSync(path.join(repoRoot, name), path.join(resources, name));
   }
-  await asar.createPackageWithOptions(source, archive, packNative ? {} : { unpack: "**/*.node" });
+  await asar.createPackageWithOptions(source, archive, packNative ? {} : UNPACK_NATIVE);
   write(
     resources,
     "lumine.sh",
