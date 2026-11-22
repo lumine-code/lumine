@@ -189,16 +189,24 @@ for (const transport of ["bounded", "streamed"]) {
       try {
         mode.deferLargeBufferUpdates = true;
         mode.syncTimeoutMicros = 0;
-        mode.lastLargeBufferEditAt = performance.now();
-        await host.dispatch("edit", {
-          session: session.id,
-          beforeRevision: data.revision,
-          revision: 1,
-          changes: [{ startIndex: index, oldEndIndex: index + 1, text: "2" }],
-        });
-        assert.ok(mode.pendingRootUpdatePromise, "The parent edit must be coalescing");
+        // Model a second edit within the quiet period regardless of how long
+        // the host takes to apply the large-buffer splice on this machine.
+        const editTime = performance.now();
+        const editClock = t.mock.method(performance, "now", () => editTime);
+        try {
+          mode.lastLargeBufferEditAt = editTime;
+          await host.dispatch("edit", {
+            session: session.id,
+            beforeRevision: data.revision,
+            revision: 1,
+            changes: [{ startIndex: index, oldEndIndex: index + 1, text: "2" }],
+          });
+          assert.ok(mode.pendingRootUpdatePromise, "The parent edit must be coalescing");
+        } finally {
+          editClock.mock.restore();
+        }
         // Keep the quiet period open until the input dependency takes priority.
-        mode.lastLargeBufferEditAt += 30000;
+        mode.lastLargeBufferEditAt = performance.now() + 30000;
         const current = { ...data, revision: 1 };
         const result = await planInput(host, current, input(current, 2), transport);
         assert.deepEqual(result.value.levels, [[1, 1]]);
