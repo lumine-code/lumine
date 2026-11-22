@@ -321,11 +321,11 @@ describe("Project", () => {
     });
 
     it("disposes obsolete buffer reads without changing reset roots, bookkeeping or retained buffers", async () => {
-      const maintainLanguageMode = jasmine.createSpy("maintainLanguageMode");
+      const maintainRestoredLanguageMode = jasmine.createSpy("maintainRestoredLanguageMode");
       deserializedProject = buildProject({
         notificationManager: lumine.notifications,
         packageManager: lumine.packages,
-        grammarRegistry: { maintainLanguageMode },
+        grammarRegistry: { maintainRestoredLanguageMode },
       });
       deserializedProject.setPaths([__dirname]);
       const retained = new TextBuffer({ text: "retained by a dock" });
@@ -401,7 +401,7 @@ describe("Project", () => {
         expect([...retiredBufferPaths]).toEqual(["current-path"]);
         expect(deserializedProject.restoredBufferAliases).toBe(aliases);
         expect([...aliases.keys()]).toEqual(["current-alias"]);
-        expect(maintainLanguageMode).not.toHaveBeenCalled();
+        expect(maintainRestoredLanguageMode).not.toHaveBeenCalled();
         expect(deserializedProject.subscribeToBuffer).not.toHaveBeenCalled();
         expect(deserializedProject.setPaths).not.toHaveBeenCalled();
         expect(retained.isDestroyed()).toBe(false);
@@ -476,14 +476,16 @@ describe("Project", () => {
       const buffer = new TextBuffer({ text: "obsolete" });
       const replacement = new TextBuffer({ text: "current" });
       let current = true;
-      const maintainLanguageMode = jasmine.createSpy("maintainLanguageMode").and.callFake(() => {
-        current = false;
-        deserializedProject.buffers = [replacement];
-      });
+      const maintainRestoredLanguageMode = jasmine
+        .createSpy("maintainRestoredLanguageMode")
+        .and.callFake(() => {
+          current = false;
+          deserializedProject.buffers = [replacement];
+        });
       deserializedProject = buildProject({
         notificationManager: lumine.notifications,
         packageManager: lumine.packages,
-        grammarRegistry: { maintainLanguageMode },
+        grammarRegistry: { maintainRestoredLanguageMode },
       });
       deserializedProject.setPaths([__dirname]);
       spyOn(TextBuffer, "deserialize").and.returnValue(Promise.resolve(buffer));
@@ -503,7 +505,7 @@ describe("Project", () => {
           ),
         ).toBeRejectedWith(cancelled);
 
-        expect(maintainLanguageMode).toHaveBeenCalledWith(buffer);
+        expect(maintainRestoredLanguageMode).toHaveBeenCalledWith(buffer);
         expect(deserializedProject.subscribeToBuffer).not.toHaveBeenCalled();
         expect(deserializedProject.setPaths).not.toHaveBeenCalled();
         expect(deserializedProject.getPaths()).toEqual([__dirname]);

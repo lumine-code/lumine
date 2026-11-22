@@ -1130,34 +1130,20 @@ class TreeSitterLanguageMode {
       for (; index < layers.length; index++) {
         if (this.destroyed || revision !== this.buffer.getTextRevision()) return;
         const layer = layers[index];
-        if (layer.destroyed || layer.tree?.revision === revision) continue;
+        if (layer.destroyed) continue;
+        const adoption = layer.highlightAdoption;
+        if (
+          adoption?.revision === revision &&
+          adoption.epoch === this.getSyntaxRequestEpoch() &&
+          adoption.pending
+        )
+          return adoption.pending.then(() => advance(index));
+        if (layer.tree?.revision === revision) continue;
         if (layer.currentParsePromise) return layer.currentParsePromise.then(() => advance(index));
-        const capture = this.document.capture(layer.backgroundTree);
-        const ranges = (layer.getCurrentRanges() ?? []).map((range) =>
-          rangeToTreeSitterRangeSpec(range, this.buffer),
-        );
-        const reused =
-          capture.previous &&
-          TreeSitterParser.reuseSnapshot(capture.previous, capture.text, {
-            edits: capture.edits,
-            revision: capture.revision,
-            includedRanges: ranges,
-          });
+        const ranges = layer.currentParserRanges();
+        const reused = layer.reuseUnchangedTree(ranges);
         if (reused) {
-          this.backgroundSnapshots.add(reused);
-          layer.tree = layer.lastSyntaxTree = reused;
-          layer.setBackgroundTree(reused);
-          layer.treeIsDirty = false;
-          layer.includedRangesAreCurrent = true;
-          layer.lastIncludedRanges = ranges;
-          layer.nodesToInvalidateOnChange.rebase();
-          layer.foldNodesToInvalidateOnChange.rebase();
-          layer.scopeResolver.reset();
-          let children;
-          if (layer.hasInjectionDescendants())
-            children = layer._populateInjections(layer.editedRange ?? layer.getExtent(), null);
-          else layer.markInjectionTopology();
-          layer.editedRange = null;
+          const children = layer.adoptUnchangedTree(reused, ranges);
           if (children?.then) return children.then(() => advance(index + 1));
           continue;
         }
@@ -1368,16 +1354,57 @@ class TreeSitterLanguageMode {
     if (!root?.canHighlightRevision(revision)) return false;
     const checked = new Set([root]);
     for (const marker of this.injectionsMarkerLayer.findMarkers({ intersectsRange: range })) {
+      let pendingLayer;
       for (
         let layer = marker.languageLayer;
         layer && !checked.has(layer);
         layer = layer.marker?.parentLanguageLayer
       ) {
-        if (!layer.canHighlightRevision(revision)) return false;
-        checked.add(layer);
+        if (layer.canHighlightRevision(revision)) checked.add(layer);
+        else pendingLayer = layer;
+      }
+      if (pendingLayer) {
+        this.requestHighlightAdoption(pendingLayer, revision);
+        return false;
       }
     }
     return true;
+  }
+
+  requestHighlightAdoption(layer, revision) {
+    const epoch = this.getSyntaxRequestEpoch();
+    const previous = layer.highlightAdoption;
+    if (previous?.revision === revision && previous.epoch === epoch) return;
+    if (!layer.canAdoptUnchangedTree(revision)) return;
+
+    const adoption = { revision, epoch };
+    layer.highlightAdoption = adoption;
+    adoption.pending = Promise.resolve()
+      .then(() => {
+        // The waiter may have been cancelled or redirected before this turn.
+        if (
+          layer.highlightAdoption !== adoption ||
+          this.destroyed ||
+          this.hasExternalInjectionContent ||
+          epoch !== this.getSyntaxRequestEpoch() ||
+          revision !== this.buffer.getTextRevision() ||
+          !this.highlightPriorityLayers?.has(layer) ||
+          !layer.canAdoptUnchangedTree(revision)
+        ) {
+          if (layer.highlightAdoption === adoption) layer.highlightAdoption = null;
+          return;
+        }
+        const ranges = layer.currentParserRanges();
+        const reused = layer.reuseUnchangedTree(ranges);
+        if (reused) return layer.adoptUnchangedTree(reused, ranges);
+      })
+      .then(() => {
+        adoption.pending = null;
+        if (!layer.destroyed) this.wakeHighlightRangeWaiters(layer);
+      });
+    // The document update joins this work, including failures, before it
+    // settles the revision. A view can stop waiting independently.
+    void adoption.pending.catch(() => {});
   }
 
   wakeHighlightRangeWaiters(layer, topologyChanged = false) {
@@ -4376,6 +4403,59 @@ class LanguageLayer {
       !this.injectionPopulationNeedsRetry &&
       !this.queryReloadPromise
     );
+  }
+
+  canAdoptUnchangedTree(revision) {
+    return (
+      !this.destroyed &&
+      this.tree &&
+      this.tree.revision !== revision &&
+      this.backgroundTree &&
+      this.backgroundTree.language === this.language &&
+      !this.updating &&
+      !this.updateRequested &&
+      !this.injectionPopulationNeedsRetry &&
+      !this.injectionPopulationDrainPromise &&
+      !this.queryReloadPromise &&
+      this.marker?.parentLanguageLayer?.canHighlightRevision(revision)
+    );
+  }
+
+  currentParserRanges() {
+    return (this.getCurrentRanges() ?? []).map((range) =>
+      rangeToTreeSitterRangeSpec(range, this.buffer),
+    );
+  }
+
+  reuseUnchangedTree(ranges) {
+    const { previous, text, revision, edits } = this.languageMode.document.capture(
+      this.backgroundTree,
+    );
+    return (
+      previous &&
+      TreeSitterParser.reuseSnapshot(previous, text, {
+        edits,
+        revision,
+        includedRanges: ranges,
+      })
+    );
+  }
+
+  adoptUnchangedTree(tree, ranges) {
+    this.languageMode.backgroundSnapshots.add(tree);
+    this.tree = this.lastSyntaxTree = tree;
+    this.setBackgroundTree(tree);
+    this.treeIsDirty = false;
+    this.includedRangesAreCurrent = true;
+    this.lastIncludedRanges = ranges;
+    this.nodesToInvalidateOnChange.rebase();
+    this.foldNodesToInvalidateOnChange.rebase();
+    this.scopeResolver.reset();
+    const editedRange = this.editedRange;
+    this.editedRange = null;
+    if (this.hasInjectionDescendants())
+      return this._populateInjections(editedRange ?? this.getExtent(), null);
+    this.markInjectionTopology();
   }
 
   markInjectionTopology(topologyChanged = false) {

@@ -263,7 +263,7 @@ module.exports = class Project extends Model {
       for (let buffer of this.buffers) {
         if (retainedBuffers.includes(buffer)) continue;
         checkCurrent();
-        this.grammarRegistry.maintainLanguageMode(buffer);
+        this.grammarRegistry.maintainRestoredLanguageMode(buffer);
         checkCurrent();
         this.subscribeToBuffer(buffer);
       }

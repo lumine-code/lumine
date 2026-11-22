@@ -45,7 +45,7 @@ const paintCovered = (mode, range, stamp = null) =>
     : mode.cache.covers(range.start, range.end, stamp, stamp ? boundedCurrentPaint : boundedPaint);
 
 class TreeSitterWorkerLanguageMode extends NullLanguageMode {
-  constructor({ buffer, grammar, service }) {
+  constructor({ buffer, grammar, service, onDeferredStart = null }) {
     super({ buffer, grammar });
     this.service = service;
     this.asynchronousSyntax = true;
@@ -64,6 +64,8 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     this.requests = new Set();
     this.requestsByOwner = new WeakMap();
     this.defaultOwner = {};
+    this.onDeferredStart = onDeferredStart;
+    this.dormantEpoch = 0;
     this.paintRetries = new SyntaxPaintRetries({
       ready: () => this.schedule(),
       wanted: (tile) =>
@@ -75,20 +77,44 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
             requestIntersects(request, tile),
         ),
     });
-    this.requestHighlighting(this.defaultOwner, [[0, 63]], false);
-    this.session = service.acquire(buffer, grammar, (event) => this.receive(event));
-    this.focusSubscription = globalThis.lumine?.workspace?.onDidChangeActiveTextEditor?.(
-      (editor) => {
-        this.updateCacheAllowance(editor?.getBuffer() === this.buffer);
-      },
-    );
-    this.initializeSyntax();
-    this.schedule();
+    if (onDeferredStart) {
+      this.dormantPathSubscription = buffer.onDidChangePath(() => this.dormantEpoch++);
+    } else {
+      this.startSyntax();
+      this.requestHighlighting(this.defaultOwner, [[0, 63]]);
+    }
+  }
+
+  get ready() {
+    if (!this.destroyed) this.startSyntax();
+    return this.syntaxReady;
+  }
+
+  startSyntax(signal) {
+    signal?.throwIfAborted();
+    if (this.destroyed) throw new DOMException("Syntax document was closed", "AbortError");
+    if (!this.session) {
+      this.session = this.service.acquire(
+        this.buffer,
+        this.grammar,
+        (event) => this.receive(event),
+        this.dormantEpoch,
+      );
+      this.dormantPathSubscription?.dispose();
+      this.dormantPathSubscription = null;
+      this.onDeferredStart?.();
+      this.onDeferredStart = null;
+      this.focusSubscription = globalThis.lumine?.workspace?.onDidChangeActiveTextEditor?.(
+        (editor) => this.updateCacheAllowance(editor?.getBuffer() === this.buffer),
+      );
+      this.initializeSyntax();
+    }
+    return this.session;
   }
 
   initializeSyntax() {
     const ready = this.settle().then((result) => {
-      if (!this.destroyed && this.ready === ready) {
+      if (!this.destroyed && this.syntaxReady === ready) {
         this.tokenized = true;
         this.emitter.emit("did-tokenize");
         // Semantic readiness is independent of a moving viewport's paint
@@ -97,9 +123,9 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       }
       return result;
     });
-    this.ready = ready;
+    this.syntaxReady = ready;
     void ready.catch((error) => {
-      if (this.ready === ready) this.failed(error);
+      if (this.syntaxReady === ready) this.failed(error);
     });
   }
 
@@ -253,14 +279,16 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   }
 
   getSyntaxGeneration() {
-    return `${this.session.epoch}:${this.session.generation}`;
+    return `${this.session?.epoch ?? this.dormantEpoch}:${this.session?.generation ?? 0}`;
   }
 
   getSyntaxRequestEpoch() {
-    return `${this.service.syntaxEpoch}:${this.session.epoch}`;
+    return `${this.service.syntaxEpoch}:${this.session?.epoch ?? this.dormantEpoch}`;
   }
 
   getHighlightingStatus() {
+    if (!this.session)
+      return { state: "pending", revision: this.buffer.getTextRevision(), reasons: [] };
     this.cache.rebase();
     const visible = [...this.requests].filter(primaryRequest);
     const stamp = {
@@ -303,6 +331,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   }
 
   bufferDidChange(change) {
+    if (!this.session) return;
     this.typingContext =
       this.typingContextRevision === this.buffer.getTextRevision() - 1 &&
       this.typingIndentationEpoch === this.getSyntaxRequestEpoch()
@@ -559,7 +588,8 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   }
 
   async analyze(module, method, params, options = {}) {
-    return this.service.request(this.session, "analyze", { module, method, params }, options);
+    const session = this.startSyntax(options.signal);
+    return this.service.request(session, "analyze", { module, method, params }, options);
   }
 
   getSyntaxNodeAtPosition() {
@@ -573,12 +603,13 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   }
 
   async builtin(method, args, { convert = (value) => value, ...options } = {}) {
+    const session = this.startSyntax(options.signal);
     if (!STREAMED_BUILTINS.has(method))
-      return this.service.request(this.session, "builtin", { method, args }, options);
+      return this.service.request(session, "builtin", { method, args }, options);
     const values = [],
       entries = new Map();
     const summary = await this.service.request(
-      this.session,
+      session,
       "builtin",
       { method, args, stream: true },
       {
@@ -606,6 +637,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     { priority = 1, prefetch = true, background = false, windows = null } = {},
   ) {
     if (this.destroyed) return;
+    if (this.onDeferredStart && priority <= 1 && ranges.length) this.startSyntax();
     this.updateCacheAllowance();
     if (owner !== this.defaultOwner) {
       const initial = this.requestsByOwner.get(this.defaultOwner);
@@ -821,7 +853,8 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     return (
       !this.destroyed &&
       !this.error &&
-      !this.session?.closed &&
+      this.session != null &&
+      !this.session.closed &&
       !this.service.closed &&
       !this.service.terminalError
     );
@@ -1129,7 +1162,7 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       !names.length &&
       !this.cache.covers(point, end, {
         revision: this.buffer.getTextRevision(),
-        generation: this.session.generation,
+        generation: this.session?.generation,
       })
     )
       names.push(this.grammar.scopeName, "text");
@@ -1147,7 +1180,8 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     return this.builtin("comments", [rows]);
   }
   rootLanguageRangesChanged() {
-    this.service.updateRootRanges(this.session);
+    if (this.session) this.service.updateRootRanges(this.session);
+    else this.dormantEpoch++;
   }
   validateGrammarQueries() {
     return this.builtin("validateGrammarQueries", []);
@@ -1177,10 +1211,10 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
       requestOptions,
     );
   }
-  scanSuggestedIndentation(ranges, tabLength, options = {}) {
+  async *scanSuggestedIndentation(ranges, tabLength, options = {}) {
     const { signal, isCurrent, ...parameters } = options;
-    return this.service.stream(
-      this.session,
+    return yield* this.service.stream(
+      this.startSyntax(signal),
       "indent",
       { ranges, tabLength, options: parameters },
       { signal, isCurrent },
@@ -1194,15 +1228,21 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
     return this.builtin("suggestedIndentForPastedRanges", [ranges, tabLength], options);
   }
 
-  scanPreparedIndentation(changes, ranges, tabLength, options) {
-    return this.service.scanPreparedIndentation(this.session, changes, ranges, tabLength, options);
+  async *scanPreparedIndentation(changes, ranges, tabLength, options) {
+    return yield* this.service.scanPreparedIndentation(
+      this.startSyntax(options?.signal),
+      changes,
+      ranges,
+      tabLength,
+      options,
+    );
   }
 
   // Plan an interactive mutation against exact private syntax. The bounded
   // result covers every requested row; the editor publishes text, indentation
   // and selections together. Bulk edits use scanPreparedIndentation instead.
-  prepareInputIndentation(request) {
-    return this.service.prepareInputIndentation(this.session, request);
+  async prepareInputIndentation(request) {
+    return this.service.prepareInputIndentation(this.startSyntax(request.signal), request);
   }
 
   async getFoldRangeForRow(...args) {
@@ -1251,10 +1291,12 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.dormantPathSubscription?.dispose();
     this.focusSubscription?.dispose();
     clearTimeout(this.timer);
     this.refreshController?.abort();
-    this.service.release(this.session);
+    if (this.session) this.service.release(this.session);
+    this.onDeferredStart = null;
     this.paintRetries.clear();
     this.requests.clear();
     this.cache.clear();

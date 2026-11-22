@@ -59,6 +59,21 @@ async function paint(host, data, row, { signal, optional = false } = {}) {
   return { packets, result };
 }
 
+function registerCombinedScriptInjection(registry, scopeName) {
+  registry.grammarForScopeName(scopeName).addInjectionPoint({
+    type: "comment",
+    language: "javascript",
+    combined: true,
+    content: (node) => ({
+      startIndex: node.startIndex + 4,
+      endIndex: node.endIndex - 3,
+      startPosition: { row: node.startPosition.row, column: node.startPosition.column + 4 },
+      endPosition: { row: node.endPosition.row, column: node.endPosition.column - 3 },
+      childCount: 0,
+    }),
+  });
+}
+
 test(
   "a viewport paints its nested injections while an unrelated child parser is pending",
   { timeout: 10000 },
@@ -176,6 +191,78 @@ test(
 );
 
 test(
+  "unchanged visible injections adopt the current revision while a distant edit parses",
+  { timeout: 10000 },
+  async (t) => {
+    const padding = "<p>Unrelated text</p>\r\n".repeat(130);
+    const source =
+      "<script>const distant = 99;</script>\r\n" +
+      padding +
+      "<script>const theme = css`a { color: #fff; }`;</script>\r\n";
+    let holdScript = false;
+    const { host, data, started, release, mode } = await setup(
+      t,
+      source,
+      (scope, ranges) => holdScript && scope === "source.js" && ranges?.[0].startPosition.row === 0,
+    );
+    await host.dispatch("settle", data);
+    t.mock.method(mode, "shouldParseSynchronously", () => false);
+    const visible = mode
+      .getAllInjectionLayers()
+      .find((layer) => layer.getExtent().start.row === 131);
+    assert.ok(visible);
+    const previousTree = visible.tree;
+    holdScript = true;
+    const startIndex = source.indexOf("99");
+    const text = "42\r\n";
+    await host.dispatch("edit", {
+      session: data.session,
+      beforeRevision: data.revision,
+      revision: 1,
+      changes: [{ startIndex, oldEndIndex: startIndex + 2, text }],
+    });
+    await started;
+
+    const current = { ...data, revision: 1 };
+    const controller = new AbortController();
+    const range = mode.buffer.clipRange([
+      [132, 0],
+      [133, 0],
+    ]);
+    const cancelled = assert.rejects(mode.waitForHighlightRange(range, controller.signal), {
+      name: "AbortError",
+    });
+    controller.abort();
+    await cancelled;
+    await nextTurn();
+    assert.equal(visible.tree, previousTree);
+
+    const early = await paint(host, current, 132);
+    assert.equal(early.result.syntaxReady, false);
+    assert.equal(early.packets.at(-1).quality, "exact");
+    assert.equal(visible.tree.revision, mode.buffer.getTextRevision());
+    assert.notEqual(visible.tree, previousTree);
+    assert.ok(
+      early.packets.flatMap((packet) => packet.names).some(([, name]) => name === "source.css"),
+    );
+
+    release();
+    assert.equal((await host.dispatch("settle", current)).syntaxReady, true);
+    assert.deepEqual((await paint(host, current, 132)).packets, early.packets);
+
+    const fresh = { ...data, session: 2 };
+    await host.dispatch("open", fresh);
+    await host.dispatch("append", {
+      session: fresh.session,
+      text: source.slice(0, startIndex) + text + source.slice(startIndex + 2),
+    });
+    await host.dispatch("initialize", fresh);
+    await host.dispatch("settle", fresh);
+    assert.deepEqual((await paint(host, fresh, 132)).packets, early.packets);
+  },
+);
+
+test(
   "an offscreen descendant cannot extend its parser beyond its ancestor's included ranges",
   { timeout: 10000 },
   async (t) => {
@@ -224,19 +311,7 @@ test(
       t,
       source,
       (scope, ranges) => scope === "source.js" && ranges?.length === 2,
-      (registry, scopeName) =>
-        registry.grammarForScopeName(scopeName).addInjectionPoint({
-          type: "comment",
-          language: "javascript",
-          combined: true,
-          content: (node) => ({
-            startIndex: node.startIndex + 4,
-            endIndex: node.endIndex - 3,
-            startPosition: { row: node.startPosition.row, column: node.startPosition.column + 4 },
-            endPosition: { row: node.endPosition.row, column: node.endPosition.column - 3 },
-            childCount: 0,
-          }),
-        }),
+      registerCombinedScriptInjection,
     );
     await started;
     let published = false;
@@ -251,5 +326,47 @@ test(
     assert.equal(packets.at(-1).quality, "exact");
     assert.ok(packets.flatMap((packet) => packet.names).some(([, name]) => name === "source.js"));
     assert.equal(mode.getAllInjectionLayers().length, 1);
+  },
+);
+
+test(
+  "editing a distant member keeps a visible combined injection pending",
+  { timeout: 10000 },
+  async (t) => {
+    const source =
+      "<!--let a = 1;-->\n" + "<p>Unrelated text</p>\n".repeat(130) + "<!--let b = 2;-->\n";
+    let holdScript = false;
+    const { host, data, started, release, mode } = await setup(
+      t,
+      source,
+      (scope, ranges) => holdScript && scope === "source.js" && ranges?.length === 2,
+      registerCombinedScriptInjection,
+    );
+    await host.dispatch("settle", data);
+    t.mock.method(mode, "shouldParseSynchronously", () => false);
+    const [layer] = mode.getAllInjectionLayers();
+    const oldRevision = layer.tree.revision;
+    holdScript = true;
+    const startIndex = source.lastIndexOf("2");
+    await host.dispatch("edit", {
+      session: data.session,
+      beforeRevision: data.revision,
+      revision: 1,
+      changes: [{ startIndex, oldEndIndex: startIndex + 1, text: "3" }],
+    });
+    await started;
+
+    let published = false;
+    const pending = paint(host, { ...data, revision: 1 }, 0).then((value) => {
+      published = true;
+      return value;
+    });
+    await nextTurn();
+    assert.equal(layer.tree.revision, oldRevision);
+    assert.equal(published, false);
+    release();
+    const { packets } = await pending;
+    assert.equal(packets.at(-1).quality, "exact");
+    assert.equal(layer.tree.revision, mode.buffer.getTextRevision());
   },
 );

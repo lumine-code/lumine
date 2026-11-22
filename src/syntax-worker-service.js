@@ -280,7 +280,7 @@ class SyntaxWorkerService {
     }
   }
 
-  acquire(buffer, grammar, listener) {
+  acquire(buffer, grammar, listener, epoch = 0) {
     const policy = this.grammars.rootLanguageRangesByBuffer.get(buffer);
     if (policy && !policy.descriptor)
       throw new TypeError("Worker root ranges require a syntax module descriptor");
@@ -291,6 +291,7 @@ class SyntaxWorkerService {
       grammar,
       listener,
       controller,
+      epoch,
       generation: 0,
       closed: false,
     };
@@ -315,7 +316,7 @@ class SyntaxWorkerService {
     this.focusBuffer(globalThis.lumine?.workspace?.getActiveTextEditor?.()?.getBuffer());
     session.subscription = new CompositeDisposable(
       buffer.onDidApplyChanges((batch) => {
-        if (session.failure) return;
+        if (session.failure || session.awaitingSnapshot) return;
         const client = session.client;
         session.chain = session.chain.then(() => this.sendEdits(client, session, batch));
         this.observeChain(session, client);
@@ -460,17 +461,25 @@ class SyntaxWorkerService {
     }
     const { buffer, grammar, controller } = session;
     const client = this.connect();
+    // The first mirror fulfills demand for the existing renderer revision.
+    // A replacement of an already opened mirror invalidates outstanding work.
+    if (session.client) session.epoch++;
     session.client = client;
-    session.epoch = (session.epoch ?? 0) + 1;
     session.generation = 0;
-    const snapshot = buffer.getTextSnapshot();
-    const revision = buffer.getTextRevision();
+    session.awaitingSnapshot = true;
     const rootRanges = this.grammars.rootLanguageRangesByBuffer.get(buffer);
     if (rootRanges && !rootRanges.descriptor)
       throw new TypeError("Worker root ranges require a syntax module descriptor");
     session.chain = (async () => {
       await this.ensureEnvironment();
       const options = { signal: controller.signal };
+      options.signal.throwIfAborted();
+      if (session.client !== client) throw Client.abortError("Syntax worker was replaced");
+      // Demand can arrive inside a synchronous renderer transaction. Capture
+      // after that stack has committed; those edits belong in the snapshot.
+      const snapshot = buffer.getTextSnapshot();
+      const revision = buffer.getTextRevision();
+      session.awaitingSnapshot = false;
       await client.request(
         "open",
         {

@@ -86,6 +86,19 @@ describe("Package syntax analyses with a worker owner", () => {
     }
   });
 
+  it("uses the local symbol path through the registry before building a full file index", async () => {
+    const { registry } = (await lumine.packages.activatePackage("symbol")).mainModule;
+    await lumine.packages.activatePackage("symbol-tree-sitter");
+    const editor = await build(
+      "// Header\nfunction first() {}\nclass Outer {\n  inner() {\n    return 1;\n  }\n}\n",
+      "source.js",
+    );
+    const fullIndex = spyOn(registry, "getFileSymbolTree").and.callThrough();
+    const { path } = await registry.getFileSymbolPath(editor, [4, 9]);
+    expect(path.map(({ shortName, name }) => shortName ?? name)).toEqual(["Outer", "inner"]);
+    expect(fullIndex).not.toHaveBeenCalled();
+  });
+
   it("resolves Markdown references without exposing a syntax node to the link provider", async () => {
     const pack = await lumine.packages.activatePackage("link");
     const editor = await build(

@@ -62,6 +62,7 @@ module.exports = class GrammarRegistry {
     this.rootLanguageRangesByBuffer = new WeakMap();
     this.grammarScoresByBuffer = new Map();
     this.languageModeMaintenanceByBuffer = new WeakMap();
+    this.deferredRestoredSyntax = new WeakSet();
     this.largeFileNotificationsByBuffer = new Map();
     // Buffers already wired to release themselves, so a repeated assignment
     // does not stack subscriptions.
@@ -180,6 +181,12 @@ module.exports = class GrammarRegistry {
     // No longer claimed: a later assignment must be free to register its own
     // one-shot release for a buffer that outlives being maintained.
     this.releasedBuffers.delete(buffer);
+  }
+
+  /** @private Select the restored grammar without starting an unused syntax session. */
+  maintainRestoredLanguageMode(buffer) {
+    if (this.syntaxExecution === "worker") this.deferredRestoredSyntax.add(buffer);
+    return this.maintainLanguageMode(buffer);
   }
 
   /**
@@ -425,7 +432,13 @@ module.exports = class GrammarRegistry {
       const Service = require("./syntax-worker-service");
       const Mode = require("./tree-sitter-worker-language-mode");
       this.syntaxWorkerService ??= new Service(this);
-      return new Mode({ grammar, buffer, service: this.syntaxWorkerService });
+      const deferred = this.deferredRestoredSyntax.has(buffer);
+      return new Mode({
+        grammar,
+        buffer,
+        service: this.syntaxWorkerService,
+        onDeferredStart: deferred ? () => this.deferredRestoredSyntax.delete(buffer) : null,
+      });
     }
     return new TreeSitterLanguageMode({
       grammar,
