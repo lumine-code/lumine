@@ -60,6 +60,9 @@ describe("Syntax for restored tabs", () => {
     await conditionPromise(() => Boolean(mode(left).session && mode(right).session));
     expect(service.sessions.size).toBe(2);
     expect(hidden.getGrammar().scopeName).toBe("source.js");
+    expect(left.getSyntaxAvailability()).toEqual({ available: true });
+    expect(right.getSyntaxAvailability()).toEqual({ available: true });
+    expect(hidden.getSyntaxAvailability()).toEqual({ available: true, deferred: true });
     expect(hidden.getBuffer().getSyntaxSnapshotToken()).toBeNull();
     expect(mode(hidden).getHighlightingStatus().state).toBe("pending");
     expect(mode(hidden).session).toBeUndefined();
@@ -67,6 +70,7 @@ describe("Syntax for restored tabs", () => {
     lumine.workspace.paneForItem(hidden).activateItem(hidden);
     await conditionPromise(() => Boolean(mode(hidden).session));
     expect(service.sessions.size).toBe(3);
+    expect(hidden.getSyntaxAvailability()).toEqual({ available: true });
     expect(await hidden.whenGrammarSettled()).toBeTrue();
     expect(await hidden.analyzeSyntax(analysis, "rootChildren")).toEqual(["const hidden = true;"]);
   });

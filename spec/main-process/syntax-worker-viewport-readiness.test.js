@@ -59,6 +59,32 @@ async function paint(host, data, row, { signal, optional = false } = {}) {
   return { packets, result };
 }
 
+async function pointQuery(host, data, kind, coordinates, { signal, full = false } = {}) {
+  const dictionary = [];
+  const values = [];
+  const params = { kind, positions: new Float64Array(coordinates.flat()) };
+  const reply = await host.dispatch(
+    full ? "analyze" : "points",
+    full
+      ? {
+          ...data,
+          module: require.resolve("../../src/syntax-analysis-operations"),
+          method: "points",
+          params,
+        }
+      : { ...data, ...params },
+    {
+      signal,
+      emit(packet) {
+        dictionary.push(...packet.values);
+        for (const label of packet.labels) values.push(dictionary[label]);
+      },
+    },
+  );
+  assert.deepEqual(reply.value, { count: coordinates.length });
+  return { values, syntaxReady: reply.syntaxReady };
+}
+
 function registerCombinedScriptInjection(registry, scopeName) {
   registry.grammarForScopeName(scopeName).addInjectionPoint({
     type: "comment",
@@ -73,6 +99,94 @@ function registerCombinedScriptInjection(registry, scopeName) {
     }),
   });
 }
+
+test(
+  "points return exact nested scopes and comment delimiters before an unrelated parser finishes",
+  { timeout: 10000 },
+  async (t) => {
+    const distant = "<script>const distant = 99;</script>\r\n";
+    const visible = '<script>const theme = css`a { color: #fff; }`; const emoji = "😀";</script>';
+    const { host, data, started, release, mode } = await setup(
+      t,
+      distant + "<p>Unrelated</p>\r\n".repeat(130) + visible + "\r\n\r\n",
+      (scope, ranges) => scope === "source.js" && ranges?.[0].startPosition.row === 0,
+    );
+    await started;
+    const row = 131;
+    const coordinates = [
+      [row, visible.indexOf("#fff")],
+      [row, visible.indexOf("😀") + 1],
+      [row, visible.length],
+      [row + 1, 0],
+    ];
+    const scopes = await pointQuery(host, data, "scopes", coordinates);
+    const comments = await pointQuery(host, data, "comments", coordinates);
+    assert.equal(scopes.syntaxReady, false);
+    assert.equal(comments.syntaxReady, false);
+    assert.ok(scopes.values[0].includes("source.css"));
+    assert.ok(scopes.values[1].includes("source.js"));
+    assert.equal(mode.scopeDescriptorCache, null);
+
+    const controller = new AbortController();
+    const blocked = assert.rejects(
+      pointQuery(host, data, "scopes", [...coordinates, [0, 14]], { signal: controller.signal }),
+      { name: "AbortError" },
+    );
+    await nextTurn();
+    assert.equal(mode.highlightRangeWaiters.size, 1);
+    controller.abort();
+    await blocked;
+    assert.equal(mode.highlightRangeWaiters.size, 0);
+
+    let largeFinished = false;
+    const large = pointQuery(host, data, "scopes", Array(257).fill(coordinates[1])).then(() => {
+      largeFinished = true;
+    });
+    await nextTurn();
+    assert.equal(largeFinished, false);
+    release();
+    await large;
+    assert.deepEqual(
+      (await pointQuery(host, data, "scopes", coordinates, { full: true })).values,
+      scopes.values,
+    );
+    assert.deepEqual(
+      (await pointQuery(host, data, "comments", coordinates, { full: true })).values,
+      comments.values,
+    );
+  },
+);
+
+test(
+  "a point in one member of a combined injection waits for the shared parser",
+  { timeout: 10000 },
+  async (t) => {
+    const source =
+      "<!--const a = 1;-->\r\n" + "<p>Unrelated</p>\r\n".repeat(130) + "<!--const b = 2;-->\r\n";
+    const { host, data, started, release, mode } = await setup(
+      t,
+      source,
+      (scope, ranges) => scope === "source.js" && ranges?.length === 2,
+      registerCombinedScriptInjection,
+    );
+
+    await started;
+    let finished = false;
+    const queries = pointQuery(host, data, "scopes", [
+      [0, 13],
+      [131, 13],
+    ]).then((reply) => {
+      finished = true;
+      return reply;
+    });
+    await nextTurn();
+    assert.equal(finished, false);
+    assert.equal(mode.highlightRangeWaiters.size, 1);
+    release();
+    const { values } = await queries;
+    assert.ok(values.every((scopes) => scopes.includes("source.js")));
+  },
+);
 
 test(
   "a viewport paints its nested injections while an unrelated child parser is pending",
@@ -147,10 +261,17 @@ test(
       published = true;
       return result;
     });
+    let pointsPublished = false;
+    const points = pointQuery(host, data, "scopes", [[0, 9]]).then((result) => {
+      pointsPublished = true;
+      return result;
+    });
     await nextTurn();
     assert.equal(published, false);
+    assert.equal(pointsPublished, false);
     release();
     assert.equal((await pending).result.syntaxReady, true);
+    assert.equal((await points).syntaxReady, true);
   },
 );
 

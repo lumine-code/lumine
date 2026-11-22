@@ -11,6 +11,7 @@ const runtime = require("./tree-sitter-runtime");
 const { paintTile } = require("./syntax-paint-policy");
 const { windowTile, rangeKey } = require("./syntax-paint-window");
 const SyntaxPreview = require("./syntax-preview");
+const { points: analyzePoints } = require("./syntax-analysis-operations");
 const { createInputSnapshot, isWhitespaceInsertion } = require("./tree-sitter-input-snapshot");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const { contextFor, serialize } = require("./syntax-analysis-context");
@@ -24,6 +25,7 @@ const { Point, Range } = TextBuffer;
 const INPUT_PARSE_PRIORITY = -100;
 const OPTIONAL_PAINT_BUDGET_MS = 8;
 const PAINT_SCAN_SLICE_MS = 4;
+const MAX_SCOPED_POINTS = 256;
 const FOLD_BUILTINS = new Set([
   "getFoldRangeForRow",
   "getFoldableRanges",
@@ -836,7 +838,8 @@ class SyntaxWorkerHost {
     const revision = session.revision,
       generation = session.generation,
       mode = session.mode;
-    const paintEpoch = operation === "view" ? mode?.getSyntaxRequestEpoch?.() : null;
+    const useQueryEpoch = operation === "view" || operation === "points";
+    const queryEpoch = useQueryEpoch ? mode?.getSyntaxRequestEpoch?.() : null;
     if (data.revision !== undefined && data.revision !== revision) throw aborted();
     session.jobs.add(controller);
     const current = () => {
@@ -846,7 +849,7 @@ class SyntaxWorkerHost {
         session.revision !== revision ||
         session.generation !== generation ||
         session.mode !== mode ||
-        (operation === "view" && mode?.getSyntaxRequestEpoch?.() !== paintEpoch)
+        (useQueryEpoch && mode?.getSyntaxRequestEpoch?.() !== queryEpoch)
       )
         throw aborted();
     };
@@ -861,6 +864,11 @@ class SyntaxWorkerHost {
     }
     try {
       if (!session.initialized) throw new Error("Syntax document is not initialized");
+      if (operation === "points") {
+        const value = await this.pointQueries(session, data, { signal: combined, emit, current });
+        current();
+        return { revision, generation, value, syntaxReady: !mode.publicationPending };
+      }
       // Retain available syntax baselines without waiting for parent parsing.
       // Fresh reconciliation validates the complete embedded-language graph.
       if (operation === "fork") {
@@ -1135,6 +1143,54 @@ class SyntaxWorkerHost {
       session.jobs.delete(controller);
       controller.abort(aborted("Syntax analysis finished"));
     }
+  }
+
+  async pointQueries(session, { kind, positions }, { signal, emit, current }) {
+    if (
+      (kind !== "scopes" && kind !== "comments") ||
+      !(positions instanceof Float64Array) ||
+      positions.length % 2 !== 0 ||
+      positions.some(Number.isNaN) ||
+      !emit
+    )
+      throw new TypeError("Invalid batched syntax point query");
+
+    const { mode } = session;
+    let ranges = null;
+    if (!mode.hasExternalInjectionContent && positions.length <= MAX_SCOPED_POINTS * 2) {
+      ranges = mode.publicationPending ? mode.pointQueryRanges(kind, positions) : [];
+    }
+    try {
+      const settlement = ranges
+        ? mode.waitForHighlightRanges(ranges, signal)
+        : mode.atGrammarSettlement();
+      const { parseError } = await waitFor(settlement, signal);
+      const error = parseError ?? mode.lastTransactionParseError;
+      if (error) throw error;
+    } catch (error) {
+      this.failSession(session, error);
+      throw error;
+    }
+
+    const input = this.waitForInput(current, signal);
+    if (input) await input;
+    current();
+    const exact = { allowPending: true };
+    return analyzePoints(
+      {
+        Point,
+        scopeDescriptorForBufferPosition: (point) => mode.scopeDescriptorForPosition(point, exact),
+        getCommentStringsForBufferPosition: (point) => mode.commentStringsForPosition(point, exact),
+      },
+      { kind, positions },
+      {
+        signal,
+        emit: async (packet, transfer) => {
+          await emit(serialize(packet), transfer);
+          current();
+        },
+      },
+    );
   }
 
   builtin(mode, method, args) {

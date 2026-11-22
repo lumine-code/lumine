@@ -11,6 +11,7 @@ const {
   setTimeout: scheduleInitialPaint,
   clearTimeout: cancelInitialPaint,
 } = require("node:timers");
+const DEFERRED_SYNTAX_AVAILABILITY = Object.freeze({ available: true, deferred: true });
 const STREAMED_BUILTINS = new Set([
   "getFoldableRanges",
   "getFoldableRangesAtIndentLevel",
@@ -88,6 +89,10 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
   get ready() {
     if (!this.destroyed) this.startSyntax();
     return this.syntaxReady;
+  }
+
+  get syntaxAvailability() {
+    return this.onDeferredStart ? DEFERRED_SYNTAX_AVAILABILITY : undefined;
   }
 
   startSyntax(signal) {
@@ -589,6 +594,8 @@ class TreeSitterWorkerLanguageMode extends NullLanguageMode {
 
   async analyze(module, method, params, options = {}) {
     const session = this.startSyntax(options.signal);
+    if (method === "points" && module === require.resolve("./syntax-analysis-operations"))
+      return this.service.request(session, "points", params, options);
     return this.service.request(session, "analyze", { module, method, params }, options);
   }
 

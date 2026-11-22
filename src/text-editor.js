@@ -6963,7 +6963,9 @@ module.exports = class TextEditor {
    * Report whether syntax analysis is enabled, independently of parse readiness.
    * A disabled language reports reason `none`; a failed analysis reports reason
    * `failure` and a diagnostic object. The selected grammar is preserved on failure.
-   * @returns {Object} Availability with an `available` boolean and optional `reason` and `failure`.
+   * An enabled restored document can report `deferred: true` until a visible
+   * view or an explicit request starts its worker session. This read is passive.
+   * @returns {Object} Availability with an `available` boolean and optional `deferred`, `reason` and `failure`.
    */
   getSyntaxAvailability() {
     const mode = this.buffer.getLanguageMode();

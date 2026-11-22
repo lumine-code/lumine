@@ -1315,12 +1315,17 @@ class TreeSitterLanguageMode {
   }
 
   waitForHighlightRange(range, signal, optional = false) {
+    return this.waitForHighlightRanges([range], signal, optional);
+  }
+
+  waitForHighlightRanges(ranges, signal, optional = false) {
     signal?.throwIfAborted();
     if (!this.publicationPending && this.publishedSyntaxEpoch === this.syntaxRequestEpoch)
       return this.transactionMetadata();
     if (optional || !this.highlightRangeWaiters || !this.publicationPending)
       return this.atGrammarSettlement();
-    if (this.highlightRangeIsReady(range)) return this.transactionMetadata();
+    if (ranges.every((range) => this.highlightRangeIsReady(range)))
+      return this.transactionMetadata();
     return new Promise((resolve, reject) => {
       const finish = () => {
         signal?.removeEventListener("abort", waiter.cancel);
@@ -1328,7 +1333,7 @@ class TreeSitterLanguageMode {
         this.updateHighlightPriorityLayers();
       };
       const waiter = {
-        range,
+        ranges,
         complete: () => {
           finish();
           resolve(this.transactionMetadata());
@@ -1412,12 +1417,16 @@ class TreeSitterLanguageMode {
     const extent = layer?.marker?.getRange();
     let changedPriorities = false;
     for (const waiter of this.highlightRangeWaiters) {
-      if (extent && !waiter.range.intersectsWith(extent)) continue;
+      if (extent && !waiter.ranges.some((range) => range.intersectsWith(extent))) continue;
       if (topologyChanged && !changedPriorities) {
         this.updateHighlightPriorityLayers();
         changedPriorities = true;
       }
-      if (!this.publicationPending || this.highlightRangeIsReady(waiter.range)) waiter.complete();
+      if (
+        !this.publicationPending ||
+        waiter.ranges.every((range) => this.highlightRangeIsReady(range))
+      )
+        waiter.complete();
     }
   }
 
@@ -1429,14 +1438,16 @@ class TreeSitterLanguageMode {
       return;
     }
     const layers = new Set();
-    for (const { range } of this.highlightRangeWaiters) {
-      for (const marker of this.injectionsMarkerLayer.findMarkers({ intersectsRange: range })) {
-        for (
-          let layer = marker.languageLayer;
-          layer?.depth && !layers.has(layer);
-          layer = layer.marker?.parentLanguageLayer
-        )
-          layers.add(layer);
+    for (const { ranges } of this.highlightRangeWaiters) {
+      for (const range of ranges) {
+        for (const marker of this.injectionsMarkerLayer.findMarkers({ intersectsRange: range })) {
+          for (
+            let layer = marker.languageLayer;
+            layer?.depth && !layers.has(layer);
+            layer = layer.marker?.parentLanguageLayer
+          )
+            layers.add(layer);
+        }
       }
     }
     this.highlightPriorityLayers = layers;
@@ -1754,23 +1765,20 @@ class TreeSitterLanguageMode {
   }
 
   // Given a point, return all scopes active at that point.
-  scopeDescriptorForPosition(point) {
-    if (!this.rootLanguageLayer || this.publicationPending) {
+  scopeDescriptorForPosition(point, { allowPending = false } = {}) {
+    if (!this.rootLanguageLayer || (this.publicationPending && !allowPending)) {
       return new ScopeDescriptor({ scopes: [this.grammar.scopeName, "text"] });
     }
     point = this.normalizePointForPositionQuery(point);
-    if (this.scopeDescriptorCache?.point.isEqual(point)) {
+    const settled = !this.publicationPending;
+    if (settled && this.scopeDescriptorCache?.point.isEqual(point)) {
       return this.scopeDescriptorCache.descriptor;
     }
 
     // The most accurate way to do this is to reconstruct the results from the
     // highlight iterator itself.
-    const source = this.document.capture().text;
-    const index = this.buffer.characterIndexForPosition(point);
-    const window = boundedQueryRange(source, index, Math.min(source.length, index + 1), 2);
-    const queryStart = this.buffer.positionForCharacterIndex(window.startIndex);
-    const queryEnd = this.buffer.positionForCharacterIndex(window.endIndex);
-    const iterator = this.buildHighlightIterator({ endPosition: queryEnd });
+    const { start: queryStart, end: queryEnd } = this.scopeQueryRange(point);
+    const iterator = this.buildHighlightIterator({ endPosition: queryEnd, allowPending });
     const scopes = [];
 
     // Add scopes that were open already at this point.
@@ -1797,8 +1805,46 @@ class TreeSitterLanguageMode {
       scopes.unshift(this.grammar.scopeName);
     }
     const descriptor = new ScopeDescriptor({ scopes });
-    this.scopeDescriptorCache = { point: point.freeze(), descriptor };
+    if (settled) this.scopeDescriptorCache = { point: point.freeze(), descriptor };
     return descriptor;
+  }
+
+  scopeQueryRange(point) {
+    const source = this.buffer.getTextSnapshot();
+    const index = this.buffer.characterIndexForPosition(point);
+    const window = boundedQueryRange(source, index, Math.min(source.length, index + 1), 2);
+    return new Range(
+      this.buffer.positionForCharacterIndex(window.startIndex),
+      this.buffer.positionForCharacterIndex(window.endIndex),
+    );
+  }
+
+  pointQueryRanges(kind, coordinates) {
+    const rows = new Set();
+    const ranges = [];
+    for (let index = 0; index < coordinates.length; index += 2) {
+      const position = new Point(coordinates[index], coordinates[index + 1]);
+      ranges.push(this.scopeQueryRange(this.normalizePointForPositionQuery(position)));
+      if (kind === "comments") {
+        // Comment strings consider both the cursor and the first nonblank
+        // character, and may ask which grammar owns those exact ranges.
+        if (!this.buffer.clipPosition(position).isEqual(position)) return null;
+        ranges.push(new Range(position, position));
+        if (!rows.has(position.row)) {
+          const first = this.firstNonWhitespaceRange(position.row);
+          if (first) {
+            ranges.push(
+              first,
+              this.scopeQueryRange(this.normalizePointForPositionQuery(first.start)),
+            );
+          }
+          rows.add(position.row);
+        }
+      }
+    }
+    const coverage = new TreeSitterRangeList();
+    coverage.addAll(ranges);
+    return coverage.ranges;
   }
 
   normalizePointForPositionQuery(point) {
@@ -2053,8 +2099,12 @@ class TreeSitterLanguageMode {
     return this.getSyntaxNodeAndGrammarContainingRange(range, where)?.node;
   }
 
-  getSyntaxNodeAndGrammarContainingRange(range, where = FUNCTION_TRUE) {
-    if (!this.rootLanguageLayer || this.publicationPending) {
+  getSyntaxNodeAndGrammarContainingRange(
+    range,
+    where = FUNCTION_TRUE,
+    { allowPending = false } = {},
+  ) {
+    if (!this.rootLanguageLayer || (this.publicationPending && !allowPending)) {
       return { node: null, grammar: null };
     }
 
@@ -2607,12 +2657,12 @@ class TreeSitterLanguageMode {
   // but if specific buffer text is selected, we should look up the right
   // delimiters for that specific range. This will require a new branch in the
   // “Editor: Toggle Line Comments” command.
-  commentStringsForPosition(position) {
+  commentStringsForPosition(position, options) {
     const range = this.firstNonWhitespaceRange(position.row) || new Range(position, position);
 
     // Ask the config system if it has a setting for this scope. This allows
     // for overrides from the grammar default.
-    const scope = this.scopeDescriptorForPosition(range.start);
+    const scope = this.scopeDescriptorForPosition(range.start, options);
     const commentStartEntries = this.config.getAll("editor.commentStart", { scope });
     const commentEndEntries = this.config.getAll("editor.commentEnd", { scope });
 
@@ -2623,7 +2673,7 @@ class TreeSitterLanguageMode {
     // This is just general metadata. We don't know the user's intended use
     // case. So we should look up the scope descriptor of the _original_
     // position, not the one at the beginning of the line.
-    const originalScope = this.scopeDescriptorForPosition(position);
+    const originalScope = this.scopeDescriptorForPosition(position, options);
     const commentDelimiters = getDelimitersForScope(originalScope);
 
     // The two config entries are separate, but if they're paired, then we need
@@ -2657,9 +2707,11 @@ class TreeSitterLanguageMode {
     // Fall back to looking up this information on the grammar. (This is better
     // than just returning `commentDelimiters` data because we still want to
     // take the adjusted range into account if we can.)
-    const { grammar } = this.getSyntaxNodeAndGrammarContainingRange(range);
+    const { grammar } = this.getSyntaxNodeAndGrammarContainingRange(range, undefined, options);
     const { grammar: originalPositionGrammar } = this.getSyntaxNodeAndGrammarContainingRange(
       new Range(position, position),
+      undefined,
+      options,
     );
 
     if (grammar && grammar.getCommentDelimiters) {
