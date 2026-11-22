@@ -392,6 +392,7 @@ describe("Package syntax analyses with a worker owner", () => {
 
   it("scans colors outside the renderer while keeping contributed handler closures and exact offsets", async () => {
     const pack = lumine.packages.loadPackage("color-inline");
+    const CandidateScanner = require(path.join(pack.path, "lib/candidate-scanner"));
     const Registry = require(path.join(pack.path, "lib/expressions-registry"));
     const Expression = require(path.join(pack.path, "lib/color-expression"));
     const { scanBufferForColorsAsync, scanTextForColors } = require(
@@ -412,7 +413,9 @@ describe("Package syntax analyses with a worker owner", () => {
     const text =
       "// \ud83d\ude00\r\n" + "prefix:a a\r\n".repeat(150) + "blob(" + "x".repeat(70000) + ")";
     const editor = await build(text, "source.js");
-    const options = { registry, scope: "css", bufferPath: "colors.css" };
+    const scanner = new CandidateScanner();
+    const analyzeSyntax = spyOn(editor, "analyzeSyntax").and.callThrough();
+    const options = { registry, scanner, scope: "css", bufferPath: "colors.css" };
     const normalize = (results) =>
       results.map(({ range, line, match, color }) => ({ range, line, match, rgba: color.rgba }));
     try {
@@ -423,7 +426,9 @@ describe("Package syntax analyses with a worker owner", () => {
       const pending = scanBufferForColorsAsync(editor, options);
       editor.getBuffer().append("changed");
       expect(await pending).toBeNull();
+      expect(analyzeSyntax).not.toHaveBeenCalled();
     } finally {
+      scanner.dispose();
       registry.dispose();
     }
   });
