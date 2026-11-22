@@ -1,5 +1,6 @@
 const path = require("node:path");
 const Point = require("../src/point");
+const TextBuffer = require("../src/text-buffer");
 
 describe("Package syntax analyses with a worker owner", () => {
   const editors = [];
@@ -89,13 +90,21 @@ describe("Package syntax analyses with a worker owner", () => {
   it("uses the local symbol path through the registry before building a full file index", async () => {
     const { registry } = (await lumine.packages.activatePackage("symbol")).mainModule;
     await lumine.packages.activatePackage("symbol-tree-sitter");
-    const editor = await build(
-      "// Header\nfunction first() {}\nclass Outer {\n  inner() {\n    return 1;\n  }\n}\n",
-      "source.js",
-    );
+    // Start from loaded text so edit-idle invalidation cannot cancel this request.
+    const buffer = new TextBuffer({
+      text: "// Header\nfunction first() {}\nclass Outer {\n  inner() {\n    return 1;\n  }\n}\n",
+    });
+    const editor = lumine.workspace.buildTextEditor({ buffer });
+    editors.push(editor);
+    expect(lumine.grammars.assignLanguageMode(buffer, "source.js")).toBeTrue();
+    expect(await editor.whenGrammarSettled()).toBeTrue();
+    expect(buffer.getLanguageMode().asynchronousSyntax).toBeTrue();
     const fullIndex = spyOn(registry, "getFileSymbolTree").and.callThrough();
-    const { path } = await registry.getFileSymbolPath(editor, [4, 9]);
-    expect(path.map(({ shortName, name }) => shortName ?? name)).toEqual(["Outer", "inner"]);
+    const result = await registry.getFileSymbolPath(editor, [4, 9]);
+    expect(result?.path?.map(({ shortName, name }) => shortName ?? name)).toEqual([
+      "Outer",
+      "inner",
+    ]);
     expect(fullIndex).not.toHaveBeenCalled();
   });
 
