@@ -47,6 +47,11 @@ class Probe {
     return result + slash + slash + "\"";
   }
   static string NativePath(string s) {
+    const string tempPrefix = "/tmp/";
+    if (s.StartsWith(tempPrefix, StringComparison.Ordinal)) {
+      return Path.Combine(Environment.GetEnvironmentVariable("LUMINE_TEST_NATIVE_TEMP"),
+        s.Substring(tempPrefix.Length).Replace('/', '\\'));
+    }
     return s.Length > 3 && s[0] == '/' && s[2] == '/' && Char.IsLetter(s[1])
       ? s[1] + ":" + s.Substring(2).Replace('/', '\\') : s;
   }
@@ -347,9 +352,14 @@ process.exitCode = Number(process.env.LUMINE_TEST_EXIT || 0);
     fs.rmSync(directory, { recursive: true, force: true });
   });
   const launch = (args, options = {}) => {
+    // Git Bash can spell a fixture path under its temporary mount as /tmp/….
+    const windowsTemp =
+      process.platform === "win32"
+        ? "LUMINE_TEST_NATIVE_TEMP=$(cygpath -aw /tmp) || exit; export LUMINE_TEST_NATIVE_TEMP; "
+        : "";
     const shellArgs = [
       "-c",
-      'export PATH="$LUMINE_TEST_BIN:$PATH"; exec bash "$LUMINE_TEST_SCRIPT" "$@"',
+      `${windowsTemp}export PATH="$LUMINE_TEST_BIN:$PATH"; exec bash "$LUMINE_TEST_SCRIPT" "$@"`,
       "launcher-test",
       ...args,
     ];
@@ -449,6 +459,7 @@ for (const platform of ["Linux", "Darwin"]) {
       "-notes.txt",
       "",
       "file with spaces",
+      "/tmp/literal user path",
       "123",
     ];
     const result = f.launch(args);
