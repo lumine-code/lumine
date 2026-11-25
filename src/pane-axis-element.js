@@ -85,11 +85,10 @@ class PaneAxisElement extends HTMLElement {
     const childView = this.viewRegistry.getView(child);
     const view = childView.getLayoutElement?.() ?? childView;
     if (view.parentNode !== this) return;
-    const siblingView = view.previousSibling;
-    // make sure next sibling view is pane resize view
-    if (siblingView != null && this.isPaneResizeHandleElement(siblingView)) {
-      siblingView.remove();
-    }
+    // The first pane has its only separator on the following side.
+    const previous = view.previousElementSibling;
+    const separator = this.isPaneResizeHandleElement(previous) ? previous : view.nextElementSibling;
+    if (this.isPaneResizeHandleElement(separator)) separator.remove();
     view.remove();
     refreshPaneLayout(this);
   }

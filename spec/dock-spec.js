@@ -523,6 +523,38 @@ describe("Dock", () => {
       return target;
     }
 
+    it("keeps the left dock grip usable after closing the first of three center panes", async () => {
+      const dock = getDock("left");
+      dock.getActivePane().activateItem(copyableElement("div", ["left"]));
+      await showDock(dock);
+
+      const first = workspace.getCenter().getActivePane();
+      const second = first.splitRight({ activate: false });
+      const third = second.splitRight({ activate: false });
+      const separator = second.getElement().nextElementSibling;
+      const divider = dock.getElement().querySelector(".lumine-dock-resize-handle");
+      const bounds = divider.getBoundingClientRect();
+      const width = dock.getElement().getBoundingClientRect().width;
+      const x = bounds.left + bounds.width / 2;
+      const y = bounds.top + bounds.height / 4;
+      await waitForHit(divider, x, y);
+
+      first.destroy();
+      expect(Array.from(second.getElement().parentElement.children)).toEqual([
+        second.getElement(),
+        separator,
+        third.getElement(),
+      ]);
+
+      expect(pressAt(x, y)).toBe(divider);
+      expect(dock.state.resizing).toBe(true);
+      window.dispatchEvent(
+        new MouseEvent("mousemove", { clientX: x + 50, clientY: y, buttons: 1 }),
+      );
+      window.dispatchEvent(new MouseEvent("mouseup"));
+      expect(dock.getElement().getBoundingClientRect().width).toBe(width + 50);
+    });
+
     for (const location of ["left", "right", "bottom"]) {
       it(`fits ${location} dock content to its one-pixel divider and resizes from both sides`, async () => {
         const dock = getDock(location);
