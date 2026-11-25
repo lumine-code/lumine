@@ -48,8 +48,22 @@ async function waitForExactPaint(editor, mode, rows, context, requireCurrent) {
     );
   };
   const label = `${context} ${worker ? "worker" : "inline"} ${requireCurrent ? "current " : ""}exact paint`;
+  let repaintedGeneration;
   try {
-    await conditionPromise(() => missingRows().length === 0, label);
+    await conditionPromise(async () => {
+      if (missingRows().length === 0) return true;
+      if (requireCurrent && !worker && !mode.publicationPending) {
+        const presentation = mode.presentation;
+        if (presentation.generation !== repaintedGeneration) {
+          // Lazy injections can advance the generation for only part of the
+          // fixture. Request fresh paint for the retained rows as well.
+          presentation.invalidate();
+          repaintedGeneration = presentation.generation;
+          await presentation.flush();
+        }
+      }
+      return missingRows().length === 0;
+    }, label);
   } catch (cause) {
     const coverage = cache.snapshots.map(({ start, end, quality, reason, stamp }) => ({
       start: [start.row, start.column],
