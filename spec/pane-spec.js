@@ -885,6 +885,69 @@ describe("Pane", () => {
       expect(item1.save).not.toHaveBeenCalled();
     });
 
+    it("keeps a tab open when its deferred save is cancelled in the conflict dialog", async () => {
+      lumine.config.set("core.promptOnSaveConflictedFile", true);
+      const reportError = spyOn(pane, "handleSaveError");
+      const started = Promise.withResolvers();
+      const pendingEdit = Promise.withResolvers();
+      let fileState = "unmodified";
+      const write = jasmine.createSpy("write");
+      item1.getURI = () => "test";
+      item1.shouldPromptToSave = () => true;
+      item1.getFileState = () => fileState;
+      item1.save = jasmine.createSpy("ordinary save");
+      item1.saveWithPreflight = async (beforeSave) => {
+        started.resolve();
+        await pendingEdit.promise;
+        await beforeSave();
+        write();
+      };
+      confirm.and.returnValues(Promise.resolve(0), Promise.resolve(1));
+
+      const closing = pane.destroyItem(item1);
+      await started.promise;
+      expect(confirm).toHaveBeenCalledTimes(1);
+      fileState = "conflicted";
+      pendingEdit.resolve();
+      expect(await closing).toBeFalse();
+      expect(confirm).toHaveBeenCalledTimes(2);
+      expect(pane.getItems()).toContain(item1);
+      expect(write).not.toHaveBeenCalled();
+      expect(reportError).not.toHaveBeenCalled();
+    });
+
+    it("reports a deferred save write failure and keeps the tab open", async () => {
+      const addWarning = spyOn(lumine.notifications, "addWarning");
+      const error = new Error("Unable to write the image");
+      item1.getURI = () => "test";
+      item1.shouldPromptToSave = () => true;
+      item1.save = jasmine.createSpy("ordinary save");
+      item1.saveWithPreflight = jasmine.createSpy("deferred save").and.rejectWith(error);
+      confirm.and.resolveTo(0);
+
+      expect(await pane.destroyItem(item1)).toBeFalse();
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(showSaveDialog).not.toHaveBeenCalled();
+      expect(addWarning).toHaveBeenCalledOnceWith("Unable to save file", {
+        detail: error.message,
+      });
+      expect(pane.getItems()).toContain(item1);
+    });
+
+    it("keeps an opted-in untitled tab open when Save As returns false", async () => {
+      item1.getURI = () => null;
+      item1.shouldPromptToSave = () => true;
+      item1.saveWithPreflight = jasmine.createSpy("deferred save");
+      item1.saveAs = jasmine.createSpy("save as").and.resolveTo(false);
+      confirm.and.resolveTo(0);
+      showSaveDialog.and.resolveTo({ filePath: "selected.png" });
+
+      expect(await pane.destroyItem(item1)).toBeFalse();
+      expect(item1.saveWithPreflight).not.toHaveBeenCalled();
+      expect(item1.saveAs).toHaveBeenCalledOnceWith("selected.png");
+      expect(pane.getItems()).toContain(item1);
+    });
+
     it("does not prompt for a read-only item in the removed state", async () => {
       item1.getFileState = () => "removed";
 
@@ -1132,6 +1195,31 @@ describe("Pane", () => {
         expect(pane.getActiveItem().saveAs).toHaveBeenCalledWith("/selected/path");
       });
     });
+
+    for (const changed of ["path", "revision"]) {
+      it(`cancels an opted-in Save As if the item ${changed} changes during the dialog`, async () => {
+        const item = pane.getActiveItem();
+        const dialog = Promise.withResolvers();
+        const nextAction = jasmine.createSpy("next action");
+        let revision = 0;
+        item.path = "original.png";
+        item.getPaneItemRevision = () => revision;
+        item.saveWithPreflight = jasmine.createSpy("save with preflight");
+        item.saveAs = jasmine.createSpy("save as");
+        showSaveDialog.and.returnValue(dialog.promise);
+
+        const saving = pane.saveActiveItemAs(nextAction);
+        expect(showSaveDialog).toHaveBeenCalledOnceWith({ defaultPath: "original.png" });
+        if (changed === "path") item.path = "other.png";
+        else revision++;
+        dialog.resolve({ filePath: "chosen.png" });
+        await saving;
+
+        expect(item.saveAs).not.toHaveBeenCalled();
+        expect(nextAction).toHaveBeenCalledTimes(1);
+        expect(nextAction.calls.mostRecent().args[0]).toBeInstanceOf(Pane.SaveCancelledError);
+      });
+    }
 
     describe("when the current item does not have a saveAs method", () => {
       it("does nothing", () => {

@@ -1362,7 +1362,10 @@ module.exports = class Pane {
             switch (response) {
               case 0:
                 return saveFn(item, (error) => {
-                  if (error instanceof SaveCancelledError) {
+                  if (error && usesSavePreflight(item)) {
+                    if (!isSaveCancellationError(error)) this.handleSaveError(error, item);
+                    resolve(false);
+                  } else if (error instanceof SaveCancelledError) {
                     resolve(false);
                   } else if (error) {
                     saveDialog(
@@ -1443,6 +1446,10 @@ module.exports = class Pane {
    *
    * Save the given item.
    *
+   * A persisted item can implement `saveWithPreflight(beforeSave)` to await
+   * `beforeSave()` immediately before writing and propagate its rejection.
+   * Returning `false` from a save of such an item signals cancellation.
+   *
    * @param {*} item - The item to save.
    * @param {Function} [nextAction] - which will be called with no argument after the item is successfully saved, or with the error if it failed. The callback return value is used only when saving through saveItemAs.
    * @returns {Promise<*>|undefined} Settles after the save attempt; an unsaveable item can return undefined. Save-as results follow saveItemAs. Save cancellation may reject, while other write errors are reported to nextAction or notifications.
@@ -1451,45 +1458,20 @@ module.exports = class Pane {
   saveItem(item, nextAction) {
     if (!item) return Promise.resolve();
 
-    let itemURI;
-    if (typeof item.getURI === "function") {
-      itemURI = item.getURI();
-    } else if (typeof item.getUri === "function") {
-      itemURI = item.getUri();
-    }
-
-    if (itemURI != null) {
+    if (getItemURI(item) != null) {
       if (typeof item.save === "function") {
-        const conflicted = item.getFileState?.() === "conflicted";
-
-        // If the item is conflicted, we'll show a dialog in order to decide
-        // how to proceed. The user may choose to overwrite (force the save) or
-        // cancel.
-        let preface = () => promisify(() => item.save());
-        if (conflicted && lumine.config.get("core.promptOnSaveConflictedFile")) {
-          preface = () => {
+        return this.completeSave(item, nextAction, () => {
+          if (usesSavePreflight(item)) {
+            return item.saveWithPreflight(() => this.promptOnSaveConflictedFile(item));
+          }
+          if (
+            item.getFileState?.() === "conflicted" &&
+            lumine.config.get("core.promptOnSaveConflictedFile")
+          ) {
             return this.promptOnSaveConflictedFile(item).then(() => item.save());
-          };
-        }
-
-        return preface()
-          .then(() => {
-            if (nextAction) nextAction();
-          })
-          .catch((error) => {
-            // Cancellation is an API result, not a write failure worth a
-            // notification. Keep rejecting so explicit callers can observe
-            // it; native command handlers consume it at their boundary.
-            if (isSaveCancellationError(error)) {
-              if (nextAction) nextAction(error);
-              throw error;
-            }
-            if (nextAction) {
-              nextAction(error);
-            } else {
-              this.handleSaveError(error, item);
-            }
-          });
+          }
+          return item.save();
+        });
       } else if (nextAction) {
         // Don't check if this item is in conflict; if it can't be saved,
         // there's no hazard.
@@ -1501,6 +1483,27 @@ module.exports = class Pane {
       // hazard.
       return this.saveItemAs(item, nextAction);
     }
+  }
+
+  completeSave(item, nextAction, save) {
+    return promisify(save)
+      .then((result) => {
+        assertSaveCompleted(item, result);
+        if (nextAction) nextAction();
+      })
+      .catch((error) => {
+        // Explicit callers can observe a cancellation. Commands consume it
+        // without reporting a failed write.
+        if (isSaveCancellationError(error)) {
+          if (nextAction) nextAction(error);
+          throw error;
+        }
+        if (nextAction) {
+          nextAction(error);
+        } else {
+          this.handleSaveError(error, item);
+        }
+      });
   }
 
   /**
@@ -1523,16 +1526,23 @@ module.exports = class Pane {
       typeof item.getSaveDialogOptions === "function" ? item.getSaveDialogOptions() : {};
 
     const itemPath = item.getPath();
+    const usesPreflight = usesSavePreflight(item);
+    const itemRevision = usesPreflight ? item.getPaneItemRevision?.() : undefined;
     if (itemPath && !saveOptions.defaultPath) saveOptions.defaultPath = itemPath;
 
     const window = this.container?.getWindow() ?? this.applicationDelegate;
     const { filePath: newItemPath } = await window.showSaveDialog(saveOptions);
-    if (!newItemPath) {
+    if (
+      !newItemPath ||
+      (usesPreflight &&
+        (item.getPath() !== itemPath || item.getPaneItemRevision?.() !== itemRevision))
+    ) {
       return nextAction ? nextAction(new SaveCancelledError("Save Cancelled")) : undefined;
     }
 
     try {
-      await promisify(() => item.saveAs(newItemPath));
+      const result = await promisify(() => item.saveAs(newItemPath));
+      assertSaveCompleted(item, result);
       return nextAction ? nextAction() : undefined;
     } catch (error) {
       if (nextAction) return nextAction(error);
@@ -1545,23 +1555,39 @@ module.exports = class Pane {
    * @public
    * @status public
    *
-   * Save all saveable items whose file state is not unmodified.
+   * Save all saveable items with unsaved or pending changes.
+   *
+   * An item with async edits can report them through a synchronous
+   * `hasPendingChanges()` predicate. For an item with an existing URI,
+   * `savePendingChanges(beforeSave)` can queue the save behind its current
+   * edits and await `beforeSave()` immediately before writing.
    *
    * @returns {Promise<Array<*>>} that resolves when all items have been saved.
    * @category Saving Items
    */
   async saveItems() {
-    const promises = [];
-    for (let item of this.getItems()) {
-      if (
-        typeof item.getFileState === "function" &&
-        item.getFileState() !== "unmodified" &&
-        (typeof item.save === "function" || typeof item.saveAs === "function")
-      ) {
-        promises.push(this.saveItem(item));
-      }
-    }
-    return await Promise.all(promises);
+    return Promise.all(
+      this.getItemsToSave().map((item) => {
+        if (getItemURI(item) != null && typeof item.savePendingChanges === "function") {
+          return this.completeSave(item, undefined, () =>
+            item.savePendingChanges(() => this.promptOnSaveConflictedFile(item)),
+          );
+        }
+        return this.saveItem(item);
+      }),
+    );
+  }
+
+  getItemsToSave() {
+    return this.getItems().filter((item) => {
+      if (item.isDestroyed?.()) return false;
+      const method = getItemURI(item) == null ? "saveAs" : "save";
+      if (typeof item[method] !== "function") return false;
+      return (
+        (typeof item.getFileState === "function" && item.getFileState() !== "unmodified") ||
+        item.hasPendingChanges?.() === true
+      );
+    });
   }
 
   /**
@@ -1953,6 +1979,8 @@ module.exports = class Pane {
       if (errorMatch) {
         const fileName = errorMatch[1];
         addWarning(error.message, fileName);
+      } else if (usesSavePreflight(item)) {
+        addWarning(error.message);
       } else {
         throw error;
       }
@@ -1988,6 +2016,19 @@ module.exports = class Pane {
 module.exports.SaveCancelledError = SaveCancelledError;
 module.exports.SaveConflictedError = SaveConflictedError;
 module.exports.isSaveCancellationError = isSaveCancellationError;
+
+function getItemURI(item) {
+  if (typeof item.getURI === "function") return item.getURI();
+  if (typeof item.getUri === "function") return item.getUri();
+}
+
+function usesSavePreflight(item) {
+  return typeof item.saveWithPreflight === "function";
+}
+
+function assertSaveCompleted(item, result) {
+  if (result === false && usesSavePreflight(item)) throw new SaveCancelledError("Save cancelled");
+}
 
 function promisify(callback) {
   try {

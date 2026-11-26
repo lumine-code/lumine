@@ -18,6 +18,39 @@ describe("command availability follows model state", () => {
     expect(lumine.commands.canDispatch(workspace, "core:save-as")).toBe(true);
   });
 
+  it("checks the file conflict when a deferred core:save is ready to write", async () => {
+    lumine.config.set("core.promptOnSaveConflictedFile", true);
+    const pane = lumine.workspace.getActivePane();
+    const confirm = spyOn(pane.getContainer().getWindow(), "confirm").and.resolveTo(0);
+    const pendingEdit = Promise.withResolvers();
+    let fileState = "unmodified";
+    const write = jasmine.createSpy("write");
+    const item = {
+      element: document.createElement("div"),
+      getTitle: () => "Queued document",
+      getURI: () => "custom://pending",
+      getFileState: () => fileState,
+      save: jasmine.createSpy("ordinary save"),
+      saveWithPreflight: jasmine.createSpy("deferred save").and.callFake(async (beforeSave) => {
+        await pendingEdit.promise;
+        await beforeSave();
+        write();
+      }),
+    };
+    pane.addItem(item);
+
+    const saving = lumine.commands.dispatch(lumine.workspace.element, "core:save");
+    expect(item.saveWithPreflight).toHaveBeenCalledTimes(1);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+    fileState = "conflicted";
+    pendingEdit.resolve();
+    await expectAsync(saving).toBeResolved();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(item.save).not.toHaveBeenCalled();
+  });
+
   it("requires a path for copying and a known repository for Checkout HEAD", async () => {
     const editor = await lumine.workspace.open();
     expect(lumine.commands.canDispatch(editor.getElement(), "editor:copy-path")).toBe(false);
@@ -76,6 +109,96 @@ describe("command availability follows model state", () => {
     await globalThis.flushMicrotasks();
     expect(changes).toHaveBeenCalled();
     expect(lumine.commands.canDispatch(lumine.workspace.element, "window:save-all")).toBeTrue();
+  });
+
+  for (const command of ["window:save-all", "pane:save-items"]) {
+    it(`honors delayed file conflict checks for pending changes through ${command}`, async () => {
+      lumine.config.set("core.promptOnSaveConflictedFile", true);
+      const pane = lumine.workspace.getActivePane();
+      const target = command === "pane:save-items" ? pane.getElement() : lumine.workspace.element;
+      const overwrite = command === "pane:save-items";
+      const confirm = spyOn(pane.getContainer().getWindow(), "confirm").and.resolveTo(
+        overwrite ? 0 : 1,
+      );
+      const reportError = spyOn(pane, "handleSaveError");
+      const pendingEdit = Promise.withResolvers();
+      let fileState = "unmodified";
+      let pending = true;
+      const write = jasmine.createSpy("write");
+      const item = {
+        element: document.createElement("div"),
+        getTitle: () => "Queued document",
+        getURI: () => "custom://pending",
+        getFileState: () => fileState,
+        hasPendingChanges: () => pending,
+        save: jasmine.createSpy("ordinary save"),
+        savePendingChanges: jasmine.createSpy("queued save").and.callFake(async (beforeSave) => {
+          await pendingEdit.promise;
+          await beforeSave();
+          write();
+          fileState = "unmodified";
+        }),
+      };
+      pane.addItem(item, { activateItem: false });
+
+      expect(lumine.commands.canDispatch(target, command)).toBeTrue();
+      const saving = lumine.commands.dispatch(target, command);
+      expect(item.savePendingChanges).toHaveBeenCalledTimes(1);
+      expect(confirm).not.toHaveBeenCalled();
+      expect(write).not.toHaveBeenCalled();
+      fileState = "conflicted";
+      pending = false;
+      pendingEdit.resolve();
+      await expectAsync(saving).toBeResolved();
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(write).toHaveBeenCalledTimes(overwrite ? 1 : 0);
+      expect(item.save).not.toHaveBeenCalled();
+      expect(reportError).not.toHaveBeenCalled();
+    });
+  }
+
+  it("selects pending items only when their save route is available", async () => {
+    const pane = lumine.workspace.getActivePane();
+    const owner = pane.getContainer().getWindow();
+    const showSaveDialog = spyOn(owner, "showSaveDialog").and.resolveTo({ filePath: "chosen.txt" });
+    const pendingItem = {
+      getFileState: () => "unmodified",
+      hasPendingChanges: () => true,
+      savePendingChanges: jasmine.createSpy("queued save"),
+    };
+    const saveAs = jasmine.createSpy("save as");
+    const save = jasmine.createSpy("save");
+    pane.addItem({
+      ...pendingItem,
+      element: document.createElement("div"),
+      getURI: () => "custom://save-as-only",
+      saveAs,
+    });
+    pane.addItem({
+      ...pendingItem,
+      element: document.createElement("div"),
+      getURI: () => null,
+      save,
+    });
+    expect(lumine.commands.canDispatch(pane.getElement(), "pane:save-items")).toBeFalse();
+    expect(lumine.commands.canDispatch(lumine.workspace.element, "window:save-all")).toBeFalse();
+    await expectAsync(pane.saveItems()).toBeResolvedTo([]);
+    expect(save).not.toHaveBeenCalled();
+    expect(saveAs).not.toHaveBeenCalled();
+
+    pane.addItem({
+      ...pendingItem,
+      element: document.createElement("div"),
+      getURI: () => null,
+      getPath: () => null,
+      saveAs,
+    });
+    expect(lumine.commands.canDispatch(pane.getElement(), "pane:save-items")).toBeTrue();
+    expect(lumine.commands.canDispatch(lumine.workspace.element, "window:save-all")).toBeTrue();
+    await pane.saveItems();
+    expect(showSaveDialog).toHaveBeenCalledTimes(1);
+    expect(saveAs).toHaveBeenCalledOnceWith("chosen.txt");
+    expect(pendingItem.savePendingChanges).not.toHaveBeenCalled();
   });
 
   it("tolerates custom pane items whose optional subscription methods return nothing", () => {

@@ -36,17 +36,6 @@ function canSaveItem(item, saveAs = false) {
   return typeof item[uri == null ? "saveAs" : "save"] === "function";
 }
 
-function hasItemsToSave(pane) {
-  return pane
-    .getItems()
-    .some(
-      (item) =>
-        typeof item.getFileState === "function" &&
-        item.getFileState() !== "unmodified" &&
-        canSaveItem(item),
-    );
-}
-
 function canCheckoutEditor(editor, repositories) {
   const filePath = editor.getPath();
   const repository = filePath && repositories.getForPath(filePath);
@@ -462,7 +451,9 @@ module.exports = function ({
         isAvailable() {
           return this.getModel()
             .getPaneContainers()
-            .some((container) => container.getPanes().some(hasItemsToSave));
+            .some((container) =>
+              container.getPanes().some((pane) => pane.getItemsToSave().length > 0),
+            );
         },
         didDispatch() {
           return settleSaveCommand(this.getModel().saveAll());
@@ -579,7 +570,7 @@ module.exports = function ({
       "pane:save-items": {
         description: "Save every unsaved tab in this pane.",
         isAvailable() {
-          return hasItemsToSave(this.getModel());
+          return this.getModel().getItemsToSave().length > 0;
         },
         didDispatch: function () {
           return settleSaveCommand(this.getModel().saveItems());
