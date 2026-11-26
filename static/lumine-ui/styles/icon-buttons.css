@@ -1,0 +1,75 @@
+/* Icon-only actions share interaction feedback while their surface owns placement and size. */
+:where(.icon-button) {
+  --_icon-button-scale: none;
+  --icon-button-scale-transition: scale 0s;
+
+  @media (prefers-reduced-motion: no-preference) {
+    --icon-button-scale-transition: scale 150ms ease;
+  }
+
+  &:where(:not(.btn)) {
+    padding: 0;
+    border: 0;
+    border-radius: var(--ui-border-radius);
+    background: none;
+    color: inherit;
+    font: inherit;
+
+    &:where(:not([hidden])) {
+      display: inline-grid;
+      place-items: center;
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--icon-button-focus-color, var(--accent-indicator-color));
+    outline-offset: -2px;
+  }
+
+  &:where(
+    :not(.icon-button-no-scale, :disabled, [aria-disabled="true"]):is(:hover, :focus-visible)
+  ) {
+    --_icon-button-scale: var(--icon-button-hover-scale, 1.08);
+  }
+
+  &.icon::before,
+  & > :where(.icon-button-glyph, .icon, .icon-glyph, .icon-letter-glyph, svg, img) {
+    scale: var(--_icon-button-scale);
+    transition: var(--icon-button-scale-transition);
+  }
+}
+.icon-button:where(:not(.btn)) {
+  cursor: pointer;
+}
+
+.icon-button:is(:disabled, [aria-disabled="true"]) {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.icon-button.icon::before,
+.icon-button > :is(.icon-button-glyph, .icon)::before,
+.icon-button > :is(.icon-glyph, .icon-letter-glyph),
+.icon-button > :is(.icon-button-glyph, .icon) > :is(.icon-glyph, .icon-letter-glyph) {
+  margin-right: 0;
+}
+
+:where(.icon-button) > :where(.icon-button-glyph) {
+  display: inline-block;
+}
+
+:where(.icon-button-disclosure) > .icon-button-glyph {
+  position: relative;
+}
+
+:where(.icon-button-disclosure[aria-expanded="false"]) > .icon-button-glyph::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  width: 8px;
+  height: 2px;
+  translate: -50% 0;
+  border-radius: 1px;
+  background-color: currentColor;
+}
