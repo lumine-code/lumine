@@ -15,6 +15,10 @@ const Notification = require("../src/notification");
  * other raw data in `options.detail`, which is displayed literally. Reserve
  * `options.description` for authored Markdown explanations and links. Markdown
  * sanitization does not make interpolated raw data literal.
+ *
+ * Start details collapsed when they are supplemental, such as a batch result,
+ * command output or an internal diagnostic. Leave details visible when they
+ * identify the failure or help the user choose a response.
  */
 module.exports = class NotificationManager {
   constructor() {
@@ -85,6 +89,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
    * @param {String} [options.description] - An authored Markdown `String` containing a longer explanation and links. Put raw paths and error messages in `detail` instead. By default, this **will not** preserve newlines and whitespace when it is rendered.
    * @param {String} [options.detail] - A literal plain-text `String` containing paths, error messages or other additional details. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {Boolean} [options.detailCollapsed] - Whether details start collapsed. Defaults to `false` (expanded). The notification icon toggles details. The log omits the detail preview when set to `true`.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'check'`.
    * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
@@ -117,6 +122,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
    * @param {String} [options.description] - An authored Markdown `String` containing a longer explanation and links. Put raw paths and error messages in `detail` instead. By default, this **will not** preserve newlines and whitespace when it is rendered.
    * @param {String} [options.detail] - A literal plain-text `String` containing paths, error messages or other additional details. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {Boolean} [options.detailCollapsed] - Whether details start collapsed. Defaults to `false` (expanded). The notification icon toggles details. The log omits the detail preview when set to `true`.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'light-bulb'`.
    * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
@@ -141,6 +147,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
    * @param {String} [options.description] - An authored Markdown `String` containing a longer explanation and links. Put raw paths and error messages in `detail` instead. By default, this **will not** preserve newlines and whitespace when it is rendered.
    * @param {String} [options.detail] - A literal plain-text `String` containing paths, error messages or other additional details. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {Boolean} [options.detailCollapsed] - Whether details start collapsed. Defaults to `false` (expanded). The notification icon toggles details. The log omits the detail preview when set to `true`.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'info'`.
    * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
@@ -165,6 +172,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
    * @param {String} [options.description] - An authored Markdown `String` containing a longer explanation and links. Put raw paths and error messages in `detail` instead. By default, this **will not** preserve newlines and whitespace when it is rendered.
    * @param {String} [options.detail] - A literal plain-text `String` containing paths, error messages or other additional details. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {Boolean} [options.detailCollapsed] - Whether details start collapsed. Defaults to `false` (expanded). The notification icon toggles details. The log omits the detail preview when set to `true`.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'alert'`.
    * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
@@ -189,6 +197,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
    * @param {String} [options.description] - An authored Markdown `String` containing a longer explanation and links. Put raw paths and error messages in `detail` instead. By default, this **will not** preserve newlines and whitespace when it is rendered.
    * @param {String} [options.detail] - A literal plain-text `String` containing paths, error messages or other additional details. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {Boolean} [options.detailCollapsed] - Whether details start collapsed. Defaults to `false` (expanded). The notification icon toggles details. The log omits the detail preview when set to `true`.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'flame'`.
    * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.
@@ -214,6 +223,7 @@ module.exports = class NotificationManager {
    * @param {String} [options.buttons.title] - Plain-text tooltip explaining the button's action.
    * @param {String} [options.description] - An authored Markdown `String` containing a longer explanation and links. Put raw paths and error messages in `detail` instead. By default, this **will not** preserve newlines and whitespace when it is rendered.
    * @param {String} [options.detail] - A literal plain-text `String` containing paths, error messages or other additional details. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param {Boolean} [options.detailCollapsed] - Whether details start collapsed. Defaults to `false` (expanded). The notification icon toggles details. The log omits the detail preview when set to `true`.
    * @param {Boolean} [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param {String} [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'bug'`.
    * @param {EditorWindow} [options.window] - The editor window in which to display the notification; defaults to the main window.

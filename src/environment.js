@@ -1941,11 +1941,13 @@ class Environment {
     this.deserializeTimings.workspace = Date.now() - startTime;
 
     if (missingProjectPaths.length > 0) {
-      const count = missingProjectPaths.length === 1 ? "" : missingProjectPaths.length + " ";
-      const noun = missingProjectPaths.length === 1 ? "folder" : "folders";
+      const multipleFolders = missingProjectPaths.length > 1;
+      const count = multipleFolders ? `${missingProjectPaths.length} ` : "";
+      const noun = multipleFolders ? "folders" : "folder";
       this.notifications.addError(`Unable to open ${count}project ${noun}`, {
         detail: missingProjectPaths.map((projectPath) => `Path: ${projectPath}`).join("\n"),
-        description: `The project ${noun} ${missingProjectPaths.length === 1 ? "is" : "are"} no longer on disk.`,
+        description: `The project ${noun} ${multipleFolders ? "are" : "is"} no longer on disk.`,
+        ...(multipleFolders ? { detailCollapsed: true, dismissable: true } : {}),
       });
     }
   }

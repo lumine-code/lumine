@@ -28,6 +28,7 @@ module.exports = class UnavailableSyntaxLanguageMode extends NullLanguageMode {
         dismissable: true,
         description: `${reason} You can continue editing and saving this document.`,
         detail: `${filePath ? `Path: ${filePath}\n` : ""}${JSON.stringify(failure, null, 2)}`,
+        detailCollapsed: true,
         buttons: [{ text: "Retry Analysis", onDidClick: () => this.retrySyntaxAnalysis() }],
       },
     );

@@ -35,6 +35,7 @@ test("syntax failure notifications keep document paths out of authored Markdown"
     mode.notify();
     assert.equal(notification.message, "Syntax analysis is unavailable");
     assert.equal(notification.options.description.includes(filePath), false);
+    assert.equal(notification.options.detailCollapsed, true);
     assert.equal(
       notification.options.detail,
       `Path: ${filePath}\n${JSON.stringify(failure, null, 2)}`,

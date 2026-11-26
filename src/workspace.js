@@ -982,10 +982,14 @@ module.exports = class Workspace extends Model {
       await this.releaseEditorWindow(window);
       await main.show();
       await main.focus();
+      const restored = "Its editors have been restored in the main window.";
       this.notificationManager.addWarning("The editor window closed unexpectedly.", {
-        detail: errors.length
-          ? `Its editors have been restored in the main window. Some display state could not be restored: ${errors.map((error) => error.message).join("; ")}`
-          : "Its editors have been restored in the main window.",
+        description: errors.length
+          ? `${restored} Some display state could not be restored.`
+          : restored,
+        ...(errors.length
+          ? { detail: errors.map((error) => error.message).join("\n"), detailCollapsed: true }
+          : {}),
         dismissable: true,
       });
     });
