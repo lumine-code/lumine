@@ -41,23 +41,20 @@ describe("Core icon buttons", () => {
     expect(getComputedStyle(glyph, "::after").content).toBe("none");
   });
 
-  it("scales only the glyph of an opted-in icon button on keyboard focus", () => {
-    const labelled = document.createElement("button");
-    labelled.className = "btn icon icon-info";
-    labelled.textContent = "Details";
-    jasmine.attachToDOM(labelled);
+  it("scales the concealed action without changing a toolbar button that shows only a glyph", () => {
+    const toolbarButton = document.createElement("button");
+    toolbarButton.className = "btn icon icon-info";
+    toolbarButton.setAttribute("aria-label", "Details");
+    jasmine.attachToDOM(toolbarButton);
 
-    labelled.focus();
-    expect(labelled.matches(":focus-visible")).toBeTrue();
-    expect(getComputedStyle(labelled, "::before").scale).toBe("none");
+    toolbarButton.focus();
+    expect(toolbarButton.matches(":focus-visible")).toBeTrue();
+    expect(getComputedStyle(toolbarButton, "::before").scale).toBe("none");
 
     glyph.style.transition = "none";
     button.focus();
     expect(button.matches(":focus-visible")).toBeTrue();
     expect(getComputedStyle(glyph).scale).toBe("1.08");
-
-    button.classList.add("icon-button-no-scale");
-    expect(getComputedStyle(glyph).scale).toBe("none");
   });
 
   it("animates enlargement for both glyphs and images when reduced motion is off", () => {

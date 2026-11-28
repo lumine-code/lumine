@@ -185,11 +185,6 @@
     // Do not turn its native click into the form's primary core:confirm.
     "enter": "native!"
   },
-  "button.icon-button": {
-    // Let the focused button activate without dispatching a page command.
-    "enter": "native!",
-    "space": "native!"
-  },
   "body .native-key-bindings": {
     "tab": "core:focus-next",
     "shift-tab": "core:focus-previous",

@@ -1477,7 +1477,7 @@ class InputDialog {
         : $.button(
             {
               ref: "itemActionsIndicator",
-              className: `item-actions-indicator${pending ? " is-pending" : " icon-button icon-button-no-scale icon icon-ellipsis"}`,
+              className: `item-actions-indicator${pending ? " is-pending" : " icon icon-ellipsis"}`,
               type: "button",
               tabIndex: -1,
               hidden: !this.itemActionsAvailable && !filtering,

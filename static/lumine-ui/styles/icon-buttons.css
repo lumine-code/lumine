@@ -1,4 +1,4 @@
-/* Icon-only actions share interaction feedback while their surface owns placement and size. */
+/* An otherwise decorative icon can double as a button without gaining visible button chrome. */
 :where(.icon-button) {
   --_icon-button-scale: none;
   --icon-button-scale-transition: scale 0s;
@@ -26,9 +26,7 @@
     outline-offset: -2px;
   }
 
-  &:where(
-    :not(.icon-button-no-scale, :disabled, [aria-disabled="true"]):is(:hover, :focus-visible)
-  ) {
+  &:where(:not(:disabled, [aria-disabled="true"]):is(:hover, :focus-visible)) {
     --_icon-button-scale: var(--icon-button-hover-scale, 1.08);
   }
 
