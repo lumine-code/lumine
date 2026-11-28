@@ -2,6 +2,10 @@
 
 Detailed guides for extending the editor, with runtime contracts in the [API reference](https://lumine-code.github.io/api/) and package-owned service contracts beside their implementations. Start with [Developing extensions](https://lumine-code.github.io/docs.html#extending-lumine/developing-extensions) for a short introduction.
 
+## Installing a local Windows build
+
+Build the installer with `npm run full`, close Lumine, then run `npm run install:silent` from the editor checkout. The command runs the installer in `dist` without showing the setup wizard or starting the editor. Open an elevated shell if your existing installation is for all users.
+
 ## Packages and workspace
 
 - [Developing a package](developing-a-package.md): manifests, lifecycle, lazy work, views and live development.
