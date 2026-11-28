@@ -26,7 +26,7 @@
   "license": "MIT",
   "electronVersion": "45.5.0",
   "dependencies": {
-    "@babel/core": "8.1.3",
+    "@babel/core": "8.1.4",
     "@jasminejs/reporters": "1.1.0",
     "@lumine-code/babel-preset": "github:lumine-code/babel-preset#d15760e650992b805a88916e26ca14fd03c57884",
     "@lumine-code/etch": "github:lumine-code/etch#cd78d3c0bf3ba55a69c2f9478e228cad0bacb6de",
@@ -197,7 +197,7 @@
     "@eslint/js": "^10.0.1",
     "electron": "45.5.0",
     "electron-builder": "27.0.0-alpha.15",
-    "eslint": "^10.15.0",
+    "eslint": "^10.16.0",
     "eslint-config-prettier": "^10.1.9",
     "eslint-plugin-n": "^18.6.0",
     "globals": "^17.14.0",
@@ -212,7 +212,7 @@
     "github:lumine-code/watcher#b79bdbf1ff598ede255a46fd529a2775fc5fc3ff": true
   },
   "overrides": {
-    "eslint@^10.15.0": {
+    "eslint@^10.16.0": {
       "minimatch": "11.0.9"
     },
     "@eslint/config-array@0.23.5": {
